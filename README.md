@@ -2,8 +2,8 @@
 
 FisherWright.jl is a Julia package for simulating Fisher-Wright populations with random mating, recombination, and mutation. It provides efficient tools for modeling population genetics, generating haplotypes, and converting mutation data into bit arrays and linkage maps. This package is suitable for researchers and students in population genetics, evolutionary biology, and related fields.
 
-[![Build Status](https://github.com/YourUser/FisherWright.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/YourUser/FisherWright.jl/actions)
-[![Coverage](https://codecov.io/gh/YourUser/FisherWright.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/YourUser/FisherWright.jl)
+[![Build Status](https://github.com/JuliaBnG/FisherWright.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/JuliaBnG/FisherWright.jl/actions)
+[![Coverage](https://codecov.io/gh/JuliaBnG/FisherWright.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/JuliaBnG/FisherWright.jl)
 
 ## Features
 - Simulate Fisher-Wright populations over multiple generations
