@@ -1,0 +1,53 @@
+# Julia .gitignore for FisherWright package
+# Compiled source files
+*.o
+*.so
+*.dylib
+*.dll
+
+# Julia REPL history
+.julia_history
+
+# Julia package and environment folders
+/.julia/
+
+# Project-specific temporary files
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+*.jl.*.mem
+*.jl.gcda
+*.jl.gcno
+*.jl.prof
+*.jl.*.prof
+
+# VS Code settings
+.vscode/
+
+# Jupyter and Pluto notebooks checkpoints
+.ipynb_checkpoints/
+*.jlpluto
+
+# Backup files
+*~
+*.bak
+*.tmp
+
+# Manifest and compiled cache (optional, keep Project.toml)
+Manifest.toml
+
+# Output, logs, and test artifacts
+logs/
+output/
+results/
+coverage/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
+*.aux
+*.out
+*.toc
