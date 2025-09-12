@@ -2,6 +2,7 @@ module FisherWright
 
 using DataFrames
 using Distributions
+using Random
 using Statistics
 
 include("random-mate.jl")

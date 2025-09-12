@@ -1,48 +1,66 @@
 """
-    quickGT(nlc::Int, nid::Int; maf = 0.1, qd = Beta(0.75, 0.75))
-A quick way to simulate SNP genotypes of `nlc` loci and `nid` individuals.
-Allele frequencies are sampled from a default `Beta(.75, .75)`, conditioned on
-`maf`. This distribution is U-shaped, which is like real situations. The loci,
-however, are independently sampled, so there is no linkage disequilibrium among
-loci.
+    quickGT(nlc::Int, nid::Int; maf=0.1, qd=Beta(0.75,0.75), rng=Random.default_rng(), return_p=false)
 
-Please refer [`fisher_wright`](@ref) for genotypes of Fisher-Wright
-population.
+Simulate diploid genotypes (nlc loci × nid individuals) with allele frequencies
+drawn from `qd` (default Beta(0.75,0.75)), rejecting values with p ≤ maf or
+p ≥ 1 - maf. Returns Matrix{Int8} (values 0,1,2). If `return_p=true`, also
+returns the Vector{Float64} of accepted allele frequencies.
 """
-function quickGT(nlc::Int, nid::Int; maf = 0.1, qd = Beta(0.75, 0.75))
+function quickGT(
+    nlc::Int,
+    nid::Int;
+    maf = 0.1,
+    qd = Beta(0.75, 0.75),
+    rng = Random.default_rng(),
+    return_p::Bool = false,
+)
     (maf ≤ 0 || maf ≥ 0.5) && error("maf $maf not in (0, 0.5)")
-    gt = zeros(Int8, nlc, nid)
-    for iic = 1:nlc
-        p = 0
-        while p <= maf || p >= 1 - maf
-            p = rand(qd)
+    gt = Matrix{Int8}(undef, nlc, nid)
+    freqs = return_p ? Vector{Float64}(undef, nlc) : nothing
+    @inbounds for i = 1:nlc
+        p = rand(rng, qd)
+        while p ≤ maf || p ≥ 1 - maf
+            p = rand(rng, qd)
         end
-        rand!(Binomial(2, p), view(gt, iic, :))
+        freqs !== nothing && (freqs[i] = p)
+        # Sample nid genotype counts for this locus
+        row = rand(rng, Binomial(2, p), nid)
+        @inbounds for j = 1:nid
+            gt[i, j] = Int8(row[j])
+        end
     end
-    gt
+    return return_p ? (gt, freqs) : gt
 end
 
 """
-    function quickHap(nlc::Int, nid::Int; maf = .2, bp = .75)
-A quick way to simulate SNP genotype of `nlc` loci, and `2nid` haplotypes.
-Allele Frequencies are sampled from a default distribution of `Beta(.75, .75)`,
-conditioned on `maf`. This distribution is U-shaped, which is like real
-situations. The loci, however, are independently sampled, so there is no linkage
-disequilibrium among loci.
+    quickHap(nlc::Int, nid::Int; maf=0.2, qd=Beta(0.75,0.75), rng=Random.default_rng(), return_p=false)
 
-Please refer [`fisher_wright`](@ref) for genotypes of Fisher-Wright
-population.
+Simulate haplotypes: returns Matrix{Int8} of size (nlc × 2nid) with 0/1 alleles.
+Allele frequencies drawn as in `quickGT`. If `return_p=true`, also return
+frequency vector.
 """
-function quickHap(nlc, nid; maf = 0.2, qd = Beta(0.75, 0.75))
+function quickHap(
+    nlc::Int,
+    nid::Int;
+    maf = 0.2,
+    qd = Beta(0.75, 0.75),
+    rng = Random.default_rng(),
+    return_p::Bool = false,
+)
     (maf ≤ 0 || maf ≥ 0.5) && error("maf $maf not in (0, 0.5)")
-    nhp = 2nid
-    hp = zeros(Int8, nlc, nhp)
-    for iic = 1:nlc
-        p = 0
-        while p <= maf || p >= 1 - maf
-            p = rand(qd)
+    nhp = 2 * nid
+    hp = Matrix{Int8}(undef, nlc, nhp)
+    freqs = return_p ? Vector{Float64}(undef, nlc) : nothing
+    @inbounds for i = 1:nlc
+        p = rand(rng, qd)
+        while p ≤ maf || p ≥ 1 - maf
+            p = rand(rng, qd)
         end
-        rand!(Binomial(1, p), view(hp, iic, :))
+        freqs !== nothing && (freqs[i] = p)
+        row = rand(rng, Binomial(1, p), nhp)
+        @inbounds for j = 1:nhp
+            hp[i, j] = Int8(row[j])
+        end
     end
-    hp
+    return return_p ? (hp, freqs) : hp
 end
