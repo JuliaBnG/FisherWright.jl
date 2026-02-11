@@ -1,15 +1,23 @@
 name = "FisherWright"
 uuid = "a555c6d9-8fd4-4ecd-87f6-904b8d8d9cbe"
+keywords = ["population-genetics", "simulation", "fisher-wright", "mutation", "drift"]
+license = "MIT"
+version = "0.1.5"
 authors = ["Xijiang Yu <xijiang@users.noreply.github.com>"]
-version = "0.1.4"
+description = "Simulation of mutation-drift equilibrium Fisher-Wright populations."
+docs = "https://juliabng.github.io/FisherWright.jl"
+homepage = "https://juliabng.github.io/FisherWright.jl"
+repository = "https://github.com/JuliaBnG/FisherWright.jl"
 
 [deps]
+BnGStructs = "764f5799-4fa8-443f-b488-b719b6ff37e3"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
 [compat]
+BnGStructs = "0.1"
 DataFrames = "1"
 Distributions = "0.25"
 julia = "1.10"

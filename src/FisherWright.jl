@@ -1,5 +1,6 @@
 module FisherWright
 
+using BnGStructs
 using DataFrames
 using Distributions
 using Random
@@ -12,6 +13,6 @@ include("muts2bitarray.jl")
 include("fwp.jl")
 include("quick-genotypes.jl")
 
-export fisher_wright, muts2bitarray, quickGT, quickHap
+export fisher_wright, muts2bitarray, quickGT, quickHap, random_mate
 
 end # module FisherWright

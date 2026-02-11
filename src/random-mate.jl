@@ -25,58 +25,42 @@ function random_mate(
     end
     (all(sex) || all(.!sex)) && error("Failed to generate both sexes in $max_tries tries")
     # Build sire and dam index vectors once
-    sire_idx = Vector{Int}()
+    sir_idx = Vector{Int}()
     dam_idx = Vector{Int}()
-    sizehint!(sire_idx, div(n1, 2)+1)
+    sizehint!(sir_idx, div(n1, 2)+1)
     sizehint!(dam_idx, div(n1, 2)+1)
     @inbounds for i = 1:n1
         if sex[i]
-            ;
-            push!(sire_idx, i)
+            push!(sir_idx, i)
         else
             push!(dam_idx, i)
         end
     end
     pm = Matrix{Int}(undef, n2, 2)
     @inbounds for i = 1:n2
-        pm[i, 1] = rand(rng, sire_idx)
+        pm[i, 1] = rand(rng, sir_idx)
         pm[i, 2] = rand(rng, dam_idx)
     end
     return pm, sex
 end
 
 """
-    random_mate(sex::Vector{Bool}, n2::Integer; rng=Random.default_rng())
+    random_mate(sex::Vector, n2::Integer; rng=Random.default_rng())
 
-Sample `n2` sire–dam pairs (with replacement) from an existing sex vector.
-Returns pm :: Matrix{Int} (n2 × 2): (sire, dam).
+Sample `n2` sire–dam pairs (with replacement) from an existing sex vector, where
+sires are indicated by 1 and dams by 0. Returns pm :: Matrix{Int} (n2 × 2):
+(sire, dam). An ID can be set as a value not equal to 0 or 1, e.g., -1, to
+prevent it from being sampled as a sire or dam.
 """
-function random_mate(sex::Vector{Bool}, n2::Integer; rng = Random.default_rng())
-    n = length(sex)
-    n2 > 0 || error("n2 must be positive")
-    any(sex) || error("No sires in sex vector")
-    any(.!sex) || error("No dams in sex vector")
-    sire_idx = Vector{Int}()
-    dam_idx = Vector{Int}()
-    sizehint!(sire_idx, div(n, 2)+1)
-    sizehint!(dam_idx, div(n, 2)+1)
-    @inbounds for i = 1:n
-        if sex[i]
-            ;
-            push!(sire_idx, i)
-        else
-            push!(dam_idx, i)
-        end
-    end
+function random_mate(sex::Vector, n2::Integer; rng = Random.default_rng())
+    sir_idx = findall(==(1), sex)
+    dam_idx = findall(==(0), sex)
+    length(sir_idx) > 0 || error("No sires in sex vector")
+    length(dam_idx) > 0 || error("No dams in sex vector")
     pm = Matrix{Int}(undef, n2, 2)
     @inbounds for i = 1:n2
-        pm[i, 1] = rand(rng, sire_idx)
+        pm[i, 1] = rand(rng, sir_idx)
         pm[i, 2] = rand(rng, dam_idx)
     end
-    return pm
+    return sortslices(pm, dims=1)
 end
-
-# Example (commented):
-# using Random
-# pm, sex = random_mate(10, 5; rng=MersenneTwister(42))
-# pm2 = random_mate(sex, 5)
