@@ -13,6 +13,6 @@ include("muts2bitarray.jl")
 include("fwp.jl")
 include("quick-genotypes.jl")
 
-export fisher_wright, muts2bitarray, quickGT, quickHap, random_mate
+export fisher_wright, muts2bitarray, quickGT, quickHap
 
 end # module FisherWright

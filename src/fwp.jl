@@ -14,7 +14,12 @@ place in bp is hence 2³², which is 54.95 × 10⁸ bp. This is sufficient for m
 of the genomes. An error occurred if the total length of the genome is larger
 than this value.
 
-Note:
+## Returns
+
+1. The mutations
+2. The accumulated base pairs on chrosomes
+
+## Note:
 1. parameter recombination rate was removed as it is confusing. Crossover rate
    is a more appropriate term. Yet, Crossovers is also defined in M, or,
    bp/Morgan, i.e., the chromosome length in M is also the expected number of
@@ -26,7 +31,7 @@ Note:
    instead, where the `nid` is a vector of the number of individuals in each
    generation. This can simulate, e.g., bottlenecks, in history.
 
-# The algorithm
+## The algorithm
 
 1. Create two vectors of containers to store mutations in parents and offspring.
 2. Generation of `M⋅m` new mutations ∈ ``[1, ~3×10⁹]`` for each haplotype
@@ -60,7 +65,7 @@ function fisher_wright(
     prt = [Vector{UInt32}() for _ = 1:nh]
     off = [Vector{UInt32}() for _ = 1:nh]
 
-    @info "Fisher-Wright population simulation start" ne nt total_bp=tg
+    @info "Fisher-Wright population simulation start" ne nt total_bp=Int(tg)
 
     for g = 1:nt
         if g % 100 == 0

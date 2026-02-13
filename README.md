@@ -20,20 +20,24 @@ population genetics, evolutionary biology, and related fields.
 ## Main Functions
 
 ### `fisher_wright`
+
 Simulates a Fisher-Wright population of a given size and number of generations,
 with specified chromosome lengths and mutation rates. Returns simulated
 population data with mutations and recombination events.
 
 ### `muts2bitarray`
+
 Converts a vector of mutation sets (haplotypes) and chromosome breakpoints into
 a `BitArray` of haplotypes and a linkage map (`DataFrame`). Supports random
 flipping of alleles and removal of fixed loci.
 
 ### `quickGT`, `quickHap`
+
 Utility functions for fast genotype and haplotype generation from simulated
 data.
 
 ## Installation
+
 Add the package to your Julia environment:
 
 ```julia
@@ -51,11 +55,13 @@ muts, cbp = fisher_wright(100, 1000, [1_000_000, 1_000_000], 1.0)
 # Convert mutations to bit array and linkage map
 xy, lmp = muts2bitarray(muts, cbp; flip = true)
 ```
+
 ## License
+
 MIT License. See LICENSE file for details.
 
 ## ToDo
 
-1. [ ] Add dependency `BnGStructs`, return mutations as a `Genotype`, or
+1. [x] Add dependency `BnGStructs`, return mutations as a `Genotype`, or
    `Haplotype`.
-2. [ ] 
+2. [ ] Add split and merge sub-populations
