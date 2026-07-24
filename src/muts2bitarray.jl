@@ -17,7 +17,8 @@ Fixed (monomorphic) loci are removed.
 function muts2bitarray(
     muts::Vector{Vector{UInt32}},
     cbp::Vector{UInt32};
-    flip::Bool = false,
+    flip::Bool=false,
+    include_fixed::Bool=false,
 )
     nhp = length(muts)
     # Collect all mutations once
@@ -53,11 +54,11 @@ function muts2bitarray(
     if nlc == 0
         return BitArray(undef, 0, nhp),
         DataFrame(
-            chr = Int8[],
-            pos = UInt32[],
-            ref = Char[],
-            alt = Char[],
-            frq = Float32[],
+            chr=Int8[],
+            pos=UInt32[],
+            ref=Char[],
+            alt=Char[],
+            frq=Float32[],
         )
     end
     # Build index (could alternatively binary search per mut)
@@ -100,25 +101,29 @@ function muts2bitarray(
         end
         alt[i] = a
     end
-    counts = vec(sum(xy, dims = 2))                # Int counts
-    polym = (counts .> 0) .& (counts .< nhp)     # polymorphic mask
+    counts = vec(sum(xy, dims=2))
+    frq = Float32.(counts) ./ nhp
+    if include_fixed
+        lmp = DataFrame(chr=chr, pos=all_mts, ref=ref, alt=alt, frq=frq)
+        return xy, lmp
+    end
+    polym = (counts .> 0) .& (counts .< nhp)
     if !any(polym)
         return BitArray(undef, 0, nhp),
         DataFrame(
-            chr = Int8[],
-            pos = UInt32[],
-            ref = Char[],
-            alt = Char[],
-            frq = Float32[],
+            chr=Int8[],
+            pos=UInt32[],
+            ref=Char[],
+            alt=Char[],
+            frq=Float32[],
         )
     end
-    frq = Float32.(counts) ./ nhp                # derived allele frequency
     lmp = DataFrame(
-        chr = chr[polym],
-        pos = all_mts[polym],
-        ref = ref[polym],
-        alt = alt[polym],
-        frq = frq[polym],
+        chr=chr[polym],
+        pos=all_mts[polym],
+        ref=ref[polym],
+        alt=alt[polym],
+        frq=frq[polym],
     )
     return xy[polym, :], lmp
 end

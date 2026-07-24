@@ -56,6 +56,28 @@ muts, cbp = fisher_wright(100, 1000, [1_000_000, 1_000_000], 1.0)
 xy, lmp = muts2bitarray(muts, cbp; flip = true)
 ```
 
+## Benchmark
+
+Run the reproducible benchmark script from the package directory:
+
+```bash
+julia --project=. bench/benchmark_phase3.jl
+```
+
+Optional parameters:
+
+```bash
+julia --project=. bench/benchmark_phase3.jl 120 200 100000000,100000000 0.5 5
+```
+
+Arguments are interpreted as:
+
+1. `ne`
+2. `nt`
+3. comma-separated chromosome lengths
+4. `mr`
+5. repetitions
+
 ## License
 
 MIT License. See LICENSE file for details.

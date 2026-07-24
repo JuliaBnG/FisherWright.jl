@@ -10,9 +10,10 @@ include("random-mate.jl")
 include("merge-sorted.jl")
 include("recombine.jl")
 include("muts2bitarray.jl")
+include("result.jl")
 include("fwp.jl")
 include("quick-genotypes.jl")
 
-export fisher_wright, muts2bitarray, quickGT, quickHap
+export fisher_wright, muts2bitarray, quickGT, quickHap, FisherWrightResult, to_haplotype
 
 end # module FisherWright

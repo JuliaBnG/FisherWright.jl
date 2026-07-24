@@ -47,11 +47,14 @@ function fisher_wright(
     nt::T2,
     chr::Vector{T3},
     mr::Float64;
-    M = 1e8,
+    M=1e8,
+    result::Bool=false,
+    fixation_interval::Int=1,
 ) where {T1<:Integer,T2<:Integer,T3<:Integer}
     if !(ne > 1 && nt > 0 && all(chr .> 0) && 0.01 < mr < 20.0)
         throw(ArgumentError("Invalid parameter(s)"))
     end
+    fixation_interval > 0 || throw(ArgumentError("fixation_interval must be positive"))
 
     tg = sum(chr)
     tg < 2^32 || error("Total genome length must be < 2^32 bp for UInt32 storage")
@@ -64,6 +67,7 @@ function fisher_wright(
     nh = 2 * ne
     prt = [Vector{UInt32}() for _ = 1:nh]
     off = [Vector{UInt32}() for _ = 1:nh]
+    substitutions = UInt32[]
 
     @info "Fisher-Wright population simulation start" ne nt total_bp=Int(tg)
 
@@ -73,7 +77,7 @@ function fisher_wright(
                 '\r',
                 ' '^8,
                 "Generation $g / $nt, mean muts/haps: ",
-                round(mean(length.(prt)); digits = 2),
+                round(mean(length.(prt)); digits=2),
             )
         end
         # Mutations (threaded)
@@ -102,7 +106,10 @@ function fisher_wright(
             recombine(prt[2d-1], prt[2d], off[2i], rsd)
         end
         prt, off = off, prt
+        if result && (g % fixation_interval == 0 || g == nt)
+            prt, substitutions = _fixation_step(prt, substitutions)
+        end
     end
     println()
-    return prt, cbp
+    return result ? FisherWrightResult(prt, cbp, substitutions) : (prt, cbp)
 end
