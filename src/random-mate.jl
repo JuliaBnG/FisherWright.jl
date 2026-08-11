@@ -17,29 +17,59 @@ function random_mate(
     max_tries::Int = 10,
 )
     (n1 > 1 && n2 > 0) || error("n1 must >1 and n2 >0")
-    sex = rand(rng, Bool, n1)
-    tries = 1
-    while (all(sex) || all(.!sex)) && tries < max_tries
-        sex .= rand(rng, Bool, n1)
+    return random_mate!(
+        Matrix{Int}(undef, n2, 2),
+        Vector{Bool}(undef, n1),
+        Int[],
+        Int[];
+        rng = rng,
+        max_tries = max_tries,
+    )
+end
+
+"""
+    random_mate!(pm, sex, sires, dams; rng=Random.default_rng(), max_tries=10)
+
+In-place form of [`random_mate`](@ref). Draws a fresh sex assignment into `sex`
+and `size(pm, 1)` sire–dam pairs into `pm`, using `sires` and `dams` as
+scratch index buffers. Returns `(pm, sex)`.
+
+All four arguments are reused, so calling this once per generation with the
+same buffers keeps mating allocation-free.
+"""
+function random_mate!(
+    pm::Matrix{Int},
+    sex::Vector{Bool},
+    sires::Vector{Int},
+    dams::Vector{Int};
+    rng = Random.default_rng(),
+    max_tries::Int = 10,
+)
+    n1, n2 = length(sex), size(pm, 1)
+    (n1 > 1 && n2 > 0) || error("n1 must >1 and n2 >0")
+    tries = 0
+    while true
+        rand!(rng, sex)
         tries += 1
+        (any(sex) && !all(sex)) && break
+        tries >= max_tries &&
+            error("Failed to generate both sexes in $max_tries tries")
     end
-    (all(sex) || all(.!sex)) && error("Failed to generate both sexes in $max_tries tries")
     # Build sire and dam index vectors once
-    sir_idx = Vector{Int}()
-    dam_idx = Vector{Int}()
-    sizehint!(sir_idx, div(n1, 2)+1)
-    sizehint!(dam_idx, div(n1, 2)+1)
+    empty!(sires)
+    empty!(dams)
+    sizehint!(sires, div(n1, 2)+1)
+    sizehint!(dams, div(n1, 2)+1)
     @inbounds for i = 1:n1
         if sex[i]
-            push!(sir_idx, i)
+            push!(sires, i)
         else
-            push!(dam_idx, i)
+            push!(dams, i)
         end
     end
-    pm = Matrix{Int}(undef, n2, 2)
     @inbounds for i = 1:n2
-        pm[i, 1] = rand(rng, sir_idx)
-        pm[i, 2] = rand(rng, dam_idx)
+        pm[i, 1] = rand(rng, sires)
+        pm[i, 2] = rand(rng, dams)
     end
     return pm, sex
 end

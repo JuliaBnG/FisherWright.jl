@@ -25,6 +25,19 @@ Simulates a Fisher-Wright population of a given size and number of generations,
 with specified chromosome lengths and mutation rates. Returns simulated
 population data with mutations and recombination events.
 
+Keyword arguments:
+
+| Keyword | Default | Meaning |
+|---|---|---|
+| `M` | `1e8` | base pairs per Morgan (recombination only) |
+| `mut_base` | `1e8` | base pairs per unit of `mr` (mutation only) |
+| `result` | `false` | return a `FisherWrightResult` and extract fixed positions |
+| `fixation_interval` | `1` | generations between fixation scans, when `result = true` |
+| `verbose` | `false` | print a progress line every 100 generations |
+
+Every haplotype is a sorted vector of unique `UInt32` positions, and that
+invariant holds for the returned population.
+
 ### `muts2bitarray`
 
 Converts a vector of mutation sets (haplotypes) and chromosome breakpoints into
@@ -42,7 +55,7 @@ Add the package to your Julia environment:
 
 ```julia
 using Pkg
-Pkg.add(FisherWright)
+Pkg.add("FisherWright")
 ```
 
 ## Usage Example
@@ -77,6 +90,41 @@ Arguments are interpreted as:
 3. comma-separated chromosome lengths
 4. `mr`
 5. repetitions
+6. seed
+
+The script reports wall time, cumulative allocation, GC fraction and peak RSS,
+and prints the thread count it ran with. Pin threads with `julia -t N` when
+comparing against another simulator: cumulative allocation is not a memory
+footprint, and wall time depends directly on the thread count.
+
+## Changes in v0.3.0
+
+**Bug fix.** `recombine` skipped the last position of each parental haplotype
+inside the crossover loop, emitting it only through the trailing append. At
+29 × 100 Mbp with 30 000 mutations per haplotype this made 46% of meioses
+inherit the wrong positions and left 11% of offspring haplotypes unsorted,
+breaking the sorted-and-unique invariant the rest of the package relies on.
+Simulation output changes accordingly.
+
+**Behaviour change.** `fisher_wright` is now silent by default; pass
+`verbose = true` for the old progress output.
+
+**API.** `M` no longer scales the mutation rate — use the new `mut_base`
+keyword for that. Added allocation-free forms `merge_sorted!`, `cobp!` and
+`random_mate!` for use in hot loops.
+
+**Performance.** Per-generation working storage is allocated once and reused,
+and the fixation scan uses sorted merges instead of hash sets. Measured on
+29 × 100 Mbp, `mr = 1.0`, `result = true`:
+
+| | before | after |
+|---|---|---|
+| ne=250, nt=200, 12 threads | 1.44 s, 3.12 GiB, 55% GC | 0.27 s, 0.07 GiB, 0.4% GC |
+| ne=500, nt=200, 12 threads | 2.37 s, 6.04 GiB, 65% GC | 0.59 s, 0.15 GiB, 7.8% GC |
+| ne=250, nt=200, 1 thread | 5.83 s, 3.08 GiB, 70% GC | 0.95 s, 0.07 GiB, 0.5% GC |
+
+The meiosis inner loop (`cobp!` plus `recombine`) no longer allocates at all in
+steady state.
 
 ## License
 
