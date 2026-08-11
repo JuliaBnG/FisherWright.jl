@@ -23,3 +23,12 @@ jobs:
         with:
           files: lcov.info
           fail_ci_if_error: false
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v1
+        with:
+          version: '1.10'
+      - run: julia --project=docs --startup-file=no -e 'using Pkg; Pkg.instantiate()'
+      - run: julia --project=docs --startup-file=no docs/make.jl

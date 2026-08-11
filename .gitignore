@@ -41,6 +41,7 @@ logs/
 output/
 results/
 coverage/
+docs/build/
 
 # OS generated files
 .DS_Store

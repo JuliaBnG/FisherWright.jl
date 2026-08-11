@@ -9,6 +9,18 @@ population genetics, evolutionary biology, and related fields.
 [![Build Status](https://github.com/JuliaBnG/FisherWright.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/JuliaBnG/FisherWright.jl/actions)
 [![Coverage](https://codecov.io/gh/JuliaBnG/FisherWright.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/JuliaBnG/FisherWright.jl)
 
+The complete manual and API reference are available at
+[xijiang.org/JuliaBnG/FisherWright](https://xijiang.org/JuliaBnG/FisherWright).
+
+To build the static documentation for hosting:
+
+```bash
+julia --project=docs --startup-file=no -e 'using Pkg; Pkg.instantiate()'
+julia --project=docs --startup-file=no docs/make.jl
+```
+
+The generated site is in `docs/build/`.
+
 ## Features
 - Simulate Fisher-Wright populations of arbitrary population size, multiple auto
   chromosomes and over multiple generations
