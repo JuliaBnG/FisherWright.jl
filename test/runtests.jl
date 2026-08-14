@@ -1,11 +1,11 @@
 using Test
 using Random
-using FisherWright: fisher_wright, muts2bitarray, merge_sorted, merge_sorted!, recombine,
+using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_sorted, merge_sorted!, recombine,
     cobp, cobp!, FisherWrightResult, to_haplotype, RecombinationMap,
     uniform_recombination_map, random_mate, random_mate!, _fixed_mutations,
     _drop_mutations, _drop_mutations!, _fixation_step, _fixation_step!, _extract_fixed,
     _intersect_sorted!, _remove_sorted!
-using BnGStructs: Haplotype, Species, Cattle, GenericSpecies
+using BnGStructs
 using Distributions: Poisson
 
 """
@@ -392,4 +392,42 @@ end
     rmap = uniform_recombination_map(cattle)
     @test rmap isa RecombinationMap
     @test length(rmap.cbp) == 29
+end
+
+@testset "Direct chip extraction and subsetting" begin
+    muts = [
+        UInt32[10, 30, 50],
+        UInt32[20, 30],
+        UInt32[10, 50],
+        UInt32[20, 40, 50],
+    ]
+    cbp = UInt32[50]
+    res = FisherWrightResult(muts, cbp, UInt32[])
+
+    # Extract specific 3 chip markers: [10, 30, 50]
+    chip_positions = UInt32[10, 30, 50]
+    chip_bit = extract_chip_bitarray(muts, chip_positions)
+    @test size(chip_bit) == (3, 4)
+    # Marker 1 (pos 10): present in hap 1 and hap 3
+    @test chip_bit[1, :] == [true, false, true, false]
+    # Marker 2 (pos 30): present in hap 1 and hap 2
+    @test chip_bit[2, :] == [true, true, false, false]
+    # Marker 3 (pos 50): present in hap 1, 3, 4
+    @test chip_bit[3, :] == [true, false, true, true]
+    @test_throws ArgumentError extract_chip_bitarray(muts, UInt32[30, 10])
+    @test_throws ArgumentError extract_chip_bitarray(muts, UInt32[10, 10])
+
+    # Test via to_haplotype with chip positions
+    hap_chip = to_haplotype(res, chip_positions)
+    @test hap_chip isa BnGStructs.Haplotype
+    @test size(hap_chip) == (3, 4)
+    @test hap_chip[1, 1] == true
+    @test hap_chip[1, 2] == false
+
+    # Test via to_haplotype with LocusSet
+    lset = BnGStructs.LocusSet("TestChip", [1, 3]) # indices 1 and 3 into [10, 30, 50] -> pos 10, 50
+    hap_lset = to_haplotype(res, lset, chip_positions)
+    @test size(hap_lset) == (2, 4)
+    @test hap_lset[1, :] == [true, false, true, false]
+    @test hap_lset[2, :] == [true, false, true, true]
 end

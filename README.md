@@ -138,6 +138,14 @@ and the fixation scan uses sorted merges instead of hash sets. Measured on
 The meiosis inner loop (`cobp!` plus `recombine`) no longer allocates at all in
 steady state.
 
+## Changes in v0.3.3
+
+Added direct, allocation-conscious extraction of selected chip coordinates:
+`extract_chip_bitarray` returns a `BitMatrix`, while
+`to_haplotype(result, chip_positions)` returns a `BnGStructs.Haplotype`.
+Coordinates must be sorted and unique. A `LocusSet` overload supports
+subsetting a shared coordinate vector.
+
 ## License
 
 MIT License. See LICENSE file for details.

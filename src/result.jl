@@ -178,7 +178,7 @@ function _extract_fixed(result::FisherWrightResult)
 end
 
 """
-    to_haplotype(result::FisherWrightResult)
+    to_haplotype(result::FisherWrightResult; include_fixed::Bool=false)
 
 Convert a structured Fisher-Wright result to a dense `BnGStructs.Haplotype`
 and the associated linkage map `DataFrame`.
@@ -188,4 +188,30 @@ function to_haplotype(result::FisherWrightResult; include_fixed::Bool=false)
     xy, loci = muts2bitarray(muts, result.chromosome_ends; include_fixed=include_fixed)
     isempty(xy) && error("No polymorphic loci available for dense export")
     return Haplotype(xy), loci
+end
+
+"""
+    to_haplotype(result::FisherWrightResult, chip_positions::Vector{UInt32};
+                 include_fixed::Bool=false)
+
+Directly extract a dense `BnGStructs.Haplotype` at sorted, unique
+`chip_positions` without materializing other simulated loci. Positions absent
+from every haplotype produce all-false rows.
+"""
+function to_haplotype(result::FisherWrightResult, chip_positions::Vector{UInt32}; include_fixed::Bool=false)
+    muts = include_fixed ? _with_fixed(result) : result.active_haplotypes
+    xy = extract_chip_bitarray(muts, chip_positions)
+    return Haplotype(xy)
+end
+
+"""
+    to_haplotype(result::FisherWrightResult, locus_set::BnGStructs.LocusSet,
+                 all_positions::Vector{UInt32}; include_fixed::Bool=false)
+
+Directly extract a dense `BnGStructs.Haplotype` for a `LocusSet` whose indices
+point into sorted, unique `all_positions`.
+"""
+function to_haplotype(result::FisherWrightResult, locus_set::BnGStructs.LocusSet, all_positions::Vector{UInt32}; include_fixed::Bool=false)
+    chip_positions = all_positions[locus_set.loci]
+    return to_haplotype(result, chip_positions; include_fixed=include_fixed)
 end

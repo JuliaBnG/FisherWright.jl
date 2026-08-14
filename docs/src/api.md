@@ -12,6 +12,7 @@ to_haplotype
 
 ```@docs
 muts2bitarray
+extract_chip_bitarray
 ```
 
 ## Recombination

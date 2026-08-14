@@ -69,3 +69,25 @@ haplotype, loci = to_haplotype(result)
 Use `to_haplotype(result; include_fixed=true)` when fixed substitutions should
 also appear in the dense output. If no polymorphic loci are available,
 `to_haplotype` raises an error rather than returning an empty `Haplotype`.
+
+## Chip extraction
+
+Extract a selected set of marker coordinates directly from a structured result
+without first materializing every simulated locus:
+
+```@example results
+chip_positions = UInt32[10_000, 50_000, 90_000]
+chip_haplotype = to_haplotype(result, chip_positions)
+size(chip_haplotype)
+```
+
+`chip_positions` must be sorted and unique. Each requested position is
+retained even when it is absent from the population, in which case its row is
+all false. `extract_chip_bitarray(result.active_haplotypes, chip_positions)`
+returns the corresponding `BitMatrix` when a `BnGStructs.Haplotype` wrapper is
+not needed. A `BnGStructs.LocusSet` can also select indices from a shared,
+sorted coordinate vector:
+
+```julia
+chip_haplotype = to_haplotype(result, locus_set, all_positions)
+```
