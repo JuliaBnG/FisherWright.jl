@@ -31,6 +31,25 @@ haplotypes, chromosome_ends = fisher_wright(20, 10, [100_000, 100_000], 1.0)
 (length(haplotypes), chromosome_ends)
 ```
 
+## Species parameters
+
+When using a `BnGStructs.Species`, pass the species object directly instead of
+separately supplying its population size and chromosome lengths. The default
+`M` is taken from the species, while all simulation keywords remain available:
+
+```@example simulation
+using BnGStructs
+
+species = GenericSpecies(
+    "Example",
+    Int32(20),
+    UInt32[100_000, 100_000],
+    UInt32(50_000_000),
+)
+result = fisher_wright(species, 10; result=true)
+result.chromosome_ends
+```
+
 ## Recombination
 
 `M` gives the number of base pairs per Morgan. A chromosome of length `L`
@@ -40,6 +59,13 @@ recombination map has one uniform interval per chromosome:
 ```@example simulation
 map = uniform_recombination_map([100_000, 250_000]; M=1e8)
 map.cbp
+```
+
+The species overload uses the chromosome lengths and default `M` from the
+species:
+
+```@example simulation
+uniform_recombination_map(species).cbp
 ```
 
 Each chromosome end is treated as an independent assortment boundary. The

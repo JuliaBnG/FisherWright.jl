@@ -5,7 +5,7 @@ using FisherWright: fisher_wright, muts2bitarray, merge_sorted, merge_sorted!, r
     uniform_recombination_map, random_mate, random_mate!, _fixed_mutations,
     _drop_mutations, _drop_mutations!, _fixation_step, _fixation_step!, _extract_fixed,
     _intersect_sorted!, _remove_sorted!
-using BnGStructs: Haplotype
+using BnGStructs: Haplotype, Species, Cattle, GenericSpecies
 using Distributions: Poisson
 
 """
@@ -366,4 +366,30 @@ end
     @test hp.nlc == 3
     @test hp.nhp == 4
     @test hp.gt[1:hp.nlc, 1:hp.nhp] == xy
+end
+
+@testset "Species-based simulation" begin
+    # Test using a small generic species
+    sp = GenericSpecies("Mini", Int32(20), UInt32[100_000, 100_000], UInt32(50_000_000))
+    res = fisher_wright(sp, 30, 1.0; result=true)
+    @test res isa FisherWrightResult
+    @test length(res.active_haplotypes) == 40
+    @test res.chromosome_ends == UInt32[100_000, 200_000]
+
+    # Test default tuple return and default mr=1.0
+    mts, cbp = fisher_wright(sp, 10)
+    @test length(mts) == 40
+    @test cbp == UInt32[100_000, 200_000]
+
+    # Test Cattle instance
+    cattle = Cattle(15)
+    res_cattle = fisher_wright(cattle, 10, 1.0; result=true)
+    @test res_cattle isa FisherWrightResult
+    @test length(res_cattle.active_haplotypes) == 30
+    @test length(res_cattle.chromosome_ends) == 29
+
+    # Recombination map from Species
+    rmap = uniform_recombination_map(cattle)
+    @test rmap isa RecombinationMap
+    @test length(rmap.cbp) == 29
 end

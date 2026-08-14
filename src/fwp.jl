@@ -150,3 +150,44 @@ function fisher_wright(
     verbose && println()
     return result ? FisherWrightResult(prt, cbp, substitutions) : (prt, cbp)
 end
+
+"""
+    fisher_wright(
+        sp::Species,
+        nt::Integer,
+        mr::Float64 = 1.0;
+        M = sp.M,
+        mut_base = 1e8,
+        result::Bool = false,
+        fixation_interval::Int = 1,
+        verbose::Bool = false,
+    )
+
+Simulate a Fisher-Wright population using species parameters from a `BnGStructs.Species` object
+(e.g., `Cattle(1000)`, `Pig(500)`, `Chicken(2000)`, or `GenericSpecies(...)`).
+
+The population size `ne`, chromosome lengths `chr`, and base pairs per Morgan `M` are automatically
+extracted from `sp`.
+"""
+function fisher_wright(
+    sp::Species,
+    nt::Integer,
+    mr::Float64 = 1.0;
+    M = sp.M,
+    mut_base = 1e8,
+    result::Bool = false,
+    fixation_interval::Int = 1,
+    verbose::Bool = false,
+)
+    return fisher_wright(
+        Int(sp.nid),
+        nt,
+        sp.chromosome,
+        mr;
+        M = M,
+        mut_base = mut_base,
+        result = result,
+        fixation_interval = fixation_interval,
+        verbose = verbose,
+    )
+end

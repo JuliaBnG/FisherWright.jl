@@ -64,6 +64,13 @@ function uniform_recombination_map(chr::Vector{T}; M=1e8) where {T<:Integer}
 end
 
 """
+    uniform_recombination_map(sp::Species; M=sp.M)
+
+Create the default one-interval-per-chromosome recombination map for a `BnGStructs.Species` object.
+"""
+uniform_recombination_map(sp::Species; M=sp.M) = uniform_recombination_map(sp.chromosome; M=M)
+
+"""
     recombine(h₁, h₂, hₒ, cross_overs; rng = Random.default_rng())
 
 Recombine two parental haplotypes into an offspring haplotype.
