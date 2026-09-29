@@ -1,7 +1,3 @@
-using Pkg
-
-Pkg.develop(path = joinpath(@__DIR__, ".."))
-
 using Documenter
 using FisherWright
 
@@ -10,10 +6,7 @@ makedocs(
     authors = "Xijiang Yu",
     modules = [FisherWright],
     checkdocs = :exports,
-    format = Documenter.HTML(
-        prettyurls = get(ENV, "CI", "false") == "true",
-        canonical = "https://xijiang.org/JuliaBnG/FisherWright",
-    ),
+    format = Documenter.HTML(),
     pages = [
         "Home" => "index.md",
         "Manual" => [
@@ -23,4 +16,10 @@ makedocs(
         ],
         "API reference" => "api.md",
     ],
+)
+
+deploydocs(
+    repo = "github.com/JuliaBnG/FisherWright.jl.git",
+    deploy_repo = "github.com/JuliaBnG/juliabng.github.io.git",
+    dirname = "FisherWright",
 )

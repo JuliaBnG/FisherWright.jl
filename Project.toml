@@ -5,8 +5,8 @@ license = "MIT"
 version = "0.3.3"
 authors = ["Xijiang Yu <xijiang@users.noreply.github.com>"]
 description = "Simulation of mutation-drift equilibrium Fisher-Wright populations."
-docs = "https://xijiang.org/JuliaBnG/FisherWright"
-homepage = "https://xijiang.org/JuliaBnG/FisherWright"
+docs = "https://juliabng.github.io/FisherWright/"
+homepage = "https://juliabng.github.io/FisherWright/"
 repository = "https://github.com/JuliaBnG/FisherWright.jl"
 
 [deps]

@@ -32,3 +32,6 @@ jobs:
           version: '1.10'
       - run: julia --project=docs --startup-file=no -e 'using Pkg; Pkg.instantiate()'
       - run: julia --project=docs --startup-file=no docs/make.jl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
