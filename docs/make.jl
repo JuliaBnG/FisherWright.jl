@@ -18,8 +18,12 @@ makedocs(
     ],
 )
 
-deploydocs(
-    repo = "github.com/JuliaBnG/FisherWright.jl.git",
-    deploy_repo = "github.com/JuliaBnG/juliabng.github.io.git",
-    dirname = "FisherWright",
-)
+if !isempty(get(ENV, "DOCUMENTER_KEY", ""))
+    deploydocs(
+        repo = "github.com/JuliaBnG/FisherWright.jl.git",
+        deploy_repo = "github.com/JuliaBnG/juliabng.github.io.git",
+        dirname = "FisherWright",
+    )
+elseif get(ENV, "GITHUB_ACTIONS", "") == "true"
+    @warn "Skipping documentation deployment because DOCUMENTER_KEY is not configured."
+end
