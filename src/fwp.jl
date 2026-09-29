@@ -1,65 +1,63 @@
 _mean_length(v) = isempty(v) ? 0.0 : sum(length, v) / length(v)
 
 """
-    fisher_wright( # Fisher-Wright population
-        ne::T1,
-        nt::T2,
-        chr::Vector{T3}, # chromosome lengths in bp,
-        mr::Float64;     # mutation rate per `mut_base` base pairs per meiosis
-        M = 1e8,         # base pair per Morgan
-        mut_base = 1e8,  # base pairs per unit of `mr`
-        result = false,
-        fixation_interval = 1,
-        verbose = false,
-    ) where {T1<:Integer, T2<:Integer, T3<:Integer}
-Simulate a Fisher-Wright population of size `ne` by `nt` generations of random
-mating. The chromosome lengths are given in `chr` (in bp). The mutation rate is
-`mr` per `mut_base` bp per meiosis, `mut_base` defaulting to 10⁸. The base pair
-per Morgan is `M`, also with default value 10⁸. Mutations are stored as sorted
-vectors of `UInt32` positions, so the maximum mutation place in bp is 2³², which
-is 42.95 × 10⁸ bp. This is sufficient for most of the genomes. An error occurs
-if the total length of the genome is larger than this value.
+    fisher_wright(
+        ne::Integer,
+        nt::Integer,
+        chr::Vector{<:Integer},
+        mr::Float64;
+        M = 1e8,
+        mut_base = 1e8,
+        result::Bool = false,
+        fixation_interval::Int = 1,
+        verbose::Bool = false,
+    ) -> Tuple{Vector{Vector{UInt32}}, Vector{UInt32}} | FisherWrightResult
 
-## Returns
+Simulate a diploid Fisher-Wright population of size `ne` over `nt` generations under
+random mating, crossover recombination, and recurrent mutation.
 
-1. The mutations
-2. The accumulated base pairs on chrosomes
+Mutations are tracked as sorted, unique vectors of `UInt32` genomic coordinates, supporting
+total genome lengths up to ``2^{32} \\approx 4.29 \\times 10^9`` base pairs (bp).
 
-When `result = true` a [`FisherWrightResult`](@ref) is returned instead, which
-additionally carries the positions that have fixed and been removed from the
-active haplotypes.
+# Arguments
+- `ne::Integer`: Effective diploid population size (number of individuals, `ne > 1`). Total haplotypes simulated is `2 * ne`.
+- `nt::Integer`: Number of generations to simulate (`nt > 0`).
+- `chr::Vector{<:Integer}`: Chromosome lengths in base pairs (all entries must be positive). Total genome length `sum(chr)` must be `< 2^32`.
+- `mr::Float64`: Expected mutation rate per `mut_base` base pairs per meiosis (must satisfy `0.01 < mr < 20.0`).
 
-## Note:
-1. parameter recombination rate was removed as it is confusing. Crossover rate
-   is a more appropriate term. Yet, Crossovers is also defined in M, or,
-   bp/Morgan, i.e., the chromosome length in M is also the expected number of
-   crossovers of this chromosome per meiosis. The less bp per Morgan, the more
-   crossovers.
-2. mutation rate is asked for per 1e8 base pair, the typical number of bp per M,
-   per meiosis. This is to avoid tedious numbers like 1e-8. `M` and `mut_base`
-   are separate parameters, so changing the recombination landscape through `M`
-   leaves the mutation rate untouched.
-3. `verbose = true` prints a progress line every 100 generations. The default is
-   silent so that the function can be used inside libraries and benchmarks.
-4. seeded runs reproduce only for a fixed `Threads.nthreads()`: the mutation and
-   meiosis loops draw from task-local RNG streams whose seeds derive from how
-   `Threads.@threads` splits the work.
-5. with `result = false` fixed mutations are never extracted and stay in every
-   haplotype for the whole run. Use `result = true` to reclaim them.
-## The algorithm
+# Keywords
+- `M = 1e8`: Number of base pairs per Morgan (`M > 0`). A chromosome of length `L` experiences an expected `L / M` crossovers per meiosis.
+- `mut_base = 1e8`: Base pairs per unit of mutation rate `mr` (`mut_base > 0`). Decoupled from `M` so adjusting recombination does not alter mutation intensity.
+- `result::Bool = false`:
+  - If `false` (default), returns `(prt, cbp)` where `prt` is the vector of `2 * ne` haplotypes and `cbp` is cumulative chromosome end coordinates. Fixed mutations remain in all haplotypes.
+  - If `true`, returns a [`FisherWrightResult`](@ref), periodically extracting and tracking fixed substitutions to save memory and runtime.
+- `fixation_interval::Int = 1`: Frequency (in generations) to scan for and extract fixed substitutions when `result = true`.
+- `verbose::Bool = false`: If `true`, displays simulation progress every 100 generations. Default is `false`.
 
-1. Create two vectors of containers to store mutations in parents and offspring.
-2. Generation of `M⋅m` new mutations ∈ ``[1, ~3×10⁹]`` for each haplotype
-3. Insert these mutations into the parent generations
-4. Randomly sample `Nₑ` pairs of ID in parent generation as sires and dams to
-   offspring.
-5. Splice sire and dam haplotypes into offspring's paternal haplotype
-6. Swap parent and offspring storage
-7. Repeat 1-6 for `nt` times.
+# Returns
+- When `result = false`:
+  - `prt::Vector{Vector{UInt32}}`: Active haplotypes (`2 * ne`), each containing sorted, unique 1-based genomic mutation positions.
+  - `cbp::Vector{UInt32}`: Cumulative chromosome end positions in base pairs (`cumsum(chr)`).
+- When `result = true`:
+  - A [`FisherWrightResult`](@ref) containing `active_haplotypes`, `chromosome_ends`, and accumulated `substitutions`.
 
-All per-generation working storage (mutation buffers, merge targets, crossover
-lists, mating tables) is allocated once and reused, so the steady-state
-allocation rate is zero apart from haplotypes that grow.
+# Details
+- **Recombination & Independent Assortment**: Recombination is modeled as a Poisson process along each chromosome with rate `chr[i] / M`. Independent assortment between chromosomes occurs with probability 0.5 at each chromosome boundary.
+- **Multithreading & Reproducibility**: Meiosis and mutation generation are parallelized using `Threads.@threads`. Because task scheduling depends on `Threads.nthreads()`, runs with a fixed seed are strictly reproducible only when the thread count is held constant.
+- **Allocation Efficiency**: Working buffers (mutations, crossovers, mating assignments) are allocated once at start and reused, achieving zero steady-state per-generation allocations.
+
+# Examples
+```julia
+using FisherWright
+
+# Simulate 50 individuals for 10 generations with two 100 kb chromosomes
+haps, cbp = fisher_wright(50, 10, [100_000, 100_000], 1.0)
+length(haps) # 100 haplotypes
+
+# Return a structured result tracking fixed mutations
+res = fisher_wright(50, 10, [100_000, 100_000], 1.0; result=true)
+res.chromosome_ends
+```
 """
 function fisher_wright(
     ne::T1,
@@ -161,13 +159,37 @@ end
         result::Bool = false,
         fixation_interval::Int = 1,
         verbose::Bool = false,
-    )
+    ) -> Tuple{Vector{Vector{UInt32}}, Vector{UInt32}} | FisherWrightResult
 
-Simulate a Fisher-Wright population using species parameters from a `BnGStructs.Species` object
-(e.g., `Cattle(1000)`, `Pig(500)`, `Chicken(2000)`, or `GenericSpecies(...)`).
+Simulate a diploid Fisher-Wright population using species parameters from a
+`BnGStructs.Species` instance (such as `Cattle`, `Pig`, `Chicken`, or `GenericSpecies`).
 
-The population size `ne`, chromosome lengths `chr`, and base pairs per Morgan `M` are automatically
-extracted from `sp`.
+The population size `ne`, chromosome lengths `chr`, and default base pairs per Morgan `M`
+are automatically extracted from `sp`:
+- `ne = Int(sp.nid)`
+- `chr = sp.chromosome`
+- `M = sp.M`
+
+# Arguments
+- `sp::Species`: Species definition from `BnGStructs` specifying diploid population size (`nid`), chromosome lengths (`chromosome`), and recombination scale (`M`).
+- `nt::Integer`: Number of generations to simulate (`nt > 0`).
+- `mr::Float64 = 1.0`: Mutation rate per `mut_base` base pairs per meiosis (`0.01 < mr < 20.0`).
+
+# Keywords
+- `M = sp.M`: Number of base pairs per Morgan. Defaults to `sp.M`.
+- `mut_base = 1e8`: Base pairs per unit of `mr`.
+- `result::Bool = false`: If `true`, returns a [`FisherWrightResult`](@ref); otherwise returns `(prt, cbp)`.
+- `fixation_interval::Int = 1`: Interval (in generations) to scan for and extract fixed substitutions when `result = true`.
+- `verbose::Bool = false`: If `true`, prints progress every 100 generations.
+
+# Examples
+```julia
+using BnGStructs, FisherWright
+
+sp = GenericSpecies("Example", Int32(20), UInt32[100_000, 100_000], UInt32(50_000_000))
+res = fisher_wright(sp, 10; result = true)
+res.chromosome_ends
+```
 """
 function fisher_wright(
     sp::Species,

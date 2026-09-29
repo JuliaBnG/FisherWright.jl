@@ -1,5 +1,11 @@
 # API reference
 
+## Package
+
+```@docs
+FisherWright
+```
+
 ## Simulation and results
 
 ```@docs

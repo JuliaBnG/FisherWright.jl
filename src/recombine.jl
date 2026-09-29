@@ -1,12 +1,26 @@
 """
-    RecombinationMap
+    RecombinationMap(cbp, interval_ends, interval_rates)
 
-Immutable recombination map with chromosome cumulative end positions and a
-piecewise-constant crossover intensity per interval.
+Piecewise-constant crossover recombination map defined across chromosomes.
 
-Fields `cbp`, `interval_ends` and `interval_rates` describe the map; `samplers`
-holds the `Poisson` distribution for each interval, built once at construction
-so that [`cobp!`](@ref) does not rebuild them on every meiosis.
+Stores cumulative chromosome ends, interval boundaries, and expected crossover rates
+(Poisson intensities) per interval. Pre-computes Poisson samplers upon construction
+to maximize performance in meiosis loops ([`cobp!`](@ref)).
+
+# Fields
+- `cbp::Vector{UInt32}`: Cumulative chromosome end positions in base pairs.
+- `interval_ends::Vector{Vector{UInt32}}`: End coordinates for each recombination interval within each chromosome.
+- `interval_rates::Vector{Vector{Float64}}`: Expected crossover counts (Poisson mean) per interval.
+- `samplers::Vector{Vector{Poisson{Float64}}}`: Pre-constructed Poisson distributions for efficient sampling.
+
+# Invariants
+- The outer lengths of `cbp`, `interval_ends`, and `interval_rates` must match the number of chromosomes.
+- Within each chromosome, `interval_ends[i]` and `interval_rates[i]` must have the same non-zero length.
+- `interval_ends` must be strictly increasing and terminate at `cbp[i]`.
+- `interval_rates` must be non-negative.
+
+# See also
+[`uniform_recombination_map`](@ref), [`cobp!`](@ref), [`cobp`](@ref)
 """
 struct RecombinationMap
     cbp::Vector{UInt32}
@@ -46,13 +60,26 @@ struct RecombinationMap
         new(cbp, interval_ends, interval_rates, samplers)
     end
 end
-
 """
-    uniform_recombination_map(chr; M=1e8)
+    uniform_recombination_map(chr::Vector{<:Integer}; M = 1e8) -> RecombinationMap
+    uniform_recombination_map(sp::Species; M = sp.M) -> RecombinationMap
 
-Create the default one-interval-per-chromosome recombination map used by the
-existing Fisher-Wright model. `M` is the number of base pairs per Morgan, so
-chromosome `i` gets an expected `chr[i] / M` crossovers per meiosis.
+Construct a uniform, single-interval-per-chromosome [`RecombinationMap`](@ref).
+
+# Arguments
+- `chr::Vector{<:Integer}`: Chromosome lengths in base pairs (all positive).
+- `sp::Species`: A `BnGStructs.Species` object supplying chromosome lengths (`sp.chromosome`) and default `M` (`sp.M`).
+
+# Keywords
+- `M`: Base pairs per Morgan (default `1e8`, or `sp.M` for species). Chromosome `i` of length `L` receives an expected `L / M` crossovers per meiosis.
+
+# Examples
+```julia
+using FisherWright
+
+rmap = uniform_recombination_map([100_000, 200_000]; M = 1e8)
+rmap.cbp == UInt32[100_000, 300_000]
+```
 """
 function uniform_recombination_map(chr::Vector{T}; M=1e8) where {T<:Integer}
     all(chr .> 0) || throw(ArgumentError("chromosome lengths must be positive"))
@@ -63,31 +90,37 @@ function uniform_recombination_map(chr::Vector{T}; M=1e8) where {T<:Integer}
     return RecombinationMap(cbp, ends, rates)
 end
 
-"""
-    uniform_recombination_map(sp::Species; M=sp.M)
-
-Create the default one-interval-per-chromosome recombination map for a `BnGStructs.Species` object.
-"""
 uniform_recombination_map(sp::Species; M=sp.M) = uniform_recombination_map(sp.chromosome; M=M)
 
 """
-    recombine(h₁, h₂, hₒ, cross_overs; rng = Random.default_rng())
+    recombine(
+        h₁::Vector{UInt32},
+        h₂::Vector{UInt32},
+        hₒ::Vector{UInt32},
+        cross_overs::Vector{UInt32};
+        rng::AbstractRNG = Random.default_rng(),
+    ) -> Vector{UInt32}
 
-Recombine two parental haplotypes into an offspring haplotype.
+Recombine two parental haplotypes `h₁` and `h₂` into an offspring haplotype `hₒ`
+given a sorted list of `cross_overs`.
 
-`h₁` and `h₂` are the parent's two haplotypes, each a sorted vector of unique
-mutation positions. `cross_overs` is a sorted vector of crossover positions.
-Starting from a randomly chosen parental haplotype, the positions falling in
-each successive segment are copied from alternating parents into `hₒ`, which is
-emptied first and returned.
+# Arguments
+- `h₁::Vector{UInt32}`: First parental haplotype (sorted, unique mutation positions).
+- `h₂::Vector{UInt32}`: Second parental haplotype (sorted, unique mutation positions).
+- `hₒ::Vector{UInt32}`: Destination vector for the offspring haplotype. Emptied first and returned.
+- `cross_overs::Vector{UInt32}`: Sorted crossover coordinates defining segments.
 
-A position exactly equal to a crossover point belongs to the segment that
-starts at that crossover.
+# Keywords
+- `rng::AbstractRNG = Random.default_rng()`: Random number generator used to select which parental haplotype begins the sequence.
 
-`hₒ` is reused in place, so passing the same buffer across generations avoids
-reallocation. The result is sorted and unique whenever the inputs are.
+# Details
+- Randomly chooses the starting parent (`h₁` or `h₂`) with equal probability (0.5).
+- Swaps active parental templates at each coordinate in `cross_overs`.
+- A mutation coordinate exactly matching a crossover point belongs to the segment starting at that crossover.
+- Reuses `hₒ` in place without reallocation when previously sized, guaranteeing sorted and unique output.
 
-Preconditions: `h₁`, `h₂` and `cross_overs` are sorted in nondecreasing order.
+# Preconditions
+- `h₁`, `h₂`, and `cross_overs` must be sorted in non-decreasing order.
 """
 function recombine(
     h₁::Vector{UInt32},
@@ -126,18 +159,17 @@ function recombine(
 end
 
 """
-    cobp!(dest, map::RecombinationMap; rng = Random.default_rng())
+    cobp!(dest::Vector{UInt32}, map::RecombinationMap; rng::AbstractRNG = Random.default_rng()) -> Vector{UInt32}
 
-Sample crossover positions from a piecewise-constant recombination map into
-`dest`, which is emptied first and returned.
+Sample crossover positions from a [`RecombinationMap`](@ref) into `dest` in place,
+emptying `dest` first and returning it.
 
-Within each interval the number of crossovers is Poisson with the interval's
-rate and the positions are uniform. Each chromosome end is additionally emitted
-as a crossover with probability 0.5, which makes chromosomes assort
-independently.
-
-This is the allocation-free form of [`cobp`](@ref): reusing `dest` across
-meioses removes the per-meiosis allocations entirely.
+# Details
+- Within each interval of `map`, the number of crossover events is drawn from a Poisson distribution
+  with the interval's rate, and coordinates are distributed uniformly at random.
+- Each chromosome boundary (`map.cbp[i]`) is added as a crossover breakpoint with probability 0.5,
+  simulating independent chromosome assortment during meiosis.
+- Reusing `dest` across successive meioses eliminates allocations.
 """
 function cobp!(
     dest::Vector{UInt32},
@@ -173,23 +205,22 @@ function cobp!(
 end
 
 """
-    cobp(map::RecombinationMap; rng = Random.default_rng())
-- Generate crossover points from a piecewise-constant recombination map.
+    cobp(map::RecombinationMap; rng::AbstractRNG = Random.default_rng()) -> Vector{UInt32}
+    cobp(cbp::Vector{UInt32}, pᵣ::Vector{Poisson{Float64}}; rng::AbstractRNG = Random.default_rng()) -> Vector{UInt32}
 
-Allocates a fresh vector; use [`cobp!`](@ref) with a reused buffer in hot loops.
+Generate crossover breakpoints for recombination.
+
+# Methods
+- `cobp(map::RecombinationMap; rng)`: Allocates a new vector and samples crossover positions using [`cobp!`](@ref).
+- `cobp(cbp, pᵣ; rng)`: Constructs a single-interval-per-chromosome [`RecombinationMap`](@ref) from
+  cumulative chromosome boundaries `cbp` and per-chromosome Poisson distributions `pᵣ`, then samples crossover points.
+
+# See also
+[`cobp!`](@ref), [`RecombinationMap`](@ref)
 """
 cobp(map::RecombinationMap; rng::AbstractRNG = Random.default_rng()) =
     cobp!(UInt32[], map; rng = rng)
 
-"""
-    function cobp(cbp::Vector{UInt32}, pᵣ::Vector{Poisson{Float64}})
-- Generate crossover points for recombination.
-
-The crossover points are generated based on the chromosome breakpoints and the
-Poisson distribution of recombination events. The crossover points are generated
-in the range of [1, bp-1] for each chromosome plus the accumulated breakpoints.
-The crossover points are sorted and returned as a vector of UInt32.
-"""
 function cobp(
     cbp::Vector{UInt32},
     pᵣ::Vector{Poisson{Float64}};
