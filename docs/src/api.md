@@ -3,7 +3,7 @@
 ## Package
 
 ```@docs
-FisherWright
+FisherWright.FisherWright
 ```
 
 ## Simulation and results
