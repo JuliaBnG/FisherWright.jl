@@ -23,6 +23,7 @@ if !isempty(get(ENV, "DOCUMENTER_KEY", ""))
         repo = "github.com/JuliaBnG/FisherWright.jl.git",
         deploy_repo = "github.com/JuliaBnG/juliabng.github.io.git",
         dirname = "FisherWright",
+        forcepush = true,
     )
 elseif get(ENV, "GITHUB_ACTIONS", "") == "true"
     @warn "Skipping documentation deployment because DOCUMENTER_KEY is not configured."
