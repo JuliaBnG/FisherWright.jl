@@ -112,6 +112,19 @@ function fisher_wright(
                 round(_mean_length(prt); digits=2),
             )
         end
+        random_mate!(pm, sex, sires, dams)
+
+        Threads.@threads for i = 1:ne
+            s = pm[i, 1]
+            d = pm[i, 2]
+            # recombine empties its target, and cobp! its crossover buffer, so
+            # both are safe to reuse across generations.
+            co = cbuf[i]
+            recombine(prt[2s-1], prt[2s], off[2i-1], cobp!(co, recomb_map))
+            recombine(prt[2d-1], prt[2d], off[2i], cobp!(co, recomb_map))
+        end
+        prt, off = off, prt
+
         # Mutations (threaded)
         Threads.@threads for i = 1:nh
             nm = rand(p_mut)
@@ -128,19 +141,6 @@ function fisher_wright(
                 prt[i], mbuf[i] = mbuf[i], prt[i]
             end
         end
-
-        random_mate!(pm, sex, sires, dams)
-
-        Threads.@threads for i = 1:ne
-            s = pm[i, 1]
-            d = pm[i, 2]
-            # recombine empties its target, and cobp! its crossover buffer, so
-            # both are safe to reuse across generations.
-            co = cbuf[i]
-            recombine(prt[2s-1], prt[2s], off[2i-1], cobp!(co, recomb_map))
-            recombine(prt[2d-1], prt[2d], off[2i], cobp!(co, recomb_map))
-        end
-        prt, off = off, prt
         if result && (g % fixation_interval == 0 || g == nt)
             substitutions = _fixation_step!(prt, substitutions)
         end

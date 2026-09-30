@@ -431,3 +431,32 @@ end
     @test hap_lset[1, :] == [true, false, true, false]
     @test hap_lset[2, :] == [true, false, true, true]
 end
+
+@testset "Neutral equilibrium matches theory" begin
+    # After 10×2N generations the population is at mutation–drift equilibrium, so
+    # the segregating sites S should match Watterson's θ·aₙ and the summed
+    # heterozygosity Σ2pq should match θ = 4Nμ·L. The old mutate-then-mate
+    # order gave S ≈ 0.92·θ·aₙ (final generation's new singletons missing),
+    # which falls well outside the bounds below.
+    Random.seed!(2026)
+    ne, chr, reps = 100, fill(10_000_000, 10), 20
+    θ = 4ne * 1e-8 * sum(chr)
+    aₙ = sum(1 / i for i = 1:2ne-1)
+    S = H = 0.0
+    for _ = 1:reps
+        haps = fisher_wright(ne, 20ne, chr, 1.0; result = true).active_haplotypes
+        n = length(haps)
+        cnt = Dict{UInt32,Int}()
+        for h in haps, p in h
+            cnt[p] = get(cnt, p, 0) + 1
+        end
+        for c in values(cnt)
+            0 < c < n || continue
+            S += 1
+            H += 2 * (c / n) * (1 - c / n)
+        end
+    end
+    # SE of the mean over 20 replicates is about 0.7% for S and 1.3% for Σ2pq.
+    @test 0.97 < S / reps / (θ * aₙ) < 1.06
+    @test 0.90 < H / reps / θ < 1.10
+end

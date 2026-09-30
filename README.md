@@ -81,6 +81,39 @@ muts, cbp = fisher_wright(100, 1000, [1_000_000, 1_000_000], 1.0)
 xy, lmp = muts2bitarray(muts, cbp; flip = true)
 ```
 
+## Recommended Use
+
+The population starts with no variation, so it is only at mutation-drift
+equilibrium after enough generations. Diversity approaches equilibrium at rate
+about `1/(2ne)` per generation, so `nt = 10ne` gets within about 1% of
+equilibrium heterozygosity. Shorter runs give a population that is still
+gaining diversity: `ne = 2000, nt = 2000`, for example, is far from equilibrium.
+
+```julia
+using FisherWright
+
+ne = 200
+chr = fill(10_000_000, 10)  # 10 chromosomes of 10 Mbp
+
+# Burn in for 10ne generations and track fixed mutations separately
+res = fisher_wright(ne, 10ne, chr, 1.0; result = true)
+
+# Expected neutral values at equilibrium, for a quick check:
+# θ = 4ne·μ·L with μ = mr / mut_base per bp per generation
+θ = 4ne * (1.0 / 1e8) * sum(chr)                  # Σ2pq ≈ θ
+S = θ * sum(1 / i for i in 1:2ne-1)               # segregating sites ≈ θ·aₙ
+```
+
+- Use `result = true` for long runs. Fixed mutations are then moved out of the
+  haplotypes into `substitutions`, which keeps memory bounded.
+- `mr` is the mutation rate per `mut_base` bp per generation, and `M` sets
+  recombination only, so the two can be changed independently.
+- Runs with a fixed seed are reproducible only with the same thread count
+  (`julia -t N`).
+- For whole-genome populations where only chip markers are needed, use
+  `extract_chip_bitarray` or `to_haplotype(result, chip_positions)` rather
+  than building the full `BitMatrix`.
+
 ## Benchmark
 
 Run the reproducible benchmark script from the package directory:
@@ -145,6 +178,25 @@ Added direct, allocation-conscious extraction of selected chip coordinates:
 `to_haplotype(result, chip_positions)` returns a `BnGStructs.Haplotype`.
 Coordinates must be sorted and unique. A `LocusSet` overload supports
 subsetting a shared coordinate vector.
+
+## Changes in v0.3.5
+
+**Bug fix.** `fisher_wright` added each generation's mutations to the parents
+before mating, so the population it returned had gone through one round of
+reproduction since its last mutations and was missing its newest singletons.
+At equilibrium this gave about 7-8% fewer segregating sites than Watterson's
+θ·aₙ (a loss of about 0.46θ) and than msprime's discrete-time Wright-Fisher
+model; heterozygosity (Σ2pq) was barely affected. Each generation now mates
+and recombines first, then mutates the offspring. Segregating sites now match
+θ·aₙ within replicate error.
+
+**Simulation output changes.** Populations now contain more rare variants, and
+results for a given seed differ from v0.3.4. On the 10 × 100 Mbp benchmark
+(`ne = 2000`, `nt = 2000`), the number of segregating sites went from 528,369
+to 570,905, against 569,235 from msprime.
+
+**Tests.** Added a check against neutral theory: after `20ne` generations,
+segregating sites must match θ·aₙ and Σ2pq must match θ. The old code fails it.
 
 ## License
 
