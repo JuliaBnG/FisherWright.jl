@@ -1,0 +1,67 @@
+# Date: 2026-09-30T13:00Z  Commit: 4a24282 (+ uncommitted test/bench changes)
+# julia version 1.13.1, msprime 1.4.4, CPU: AMD Ryzen 9 3900X 12-Core Processor
+# $ julia -t 4 --project=. bench/check-test-power.jl
+
+Power check of the population genetics tests in test/runtests.jl
+Julia 1.13.1, threads = 4
+
+Correct model, CI seeds (2026 for the theory tests, 42 for the crossover test)
+  Neutral Wright-Fisher theory / Segregating sites and heterozygosity       2/2  pass
+  Neutral Wright-Fisher theory / Site frequency spectrum                    5/5  pass
+  Neutral Wright-Fisher theory / Linkage disequilibrium decay               2/2  pass
+  Crossovers per meiosis matches Poisson and assortment                     5/5  pass
+Correct model, seed 1
+  Neutral Wright-Fisher theory / Segregating sites and heterozygosity       2/2  pass
+  Neutral Wright-Fisher theory / Site frequency spectrum                    5/5  pass
+  Neutral Wright-Fisher theory / Linkage disequilibrium decay               2/2  pass
+  Crossovers per meiosis matches Poisson and assortment                     5/5  pass
+
+Correct model, seed 7
+  Neutral Wright-Fisher theory / Segregating sites and heterozygosity       2/2  pass
+  Neutral Wright-Fisher theory / Site frequency spectrum                    5/5  pass
+  Neutral Wright-Fisher theory / Linkage disequilibrium decay               2/2  pass
+  Crossovers per meiosis matches Poisson and assortment                     5/5  pass
+
+Correct model, seed 42
+  Neutral Wright-Fisher theory / Segregating sites and heterozygosity       2/2  pass
+  Neutral Wright-Fisher theory / Site frequency spectrum                    5/5  pass
+  Neutral Wright-Fisher theory / Linkage disequilibrium decay               2/2  pass
+  Crossovers per meiosis matches Poisson and assortment                     5/5  pass
+
+Correct model, seed 99
+  Neutral Wright-Fisher theory / Segregating sites and heterozygosity       2/2  pass
+  Neutral Wright-Fisher theory / Site frequency spectrum                    5/5  pass
+  Neutral Wright-Fisher theory / Linkage disequilibrium decay               2/2  pass
+  Crossovers per meiosis matches Poisson and assortment                     5/5  pass
+
+Known error: simulated Ne halved (50); theory assumes 100
+  Neutral Wright-Fisher theory / Segregating sites and heterozygosity       0/2  FAIL
+      failed: 0.97 < 0.4488951315407717 < 1.06
+      failed: 0.9 < 0.5024032250000038 < 1.1
+  Neutral Wright-Fisher theory / Site frequency spectrum                    0/5  FAIL
+      failed: 0.9 < 0.515125 < 1.1
+      failed: 0.9 < 0.49975 < 1.1
+      failed: 0.9 < 0.49071428571428577 < 1.1
+      failed: 0.9 < 0.5025918041511442 < 1.1
+      failed: 0.9 < 0.50937613597663 < 1.1
+  Neutral Wright-Fisher theory / Linkage disequilibrium decay               0/2  FAIL
+      failed: 0.85 < 1.351952863583687 < 1.15
+      failed: 0.85 < 1.641277548655979 < 1.15
+  Crossovers per meiosis matches Poisson and assortment                     5/5  pass
+
+Known error: recombination rate doubled (M halved)
+  Neutral Wright-Fisher theory / Segregating sites and heterozygosity       2/2  pass
+  Neutral Wright-Fisher theory / Site frequency spectrum                    5/5  pass
+  Neutral Wright-Fisher theory / Linkage disequilibrium decay               0/2  FAIL
+      failed: 0.85 < 0.646443015312005 < 1.15
+      failed: 0.85 < 0.5417070577563691 < 1.15
+  Crossovers per meiosis matches Poisson and assortment                     3/5  FAIL
+      failed: 0.49119999999999997 < 0.025
+      failed: 0.9704999999999999 < 0.035
+
+Known error: pre-v0.3.5 generation loop (src/fwp.jl from 4a24282~1)
+  Neutral Wright-Fisher theory / Segregating sites and heterozygosity       1/2  FAIL
+      failed: 0.97 < 0.9190739922333508 < 1.06
+  Neutral Wright-Fisher theory / Site frequency spectrum                    5/5  pass
+  Neutral Wright-Fisher theory / Linkage disequilibrium decay               2/2  pass
+  Crossovers per meiosis matches Poisson and assortment                     5/5  pass

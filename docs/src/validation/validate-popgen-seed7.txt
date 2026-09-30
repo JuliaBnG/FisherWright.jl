@@ -1,0 +1,59 @@
+# Date: 2026-09-30T13:00Z  Commit: 4a24282 (+ uncommitted test/bench changes)
+# julia version 1.13.1, msprime 1.4.4, CPU: AMD Ryzen 9 3900X 12-Core Processor
+# $ julia -t 8 --project=. bench/validate-popgen-theory.jl 50 100 7
+
+==============================================================================
+ FisherWright.jl population genetics validation
+ ne = 100, nt = 2000, 10 × 10 Mb, μ = r = 1.0e-8, reps = 50, threads = 8
+ A check fails when |z| > 3.5
+==============================================================================
+
+[1/4] Crossovers per meiosis (K = 100000, chromosomes of 50 and 100 Mb, M = 1e8)
+  statistic                     observed  expected        z
+  chr 1 mean                      0.4984    0.5000    -0.73  pass
+  chr 1 variance/mean             0.9996    1.0000    -0.09  pass
+  chr 2 mean                      1.0042    1.0000     1.32  pass
+  chr 2 variance/mean             0.9967    1.0000    -0.73  pass
+  assortment P(switch)            0.5023    0.5000     1.45  pass
+
+Simulating 50 FisherWright replicates ...
+  done in 16.5 s
+Simulating 50 msprime DTWF replicates ...
+  done in 4.2 s
+
+[2/4] Equilibrium diversity (z: FisherWright vs. theory, then vs. msprime DTWF)
+  statistic                    FisherWright       msprime DTWF    theory        z
+  S (θ·aₙ)                  2373.8 ± 12.8      2398.1 ± 10.5      2349.2     1.92  pass
+  S vs. msprime             2373.8 ± 12.8      2398.1 ± 10.5      2349.2    -1.48  pass
+  Σ2pq (θ(1-1/n))            392.7 ± 3.3        402.1 ± 3.5        398.0    -1.61  pass
+  Σ2pq vs. msprime           392.7 ± 3.3        402.1 ± 3.5        398.0    -1.97  pass
+  S / θ·aₙ                   1.010                        1.021
+
+[3/4] Site frequency spectrum
+  Whole population (200 haplotypes), z: FisherWright vs. msprime DTWF
+  statistic                    FisherWright       msprime DTWF    theory        z
+  k = 1                      449.8 ± 4.8        444.3 ± 3.5        400.0     0.92  pass
+  k = 2                      193.1 ± 2.4        193.1 ± 2.7        200.0    -0.01  pass
+  k = 3-5                    316.3 ± 3.3        309.3 ± 3.7        313.3     1.42  pass
+  k = 6-20                   520.2 ± 6.0        535.6 ± 5.9        525.8    -1.82  pass
+  k = 21-199                 894.4 ± 7.4        915.9 ± 8.6        910.1    -1.90  pass
+  Random sample of 20 haplotypes, z: FisherWright vs. θ/k
+  statistic                    FisherWright       msprime DTWF    theory        z
+  k = 1                      392.3 ± 4.6        408.3 ± 5.1        400.0    -1.68  pass
+  k = 2                      198.6 ± 3.2        205.6 ± 3.5        200.0    -0.45  pass
+  k = 3-4                    229.3 ± 3.8        240.1 ± 3.7        233.3    -1.07  pass
+  k = 5-9                    297.5 ± 4.1        300.8 ± 4.8        298.3    -0.20  pass
+  k = 10-19                  279.8 ± 3.5        286.1 ± 3.9        287.5    -2.21  pass
+
+[4/4] LD decay, pooled σ²_d (MAF ≥ 0.1), z: FisherWright vs. msprime DTWF
+  distance             FisherWright       msprime DTWF         z  Ohta-K.     Sved
+  0.01-0.03 Mb      0.5784 ± 0.0056    0.5882 ± 0.0054     -1.26   0.4396   0.9352  pass
+  0.03-0.1 Mb       0.5449 ± 0.0045    0.5462 ± 0.0044     -0.22   0.4105   0.8203  pass
+  0.1-0.3 Mb        0.4505 ± 0.0037    0.4461 ± 0.0041      0.81   0.3396   0.5907  pass
+  0.3-1 Mb          0.2882 ± 0.0028    0.2837 ± 0.0030      1.08   0.2205   0.3134  pass
+  1-3 Mb            0.1397 ± 0.0014    0.1349 ± 0.0016      2.24   0.1058   0.1261  pass
+
+==============================================================================
+ All checks passed.
+==============================================================================
+# exit status: 0

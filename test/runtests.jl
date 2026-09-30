@@ -7,6 +7,7 @@ using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_s
     _intersect_sorted!, _remove_sorted!
 using BnGStructs
 using Distributions: Poisson
+using Statistics: mean, var, cor
 
 """
 Reference implementation of meiosis: emit the positions of alternating parents
@@ -432,19 +433,49 @@ end
     @test hap_lset[2, :] == [true, false, true, true]
 end
 
-@testset "Neutral equilibrium matches theory" begin
-    # After 10×2N generations the population is at mutation–drift equilibrium, so
-    # the segregating sites S should match Watterson's θ·aₙ and the summed
-    # heterozygosity Σ2pq should match θ = 4Nμ·L. The old mutate-then-mate
-    # order gave S ≈ 0.92·θ·aₙ (final generation's new singletons missing),
-    # which falls well outside the bounds below.
+# BEGIN population genetics validation (included in docs/src/manual/validation.md)
+
+"""
+Pooled ``σ²_d = ΣD² / Σ p₁q₁p₂q₂`` for SNP pairs on the same chromosome, per
+distance bin, using SNPs with minor allele frequency ≥ `maf`. Returns the
+numerator and denominator sums so replicates can be pooled.
+"""
+function ld_sums(bm, chr, pos, bins; maf = 0.1)
+    n = size(bm, 2)
+    p = vec(sum(bm; dims = 2)) ./ n
+    num, den = zeros(length(bins)), zeros(length(bins))
+    for c in unique(chr)
+        k = findall(i -> chr[i] == c && maf <= p[i] <= 1 - maf, eachindex(p))
+        G = Float64.(bm[k, :])
+        q = p[k]
+        D = G * G' ./ n .- q * q'
+        V = (q .* (1 .- q)) * (q .* (1 .- q))'
+        d = Int.(pos[k])' .- Int.(pos[k])
+        for (j, (lo, hi)) in enumerate(bins)
+            m = (lo .<= d) .& (d .< hi)
+            num[j] += sum(abs2, D[m])
+            den[j] += sum(V[m])
+        end
+    end
+    return num, den
+end
+
+@testset "Neutral Wright-Fisher theory" begin
+    # One set of equilibrium runs (10×2N generations) feeds every check below.
+    # Each bound was set from replicate runs: it passes for the correct model
+    # with several seeds, and fails if the simulated Ne is halved or the
+    # recombination rate doubled (and, for S, on the pre-v0.3.5 loop order).
     Random.seed!(2026)
-    ne, chr, reps = 100, fill(10_000_000, 10), 20
+    ne, chr, reps, nsub = 100, fill(10_000_000, 10), 20, 20
     θ = 4ne * 1e-8 * sum(chr)
-    aₙ = sum(1 / i for i = 1:2ne-1)
+    groups = [1:1, 2:2, 3:4, 5:9, 10:19]          # derived-allele counts in a sample of nsub
+    bins = [(300_000, 1_000_000), (1_000_000, 3_000_000)]
     S = H = 0.0
+    ξ = zeros(nsub - 1)
+    num, den = zeros(length(bins)), zeros(length(bins))
     for _ = 1:reps
-        haps = fisher_wright(ne, 20ne, chr, 1.0; result = true).active_haplotypes
+        res = fisher_wright(ne, 20ne, chr, 1.0; result = true)
+        haps = res.active_haplotypes
         n = length(haps)
         cnt = Dict{UInt32,Int}()
         for h in haps, p in h
@@ -455,8 +486,83 @@ end
             S += 1
             H += 2 * (c / n) * (1 - c / n)
         end
+        # Site frequency spectrum of a random sample of nsub ≪ 2N haplotypes,
+        # where the coalescent expectation E[ξₖ] = θ/k applies.
+        sub = Dict{UInt32,Int}()
+        for h in haps[randperm(n)[1:nsub]], p in h
+            sub[p] = get(sub, p, 0) + 1
+        end
+        for c in values(sub)
+            c < nsub && (ξ[c] += 1)
+        end
+        bm, lmp = muts2bitarray(haps, res.chromosome_ends)
+        a, b = ld_sums(bm, lmp.chr, lmp.pos, bins)
+        num .+= a
+        den .+= b
     end
-    # SE of the mean over 20 replicates is about 0.7% for S and 1.3% for Σ2pq.
-    @test 0.97 < S / reps / (θ * aₙ) < 1.06
-    @test 0.90 < H / reps / θ < 1.10
+
+    @testset "Segregating sites and heterozygosity" begin
+        # S should match Watterson's θ·aₙ and Σ2pq should match θ = 4Nμ·L. The
+        # old mutate-then-mate order gave S ≈ 0.92·θ·aₙ. SE is about 0.7% for S
+        # and 1.3% for Σ2pq.
+        aₙ = sum(1 / i for i = 1:2ne-1)
+        @test 0.97 < S / reps / (θ * aₙ) < 1.06
+        @test 0.90 < H / reps / θ < 1.10
+    end
+
+    @testset "Site frequency spectrum" begin
+        # Observed/expected for each group of classes; SE is 2-3% per group.
+        # Halving the simulated Ne gives about 0.5 in every group.
+        for g in groups
+            @test 0.90 < sum(ξ[g]) / reps / (θ * sum(1 / k for k in g)) < 1.10
+        end
+    end
+
+    @testset "Linkage disequilibrium decay" begin
+        # Reference σ²_d from msprime DTWF, same settings (N = 100, whole
+        # population, MAF ≥ 0.1, μ = r = 1e-8, 100 × 10 chromosomes of 10 Mb):
+        # 0.2869 ± 0.0024 at 0.3-1 Mb and 0.1398 ± 0.0015 at 1-3 Mb, from
+        # bench/validate-popgen-msprime.py --reps 100 --seed 1 --summary. SE here is
+        # about 2-3%. Doubling the recombination rate gives ratios of about 0.66
+        # and 0.55; halving Ne gives about 1.4 and 1.6. Sved's 1/(1 + 4Nc) is not
+        # used: it overestimates r² at short distances and ignores the MAF filter.
+        ref = [0.2869, 0.1398]
+        for j in eachindex(bins)
+            @test 0.85 < num[j] / den[j] / ref[j] < 1.15
+        end
+    end
 end
+
+@testset "Crossovers per meiosis matches Poisson and assortment" begin
+    Random.seed!(42)
+    # Chromosome 1: 50 Mb (expected 0.50 crossovers at M=1e8)
+    # Chromosome 2: 100 Mb (expected 1.00 crossovers at M=1e8)
+    chr = [50_000_000, 100_000_000]
+    M = 1e8
+    rmap = uniform_recombination_map(chr; M=M)
+    cbuf = UInt32[]
+    K = 10_000
+    counts_chr1 = zeros(Int, K)
+    counts_chr2 = zeros(Int, K)
+    assortment = zeros(Int, K)
+
+    for k in 1:K
+        cobp!(cbuf, rmap)
+        counts_chr1[k] = count(x -> x < 50_000_000, cbuf)
+        counts_chr2[k] = count(x -> 50_000_000 < x < 150_000_000, cbuf)
+        assortment[k] = count(x -> x == 50_000_000, cbuf)
+    end
+
+    # Sample means must conform to theoretical Poisson expectations
+    @test abs(mean(counts_chr1) - 0.50) < 0.025
+    @test abs(mean(counts_chr2) - 1.00) < 0.035
+
+    # Dispersion index (variance/mean) for Poisson process must be ~1.0
+    @test 0.90 < var(counts_chr1) / mean(counts_chr1) < 1.10
+    @test 0.90 < var(counts_chr2) / mean(counts_chr2) < 1.10
+
+    # Independent assortment boundary crossover probability is 0.50
+    @test abs(mean(assortment) - 0.50) < 0.020
+end
+
+# END population genetics validation

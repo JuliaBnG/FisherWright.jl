@@ -13,6 +13,7 @@ makedocs(
             "Simulation" => "manual/simulation.md",
             "Results and export" => "manual/results.md",
             "Utilities" => "manual/utilities.md",
+            "Population genetics validation" => "manual/validation.md",
         ],
         "API reference" => "api.md",
     ],

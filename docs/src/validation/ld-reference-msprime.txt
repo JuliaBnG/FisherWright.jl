@@ -1,0 +1,8 @@
+# Date: 2026-09-30T13:01Z
+$ uv run --with msprime --with numpy python bench/validate-popgen-msprime.py --reps 100 --seed 1 --summary
+msprime DTWF, ne = 100, 100 reps x 10 chromosomes of 10000000 bp, mu = 1e-08, r = 1e-08, MAF >= 0.1
+  0.01-0.03 Mb  sigma2_d = 0.5861 +/- 0.0047
+  0.03-0.1 Mb  sigma2_d = 0.5411 +/- 0.0036
+  0.1-0.3 Mb  sigma2_d = 0.4443 +/- 0.0032
+  0.3-1 Mb  sigma2_d = 0.2869 +/- 0.0024
+  1-3 Mb  sigma2_d = 0.1398 +/- 0.0015

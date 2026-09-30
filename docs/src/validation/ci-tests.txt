@@ -1,0 +1,39 @@
+# Date: 2026-09-30T13:01Z  Commit: 4a24282 (+ uncommitted test/bench changes)
+# julia version 1.13.1, msprime 1.4.4, CPU: AMD Ryzen 9 3900X 12-Core Processor
+# $ julia --project=. -e 'using Pkg; Pkg.test()'   (summary lines)
+
+Test Summary:      | Pass  Total  Time
+FisherWright basic |    7      7  2.2s
+Test Summary:              | Pass  Total  Time
+Structured result boundary |   13     13  0.3s
+Test Summary:             | Pass  Total  Time
+Fixed mutation extraction |   15     15  0.1s
+Test Summary:         | Pass  Total  Time
+Sorted set operations | 1010   1010  0.1s
+Test Summary: | Pass  Total  Time
+merge_sorted  |  507    507  0.2s
+Test Summary:         |  Pass  Total  Time
+recombine correctness | 80104  80104  0.7s
+Test Summary:          | Pass  Total  Time
+Flat-vector invariants |    5      5  0.2s
+Test Summary:     | Pass  Total  Time
+Recombination map | 2014   2014  0.3s
+Test Summary: | Pass  Total  Time
+random_mate   |    8      8  0.1s
+Test Summary:                   | Pass  Total  Time
+Rate parameters are independent |    3      3  0.1s
+Test Summary:                  | Pass  Total  Time
+Simulation invariants at scale |    6      6  0.0s
+Test Summary:     | Pass  Total  Time
+Silent by default |    2      2  0.3s
+Test Summary:         | Pass  Total  Time
+Dense export boundary |    5      5  0.0s
+Test Summary:            | Pass  Total  Time
+Species-based simulation |   10     10  0.4s
+Test Summary:                         | Pass  Total  Time
+Direct chip extraction and subsetting |   13     13  0.3s
+Test Summary:                | Pass  Total  Time
+Neutral Wright-Fisher theory |    9      9  9.5s
+Test Summary:                                         | Pass  Total  Time
+Crossovers per meiosis matches Poisson and assortment |    5      5  0.1s
+     Testing FisherWright tests passed

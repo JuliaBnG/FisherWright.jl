@@ -43,6 +43,9 @@ results/
 coverage/
 docs/build/
 
+# Local paper drafts and publication artifacts
+/paper/
+
 # OS generated files
 .DS_Store
 Thumbs.db
