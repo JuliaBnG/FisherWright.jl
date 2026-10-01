@@ -204,12 +204,21 @@ segregating sites must match θ·aₙ and Σ2pq must match θ. The old code fail
 
 **Tests.** Added a regression testset verifying bit-for-bit equivalence between serial and threaded export across non-64-aligned locus counts ($nlc = 65$) over repeated iterations.
 
+## Changes in v0.3.8
+
+**Bug fix (chromosome-boundary assortment).** The independent-assortment
+breakpoint between chromosomes is now placed at the first coordinate of the
+next chromosome (`cbp[i] + 1`), rather than at the preceding chromosome's
+terminal coordinate. This prevents a boundary marker from being assigned to
+the wrong segment during recombination. A regression test verifies that the
+terminal locus of one chromosome and the first locus of the next segregate
+into complementary offspring haplotypes.
+
+**Validation and reproducibility.** CI now exercises the threaded code path
+with four Julia threads. The repository includes reproducible benchmark drivers
+and captured validation output for the 1 Gb transient comparison and founder
+simulation example.
+
 ## License
 
 MIT License. See LICENSE file for details.
-
-## ToDo
-
-1. [x] Add dependency `BnGStructs`, return mutations as a `Genotype`, or
-   `Haplotype`.
-2. [ ] Add split and merge sub-populations
