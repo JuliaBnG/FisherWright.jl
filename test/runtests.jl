@@ -53,8 +53,8 @@ end
     muts = [UInt32(15), UInt32(30)]
     buf = zeros(UInt32, 2000)
     empty!(buf)
-    merge_sorted!(ho, muts, buf) # warm up
-    @test @allocated(merge_sorted!(ho, muts, buf)) == 0
+    merge_sorted!(buf, ho, muts) # warm up
+    @test @allocated(merge_sorted!(buf, ho, muts)) == 0
 end
 
 @testset "FisherWright basic" begin
@@ -294,7 +294,7 @@ end
     for _ = 1:2000
         cobp!(buf, dense; rng=rng)
         @test issorted(buf)
-        UInt32(1_000_000) in buf && (boundary_hits += 1)
+        UInt32(1_000_001) in buf && (boundary_hits += 1)
     end
     @test 800 < boundary_hits < 1200
 end
@@ -612,9 +612,9 @@ end
 
     for k in 1:K
         cobp!(cbuf, rmap)
-        counts_chr1[k] = count(x -> x < 50_000_000, cbuf)
-        counts_chr2[k] = count(x -> 50_000_000 < x < 150_000_000, cbuf)
-        assortment[k] = count(x -> x == 50_000_000, cbuf)
+        counts_chr1[k] = count(<=(50_000_000), cbuf)
+        counts_chr2[k] = count(x -> 50_000_001 < x <= 150_000_000, cbuf)
+        assortment[k] = count(==(50_000_001), cbuf)
     end
 
     # Sample means must conform to theoretical Poisson expectations
@@ -627,6 +627,27 @@ end
 
     # Independent assortment boundary crossover probability is 0.50
     @test abs(mean(assortment) - 0.50) < 0.020
+end
+
+@testset "Chromosome boundary assortment segregates terminal loci" begin
+    # Chr 1: 1..1000, Chr 2: 1001..2000
+    # Assortment breakpoint is at 1001. Locus 1000 is on Chr 1, locus 1001 is on Chr 2.
+    h1 = UInt32[1000, 1001]
+    h2 = UInt32[]
+    ho = UInt32[]
+    cross_overs = UInt32[1001]
+    # Under recombination with cross_overs=[1001], one segment is < 1001 (chr 1)
+    # and the second segment is >= 1001 (chr 2).
+    # The offspring receives either [1000] or [1001], never both together and never neither.
+    seen_1000 = false
+    seen_1001 = false
+    for _ in 1:100
+        recombine(h1, h2, ho, cross_overs)
+        @test (ho == UInt32[1000]) || (ho == UInt32[1001])
+        ho == UInt32[1000] && (seen_1000 = true)
+        ho == UInt32[1001] && (seen_1001 = true)
+    end
+    @test seen_1000 && seen_1001
 end
 
 # END population genetics validation

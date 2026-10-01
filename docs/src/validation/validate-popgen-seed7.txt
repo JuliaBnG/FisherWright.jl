@@ -1,4 +1,4 @@
-# Date: 2026-09-30T13:00Z  Commit: 4a24282 (+ uncommitted test/bench changes)
+# Date: 2026-10-01T12:29Z  Commit: b006b2c (v0.3.7)
 # julia version 1.13.1, msprime 1.4.4, CPU: AMD Ryzen 9 3900X 12-Core Processor
 # $ julia -t 8 --project=. docs/src/validation/scripts/validate-popgen-theory.jl 50 100 7
 
@@ -9,7 +9,7 @@
 ==============================================================================
 
 [1/4] Crossovers per meiosis (K = 100000, chromosomes of 50 and 100 Mb, M = 1e8)
-  statistic                     observed  expected        z
+  statistic                     observed  expected        z  
   chr 1 mean                      0.4984    0.5000    -0.73  pass
   chr 1 variance/mean             0.9996    1.0000    -0.09  pass
   chr 2 mean                      1.0042    1.0000     1.32  pass
@@ -17,9 +17,9 @@
   assortment P(switch)            0.5023    0.5000     1.45  pass
 
 Simulating 50 FisherWright replicates ...
-  done in 16.5 s
+  done in 16.7 s
 Simulating 50 msprime DTWF replicates ...
-  done in 4.2 s
+  done in 4.4 s
 
 [2/4] Equilibrium diversity (z: FisherWright vs. theory, then vs. msprime DTWF)
   statistic                    FisherWright       msprime DTWF    theory        z

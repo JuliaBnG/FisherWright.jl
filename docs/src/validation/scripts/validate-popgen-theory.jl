@@ -98,9 +98,9 @@ function validate_crossovers(; K = 100_000)
     c1, c2, as = zeros(Int, K), zeros(Int, K), zeros(Int, K)
     for k = 1:K
         cobp!(buf, rmap)
-        c1[k] = count(<(50_000_000), buf)
-        c2[k] = count(x -> 50_000_000 < x < 150_000_000, buf)
-        as[k] = count(==(50_000_000), buf)
+        c1[k] = count(<=(50_000_000), buf)
+        c2[k] = count(x -> 50_000_001 < x <= 150_000_000, buf)
+        as[k] = count(==(50_000_001), buf)
     end
     @printf("  %-28s %9s %9s %8s  %s\n", "statistic", "observed", "expected", "z", "")
     for (name, x, λ) in (("chr 1 mean", c1, 0.5), ("chr 2 mean", c2, 1.0))

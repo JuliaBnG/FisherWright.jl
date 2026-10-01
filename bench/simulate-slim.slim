@@ -1,0 +1,44 @@
+// SLiM simulation of 10 autosomes of 1e8 bp under Wright-Fisher random mating
+// Generates a tree sequence recording for subsequent mutation overlay and bitarray extraction.
+
+initialize() {
+    setSeed(42);
+    initializeTreeSeq();
+    initializeMutationRate(0.0); // Neutral mutations overlaid post-hoc via tskit/msprime
+    initializeMutationType("m1", 0.5, "f", 0.0);
+    initializeGenomicElementType("g1", m1, 1.0);
+
+    // 10 autosomes each of 100 Mb (1e8 bp), total 1 Gb
+    // Within autosomes: recombination rate = 1e-8 / bp
+    // Between autosomes: recombination rate = 0.5 (free independent assortment)
+    rates = float(19);
+    ends = integer(19);
+
+    for (i in 0:9) {
+        start_bp = i * 100000000;
+        intra_end = start_bp + 99999999;
+        
+        rates[2 * i] = 1e-8;
+        ends[2 * i] = intra_end;
+
+        if (i < 9) {
+            inter_end = start_bp + 100000000;
+            rates[2 * i + 1] = 0.5;
+            ends[2 * i + 1] = inter_end;
+        }
+    }
+
+    initializeGenomicElement(g1, 0, 999999999);
+    initializeRecombinationRate(rates, ends);
+}
+
+1 early() {
+    // Ne = 2000 diploid individuals
+    sim.addSubpop("p1", 2000);
+}
+
+2000 late() {
+    // 2000 generations of Wright-Fisher random mating
+    sim.treeSeqOutput("bench/slim-output.trees");
+    sim.simulationFinished();
+}

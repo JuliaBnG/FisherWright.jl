@@ -198,7 +198,7 @@ function cobp!(
                 end
             end
         end
-        rand(rng) < 0.5 && push!(dest, map.cbp[i])
+        rand(rng) < 0.5 && i < length(map.cbp) && push!(dest, map.cbp[i] + UInt32(1))
         prev_chr_end = map.cbp[i]
     end
     return dest
