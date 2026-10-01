@@ -1,6 +1,8 @@
 # Power check for the population genetics tests in test/runtests.jl.
 #
-#   julia -t 4 --project=. bench/check-test-power.jl
+# Run from the repository root:
+#
+#   julia -t 4 --project=. docs/src/validation/scripts/check-test-power.jl
 #
 # A test is only useful if it passes for the correct model and fails for a
 # wrong one. This script takes the block between the "BEGIN/END population
@@ -18,7 +20,7 @@
 
 using Test, Printf
 
-const ROOT = dirname(@__DIR__)
+const ROOT = dirname(dirname(dirname(dirname(@__DIR__))))
 const PREFIX_COMMIT = "4a24282~1"
 const SIM = "fisher_wright(ne, 20ne, chr, 1.0; result = true)"
 const XMAP = "rmap = uniform_recombination_map(chr; M=M)"

@@ -1,6 +1,8 @@
 # Population genetics validation of FisherWright.jl against theory and msprime.
 #
-#   julia -t 8 --project=. bench/validate-popgen-theory.jl [reps] [ne] [seed]
+# With FisherWright installed, run from this directory:
+#
+#   julia -t 8 validate-popgen-theory.jl [reps] [ne] [seed]
 #
 # 1. Crossovers per meiosis: Poisson counts per chromosome, 0.5 assortment.
 # 2. Equilibrium diversity: S vs. Watterson's θ·aₙ, Σ2pq vs. θ.
@@ -11,7 +13,8 @@
 #
 # FisherWright runs `ne` diploids for 20ne generations (10×2N, equilibrium) on
 # 10 chromosomes of 10 Mb, μ = r = 1e-8, and `reps` replicates; msprime DTWF
-# (via `uv`, bench/validate-popgen-msprime.py) simulates the same model. Each
+# (via `uv`, docs/src/validation/scripts/validate-popgen-msprime.py) simulates
+# the same model. Each
 # comparison is a z-score, and a check fails when |z| > ZMAX. The script exits
 # with status 1 if any check fails.
 

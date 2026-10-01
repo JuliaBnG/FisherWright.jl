@@ -198,6 +198,12 @@ to 570,905, against 569,235 from msprime.
 **Tests.** Added a check against neutral theory: after `20ne` generations,
 segregating sites must match θ·aₙ and Σ2pq must match θ. The old code fails it.
 
+## Changes in v0.3.7
+
+**Bug fix (Thread-safety).** Resolved a silent data race in multithreaded `BitMatrix` construction in `muts2bitarray` and `extract_chip_bitarray`. Because Julia's `BitArray` packs elements column-major in 64-bit (`UInt64`) words, any locus count with `nlc % 64 != 0` shares the boundary word between column $i$ and column $i+1$. Multiple threads setting bits in adjacent columns under `Threads.@threads` previously performed non-atomic read-modify-writes, causing genotype bits to be overwritten and lost. Replaced with atomic bitwise OR (`Core.Intrinsics.atomic_pointermodify`) directly on chunks, guaranteeing deterministic, lossless exports with zero heap allocations and full thread scaling.
+
+**Tests.** Added a regression testset verifying bit-for-bit equivalence between serial and threaded export across non-64-aligned locus counts ($nlc = 65$) over repeated iterations.
+
 ## License
 
 MIT License. See LICENSE file for details.

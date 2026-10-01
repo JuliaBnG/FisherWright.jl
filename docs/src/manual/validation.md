@@ -11,6 +11,24 @@ is built, so they always show the current code. The results are saved output
 files; each starts with the date, commit, Julia and msprime versions it was
 produced with.
 
+## Download and run full validation
+
+[Download the source archive](https://github.com/JuliaBnG/FisherWright.jl/archive/refs/heads/main.zip)
+and extract it to obtain the validation scripts. Install FisherWright once,
+then run the full validation from the directory containing the downloaded
+scripts:
+
+```bash
+julia --startup-file=no -e 'using Pkg; Pkg.add("FisherWright")'
+cd FisherWright.jl/docs/src/validation/scripts
+julia -t 8 validate-popgen-theory.jl [reps=50] [ne=100] [seed=2026]
+```
+
+The full validation requires `uv` on the `PATH`; it downloads msprime and numpy
+into a temporary environment. The [Power of the CI tests](@ref) script also
+needs the repository's test suite and Git history, so run that script from a
+source checkout as shown in [When to rerun](@ref).
+
 ## Summary
 
 | Check | Reference | Result (v0.3.6) |
@@ -104,7 +122,7 @@ Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "s
 
 ## Power of the CI tests
 
-A test that can't fail proves nothing. `bench/check-test-power.jl` runs the
+A test that can't fail proves nothing. `docs/src/validation/scripts/check-test-power.jl` runs the
 validation block of `test/runtests.jl` as it is, for five seeds, and then with
 one known error at a time:
 
@@ -133,20 +151,18 @@ Markdown.MD(Markdown.Code("julia", read(joinpath(pkgdir(FisherWright), "docs", "
 
 ## Full validation against msprime
 
-`bench/validate-popgen-theory.jl` runs 50 FisherWright replicates and 50
+`docs/src/validation/scripts/validate-popgen-theory.jl` runs 50 FisherWright replicates and 50
 msprime DTWF replicates of the model above (msprime through
-`bench/validate-popgen-msprime.py`, run with `uv`). Every comparison is a
+`docs/src/validation/scripts/validate-popgen-msprime.py`, run with `uv`). Every comparison is a
 z-score; a check fails when |z| > 3.5, and the script then exits with status 1.
 With 24 checks, the chance that at least one fails by chance is about 1%.
 
-Run it from the package directory; it takes about 25 s with 8 threads:
+Run it from the directory containing the downloaded scripts; it takes about
+25 s with 8 threads:
 
 ```bash
-julia -t 8 --project=. bench/validate-popgen-theory.jl [reps=50] [ne=100] [seed=2026]
+julia -t 8 validate-popgen-theory.jl [reps=50] [ne=100] [seed=2026]
 ```
-
-It needs `uv` on the `PATH`; `uv` fetches msprime and numpy into a temporary
-environment.
 
 ### Results, seed 2026
 
@@ -176,14 +192,14 @@ Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "s
 
 ### Driver scripts
 
-`bench/validate-popgen-theory.jl`:
+`docs/src/validation/scripts/validate-popgen-theory.jl`:
 
 ```@eval
 using Markdown, FisherWright
 Markdown.MD(Markdown.Code("julia", read(joinpath(pkgdir(FisherWright), "docs", "src", "validation", "scripts", "validate-popgen-theory.jl"), String)))
 ```
 
-`bench/validate-popgen-msprime.py`:
+`docs/src/validation/scripts/validate-popgen-msprime.py`:
 
 ```@eval
 using Markdown, FisherWright
@@ -196,7 +212,8 @@ The CI LD test compares with fixed msprime values, since CI can't run msprime.
 They come from 100 replicates of 10 chromosomes:
 
 ```bash
-uv run --with msprime --with numpy python bench/validate-popgen-msprime.py --reps 100 --seed 1 --summary
+cd docs/src/validation/scripts
+uv run --with msprime --with numpy python validate-popgen-msprime.py --reps 100 --seed 1 --summary
 ```
 
 ```@eval
@@ -245,11 +262,12 @@ of these change:
 - the generation loop in `src/fwp.jl`, `recombine`, `cobp!` or the
   recombination map, `random_mate!`, or `muts2bitarray`;
 - the validation block in `test/runtests.jl` (bounds, settings or seeds);
-- the model settings or statistics in `bench/validate-popgen-theory.jl`.
+- the model settings or statistics in
+  `docs/src/validation/scripts/validate-popgen-theory.jl`.
 
 ```bash
 D=docs/src/validation
-julia -t 4 --project=. bench/check-test-power.jl > $D/test-power.txt
-julia -t 8 --project=. bench/validate-popgen-theory.jl 50 100 2026 > $D/validate-popgen-seed2026.txt
-julia -t 8 --project=. bench/validate-popgen-theory.jl 50 100 7 > $D/validate-popgen-seed7.txt
+julia -t 4 --project=. docs/src/validation/scripts/check-test-power.jl > $D/test-power.txt
+julia -t 8 --project=. docs/src/validation/scripts/validate-popgen-theory.jl 50 100 2026 > $D/validate-popgen-seed2026.txt
+julia -t 8 --project=. docs/src/validation/scripts/validate-popgen-theory.jl 50 100 7 > $D/validate-popgen-seed7.txt
 ```

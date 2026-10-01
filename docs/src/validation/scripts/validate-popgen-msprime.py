@@ -1,4 +1,4 @@
-"""msprime DTWF reference statistics for bench/validate-popgen-theory.jl.
+"""msprime DTWF reference statistics for docs/src/validation/scripts/validate-popgen-theory.jl.
 
 Simulates the same neutral diploid Wright-Fisher population as the Julia script
 (whole population sampled, chromosomes simulated independently, which is free
@@ -13,7 +13,8 @@ SFS groups; s: SFS groups in a random sample of `nsub` haplotypes; num/den:
 With --summary it prints instead the pooled σ²_d ± SE per LD bin, which is how
 the reference values in test/runtests.jl were made:
 
-    uv run --with msprime --with numpy python bench/validate-popgen-msprime.py --reps 100 --seed 1 --summary
+    # Run from this directory:
+    uv run --with msprime --with numpy python validate-popgen-msprime.py --reps 100 --seed 1 --summary
 """
 
 import argparse

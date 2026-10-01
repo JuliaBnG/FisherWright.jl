@@ -1,4 +1,18 @@
 """
+    _atomic_set_bit!(chunks_ptr::Ptr{UInt64}, bit_idx::Int)
+
+Atomically set the bit at 0-based linear index `bit_idx` to 1 in a `BitArray` chunks buffer.
+Prevents data races when multiple threads write to adjacent columns that share a 64-bit chunk.
+"""
+@inline function _atomic_set_bit!(chunks_ptr::Ptr{UInt64}, bit_idx::Int)
+    c_idx = bit_idx >>> 6
+    bit = bit_idx & 63
+    mask = UInt64(1) << bit
+    Core.Intrinsics.atomic_pointermodify(chunks_ptr + c_idx * sizeof(UInt64), |, mask, :monotonic)
+    return nothing
+end
+
+"""
     muts2bitarray(
         muts::Vector{Vector{UInt32}},
         cbp::Vector{UInt32};
@@ -97,23 +111,51 @@ function muts2bitarray(
     xy = falses(nlc, nhp)
     # Fast parallel two-pointer / binary-search scan: both hap and all_mts are sorted!
     # Completely eliminates the Dict/hash table bottleneck
-    Threads.@threads for i = 1:nhp
-        hap = muts[i]
-        nh = length(hap)
-        if nh > 0
-            ptr_all = 1
-            ptr_hap = 1
-            @inbounds while ptr_hap <= nh && ptr_all <= nlc
-                m_hap = hap[ptr_hap]
-                m_all = all_mts[ptr_all]
-                if m_hap == m_all
-                    xy[ptr_all, i] = true
-                    ptr_hap += 1
-                    ptr_all += 1
-                elseif m_hap > m_all
-                    ptr_all = searchsortedfirst(all_mts, m_hap, ptr_all + 1, nlc, Base.Order.Forward)
-                else
-                    ptr_hap += 1
+    if nlc < 64 || nhp < 16
+        for i = 1:nhp
+            hap = muts[i]
+            nh = length(hap)
+            if nh > 0
+                ptr_all = 1
+                ptr_hap = 1
+                @inbounds while ptr_hap <= nh && ptr_all <= nlc
+                    m_hap = hap[ptr_hap]
+                    m_all = all_mts[ptr_all]
+                    if m_hap == m_all
+                        xy[ptr_all, i] = true
+                        ptr_hap += 1
+                        ptr_all += 1
+                    elseif m_hap > m_all
+                        ptr_all = searchsortedfirst(all_mts, m_hap, ptr_all + 1, nlc, Base.Order.Forward)
+                    else
+                        ptr_hap += 1
+                    end
+                end
+            end
+        end
+    else
+        p = pointer(xy.chunks)
+        GC.@preserve xy begin
+            Threads.@threads for i = 1:nhp
+                hap = muts[i]
+                nh = length(hap)
+                if nh > 0
+                    col_offset = (i - 1) * nlc
+                    ptr_all = 1
+                    ptr_hap = 1
+                    @inbounds while ptr_hap <= nh && ptr_all <= nlc
+                        m_hap = hap[ptr_hap]
+                        m_all = all_mts[ptr_all]
+                        if m_hap == m_all
+                            _atomic_set_bit!(p, col_offset + ptr_all - 1)
+                            ptr_hap += 1
+                            ptr_all += 1
+                        elseif m_hap > m_all
+                            ptr_all = searchsortedfirst(all_mts, m_hap, ptr_all + 1, nlc, Base.Order.Forward)
+                        else
+                            ptr_hap += 1
+                        end
+                    end
                 end
             end
         end
@@ -213,23 +255,51 @@ function extract_chip_bitarray(muts::Vector{Vector{UInt32}}, chip_positions::Vec
     nhp = length(muts)
     xy = falses(k, nhp)
 
-    Threads.@threads for i = 1:nhp
-        hap = muts[i]
-        nh = length(hap)
-        if nh > 0
-            ptr_chip = 1
-            ptr_hap = 1
-            @inbounds while ptr_hap <= nh && ptr_chip <= k
-                m_hap = hap[ptr_hap]
-                m_chip = chip_positions[ptr_chip]
-                if m_hap == m_chip
-                    xy[ptr_chip, i] = true
-                    ptr_hap += 1
-                    ptr_chip += 1
-                elseif m_hap > m_chip
-                    ptr_chip = searchsortedfirst(chip_positions, m_hap, ptr_chip + 1, k, Base.Order.Forward)
-                else
-                    ptr_hap = searchsortedfirst(hap, m_chip, ptr_hap + 1, nh, Base.Order.Forward)
+    if k < 64 || nhp < 16
+        for i = 1:nhp
+            hap = muts[i]
+            nh = length(hap)
+            if nh > 0
+                ptr_chip = 1
+                ptr_hap = 1
+                @inbounds while ptr_hap <= nh && ptr_chip <= k
+                    m_hap = hap[ptr_hap]
+                    m_chip = chip_positions[ptr_chip]
+                    if m_hap == m_chip
+                        xy[ptr_chip, i] = true
+                        ptr_hap += 1
+                        ptr_chip += 1
+                    elseif m_hap > m_chip
+                        ptr_chip = searchsortedfirst(chip_positions, m_hap, ptr_chip + 1, k, Base.Order.Forward)
+                    else
+                        ptr_hap = searchsortedfirst(hap, m_chip, ptr_hap + 1, nh, Base.Order.Forward)
+                    end
+                end
+            end
+        end
+    else
+        p = pointer(xy.chunks)
+        GC.@preserve xy begin
+            Threads.@threads for i = 1:nhp
+                hap = muts[i]
+                nh = length(hap)
+                if nh > 0
+                    col_offset = (i - 1) * k
+                    ptr_chip = 1
+                    ptr_hap = 1
+                    @inbounds while ptr_hap <= nh && ptr_chip <= k
+                        m_hap = hap[ptr_hap]
+                        m_chip = chip_positions[ptr_chip]
+                        if m_hap == m_chip
+                            _atomic_set_bit!(p, col_offset + ptr_chip - 1)
+                            ptr_hap += 1
+                            ptr_chip += 1
+                        elseif m_hap > m_chip
+                            ptr_chip = searchsortedfirst(chip_positions, m_hap, ptr_chip + 1, k, Base.Order.Forward)
+                        else
+                            ptr_hap = searchsortedfirst(hap, m_chip, ptr_hap + 1, nh, Base.Order.Forward)
+                        end
+                    end
                 end
             end
         end

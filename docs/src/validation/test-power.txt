@@ -1,6 +1,6 @@
 # Date: 2026-09-30T13:00Z  Commit: 4a24282 (+ uncommitted test/bench changes)
 # julia version 1.13.1, msprime 1.4.4, CPU: AMD Ryzen 9 3900X 12-Core Processor
-# $ julia -t 4 --project=. bench/check-test-power.jl
+# $ julia -t 4 --project=. docs/src/validation/scripts/check-test-power.jl
 
 Power check of the population genetics tests in test/runtests.jl
 Julia 1.13.1, threads = 4

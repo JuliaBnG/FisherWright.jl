@@ -1,6 +1,6 @@
 # Date: 2026-09-30T13:00Z  Commit: 4a24282 (+ uncommitted test/bench changes)
 # julia version 1.13.1, msprime 1.4.4, CPU: AMD Ryzen 9 3900X 12-Core Processor
-# $ julia -t 8 --project=. bench/validate-popgen-theory.jl 50 100 7
+# $ julia -t 8 --project=. docs/src/validation/scripts/validate-popgen-theory.jl 50 100 7
 
 ==============================================================================
  FisherWright.jl population genetics validation

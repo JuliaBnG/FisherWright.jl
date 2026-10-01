@@ -35,6 +35,28 @@ function recombine_matches_reference(h₁, h₂, cross_overs, out)
            out == ref_recombine(h₁, h₂, cross_overs, false)
 end
 
+@testset "Zero heap allocations in meiosis inner loop operations" begin
+    chr = [10_000_000, 10_000_000]
+    rmap = uniform_recombination_map(chr)
+    cbuf = zeros(UInt32, 100)
+    empty!(cbuf)
+    cobp!(cbuf, rmap) # warm up
+    @test @allocated(cobp!(cbuf, rmap)) == 0
+
+    h1 = sort(rand(UInt32(1):UInt32(20_000_000), 500))
+    h2 = sort(rand(UInt32(1):UInt32(20_000_000), 500))
+    ho = zeros(UInt32, 2000)
+    empty!(ho)
+    recombine(h1, h2, ho, cbuf) # warm up
+    @test @allocated(recombine(h1, h2, ho, cbuf)) == 0
+
+    muts = [UInt32(15), UInt32(30)]
+    buf = zeros(UInt32, 2000)
+    empty!(buf)
+    merge_sorted!(ho, muts, buf) # warm up
+    @test @allocated(merge_sorted!(ho, muts, buf)) == 0
+end
+
 @testset "FisherWright basic" begin
     ne = 100
     nt = 200
@@ -431,6 +453,48 @@ end
     @test size(hap_lset) == (2, 4)
     @test hap_lset[1, :] == [true, false, true, false]
     @test hap_lset[2, :] == [true, false, true, true]
+end
+
+@testset "Thread safety and BitMatrix chunk alignment in export" begin
+    # Test non-64-aligned locus count (nlc % 64 != 0) where adjacent columns share UInt64 chunks
+    nlc = 65
+    nhp = 16 * max(4, Threads.nthreads())
+    all_mts = collect(UInt32(1):UInt32(nlc))
+    muts = [copy(all_mts) for _ in 1:nhp]
+    cbp = [UInt32(nlc)]
+
+    # Serial reference extraction
+    ref_xy = falses(nlc, nhp)
+    for i in 1:nhp, m in muts[i]
+        ref_xy[m, i] = true
+    end
+
+    # Stress test across multiple repetitions to ensure no lost bits from data races
+    for _ in 1:500
+        xy_chip = extract_chip_bitarray(muts, all_mts)
+        @test xy_chip == ref_xy
+        @test count(xy_chip) == nlc * nhp
+
+        xy_muts, _ = muts2bitarray(muts, cbp; flip=false, include_fixed=true)
+        @test xy_muts == ref_xy
+        @test count(xy_muts) == nlc * nhp
+    end
+
+    # Test random sparse mutations across threads
+    rng = MersenneTwister(1234)
+    for _ in 1:50
+        rand_muts = [sort(unique(rand(rng, UInt32(1):UInt32(nlc), rand(rng, 5:25)))) for _ in 1:nhp]
+        ref_sparse = falses(nlc, nhp)
+        for i in 1:nhp, m in rand_muts[i]
+            ref_sparse[m, i] = true
+        end
+
+        xy_chip = extract_chip_bitarray(rand_muts, all_mts)
+        @test xy_chip == ref_sparse
+
+        xy_muts, _ = muts2bitarray(rand_muts, cbp; flip=false, include_fixed=true)
+        @test xy_muts == ref_sparse
+    end
 end
 
 # BEGIN population genetics validation (included in docs/src/manual/validation.md)
