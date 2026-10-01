@@ -1,7 +1,3 @@
-# Date: 2026-10-01T12:35Z  Commit: b006b2c (v0.3.7)
-# CPU: AMD Ryzen 9 3900X 12-Core Processor (8 threads), Linux x86_64
-# $ bash bench/run-comparison.sh 2000 2000 10 100000000 1.0 42 8
-
 ==========================================================================
  Benchmarking Forward & Backward Population Genetics Simulators
  Parameters: Ne=2000 (nhaps=4000), Nt=2000, Autosomes=10 × 100 Mb = 1000 Mb
@@ -63,7 +59,7 @@ initializeMutationRate(0);
 initializeMutationType(1, 0.5, "f", 0);
 initializeGenomicElementType(1, m1, 1);
 initializeGenomicElement(g1, 0, 999999999);
-initializeRecombinationRate(c(1e-08, 0.5, 1e-08, 0.5, 1e-08, 0.5, 1e-08, 0.5, 1e-08, 0.5, 1e-08, 0.5, 1e-08, 0.5, 1e-08, 0.5, 1e-08), c(99999999, 100000000, 199999999, 200000000, 299999999, 300000000, 399999999, 400000000, 499999999, 500000000, 599999999, 600000000, 699999999, 700000000, 799999999, 800000000, 899999999, 900000000, 999999999));
+initializeRecombinationRate(c(1e-08, 0.5, 1e-08, 0.5, 1e-08, 0.5, 1e-08, 0.5, 1e-08, 0.5, 1e-08, 0.5, 1e-08, 0.5, 1e-08, 0.5, 1e-08, 0.5, 1e-08), c(99999999, 100000000, 199999999, 200000000, 299999999, 300000000, 399999999, 400000000, 499999999, 500000000, 599999999, 600000000, 699999999, 700000000, 799999999, 800000000, 899999999, 900000000, 999999999));
 
 // Starting run at tick <start>:
 1 

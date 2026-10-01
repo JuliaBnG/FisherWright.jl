@@ -1,0 +1,17 @@
+# Date: 2026-10-01T12:56Z  Commit: 62020f8 (v0.3.8-dev)
+# CPU: AMD Ryzen 9 3900X 12-Core Processor (8 threads), Linux x86_64
+# $ julia -t 8 --project=. bench/example-founder-simulation.jl
+
+=================================================================
+ FisherWright.jl Application Example: Founder Simulation & Chip
+=================================================================
+Species architecture   : 10 autosomes × 100 Mb (1 Gb total)
+Population size (N)     : 1000 diploids (2,000 haplotypes)
+Burn-in generations (Nt): 10000 (10N)
+Threads                 : 8
+-----------------------------------------------------------------
+Simulation runtime      : 426.6 s
+Ascertainment runtime   : 4.90 s (found 33718 MAF candidates)
+Chip extraction runtime : 0.56 s
+Extracted 33718 chip markers across 2000 haplotypes.
+=================================================================
