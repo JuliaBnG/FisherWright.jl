@@ -1,5 +1,5 @@
-# Date: 2026-10-01T12:56Z  Commit: 62020f8 (v0.3.8-dev)
-# CPU: AMD Ryzen 9 3900X 12-Core Processor (8 threads), Linux x86_64
+# Date: 2026-10-01T14:10Z  Commit: 30d8569 (v0.3.7-3-g30d8569); tree: clean
+# CPU: AMD Ryzen 9 3900X 12-Core Processor; julia version 1.13.1; deps: BnGStructs v0.2.6 Distributions v0.25.131 DataFrames v1.8.2 Random v1.11.0 Statistics v1.11.5 
 # $ julia -t 8 --project=. bench/example-founder-simulation.jl
 
 =================================================================
@@ -10,8 +10,9 @@ Population size (N)     : 1000 diploids (2,000 haplotypes)
 Burn-in generations (Nt): 10000 (10N)
 Threads                 : 8
 -----------------------------------------------------------------
-Simulation runtime      : 426.6 s
-Ascertainment runtime   : 4.90 s (found 33718 MAF candidates)
-Chip extraction runtime : 0.56 s
-Extracted 33718 chip markers across 2000 haplotypes.
+Simulation runtime      : 420.0 s
+Ascertainment runtime   : 4.28 s (found 118702 MAF candidates)
+Chip extraction runtime : 0.43 s
+Extracted 50000 chip markers across 2000 haplotypes.
 =================================================================
+# exit status: 0

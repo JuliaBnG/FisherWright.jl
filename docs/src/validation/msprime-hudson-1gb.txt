@@ -1,0 +1,10 @@
+# Date: 2026-10-01T14:10Z  Commit: 30d8569 (v0.3.7-3-g30d8569); tree: clean
+# CPU: AMD Ryzen 9 3900X 12-Core Processor; julia version 1.13.1; deps: BnGStructs v0.2.6 Distributions v0.25.131 DataFrames v1.8.2 Random v1.11.0 Statistics v1.11.5 
+# $ uv run -q --with msprime python /tmp/fw-v038-logs/simulate-msprime-hudson.py
+
+msprime 1.4.4; Hudson; ne=2000, 10 x 100 Mb, mu=r=1e-08, seed=42
+Ancestry runtime        : 19.354 s
+Mutation runtime        : 0.875 s
+Total runtime           : 20.229 s
+Sites (binary model)    : 709889
+# exit status: 0

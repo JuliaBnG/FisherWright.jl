@@ -12,6 +12,14 @@ THREADS=${7:-8}
 
 TOTAL_MB=$(( NCHR * CHRLEN / 1000000 ))
 
+COMMIT=$(git describe --tags --always --dirty 2>/dev/null || echo "unknown")
+DATE=$(date -u +"%Y-%m-%dT%H:%MZ")
+CPU=$(lscpu 2>/dev/null | grep "Model name:" | head -n1 | sed 's/Model name:[ \t]*//' || uname -m)
+
+echo "# Date: $DATE  Commit: $COMMIT"
+echo "# CPU: $CPU ($THREADS threads), $(uname -s) $(uname -m)"
+echo "# $0 $*"
+echo ""
 echo "=========================================================================="
 echo " Benchmarking Forward & Backward Population Genetics Simulators"
 echo " Parameters: Ne=$NE (nhaps=$((2*NE))), Nt=$NT, Autosomes=$NCHR × $((CHRLEN/1000000)) Mb = ${TOTAL_MB} Mb"
