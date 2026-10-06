@@ -1,16 +1,20 @@
 # FisherWright.jl
 
-FisherWright.jl is a Julia package for simulating mutation-drift equilibrium
-Fisher-Wright populations.  It provides efficient tools for modeling population
-genetics, generating haplotypes, and converting mutation data into bit arrays
-and linkage maps. This package is suitable for researchers and students in
-population genetics, evolutionary biology, and related fields.
+FisherWright.jl simulates neutral, diploid Wright-Fisher populations forward in
+time, to generate whole-genome founder populations for breeding and
+quantitative-genetics simulations. Starting from no variation, it applies random
+mating between two sexes, Poisson crossovers and recurrent mutation for a chosen
+number of generations. Run long enough (see [Recommended Use](#recommended-use)),
+the population reaches mutation-drift equilibrium. The segregating variants are
+exported as a `BitMatrix` with a linkage map, as a targeted SNP-chip panel, or as
+[BnGStructs.jl](https://github.com/JuliaBnG/BnGStructs.jl) haplotypes.
 
 [![Build Status](https://github.com/JuliaBnG/FisherWright.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/JuliaBnG/FisherWright.jl/actions)
 [![Coverage](https://codecov.io/gh/JuliaBnG/FisherWright.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/JuliaBnG/FisherWright.jl)
 
-The complete manual and API reference are available at
-[xijiang.org/JuliaBnG/FisherWright](https://xijiang.org/JuliaBnG/FisherWright).
+The complete manual, API reference and population genetics validation are
+available at
+[juliabng.github.io/FisherWright](https://juliabng.github.io/FisherWright/).
 
 To build the static documentation for hosting:
 
@@ -22,12 +26,18 @@ julia --project=docs --startup-file=no docs/make.jl
 The generated site is in `docs/build/`.
 
 ## Features
-- Simulate Fisher-Wright populations of arbitrary population size, multiple auto
-  chromosomes and over multiple generations
-- Population merge and splits.
-- Model recombination and mutation processes on chromosomes
-- Convert mutation data to `BitArray` and linkage map (`DataFrame`)
-- Efficient handling of large-scale genomic data
+- Forward simulation of a constant-size, randomly mating diploid population with
+  two sexes, any number of autosomes and genomes up to 2³² − 1 bp
+- Poisson crossovers (uniform rate, `M` bp per Morgan) with free assortment
+  between chromosomes, and recurrent neutral mutation
+- Optional extraction of fixed mutations during the run, which keeps memory
+  bounded over long burn-ins
+- Export to a 1-bit-per-allele `BitArray` with a linkage map (`DataFrame`), to a
+  targeted SNP-chip panel, or to `BnGStructs.Haplotype`
+- Validated against neutral theory and msprime (see the manual)
+
+Not modelled: selection, changes in population size, population structure or
+migration, and non-uniform recombination maps in `fisher_wright`.
 
 ## Main Functions
 
@@ -218,6 +228,11 @@ into complementary offspring haplotypes.
 with four Julia threads. The repository includes reproducible benchmark drivers
 and captured validation output for the 1 Gb transient comparison and founder
 simulation example.
+
+## Contributing and support
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and questions go to the
+[issue tracker](https://github.com/JuliaBnG/FisherWright.jl/issues).
 
 ## License
 
