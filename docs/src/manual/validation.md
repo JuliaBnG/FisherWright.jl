@@ -225,6 +225,90 @@ The test uses the 0.3–1 Mb and 1–3 Mb values, 0.2869 and 0.1398. If the mode
 settings in the CI testset change, regenerate these values with matching
 arguments.
 
+## Comparison with early releases
+
+Releases before v0.3.0 contain the `recombine` defect described in the v0.3.0
+notes of the README. They also contain the mutate-before-mating loop (fixed in
+v0.3.5) and the chromosome-boundary off-by-one (fixed in v0.3.8). v0.1.x was
+used to generate a historical population with ``t = N`` for a breeding-scheme
+study ([Yu et al. 2026](https://doi.org/10.31274/wcgalp.23521)), whose QTL
+were sampled among loci segregating in the founders. This comparison asks
+whether founders drawn from such a population differ between v0.1.6 and the
+current release. It also asks how much stopping at ``t = N`` instead of at
+equilibrium matters for them.
+
+`docs/src/validation/scripts/compare-early-version.sh` runs
+`docs/src/validation/scripts/compare-early-version.jl` for v0.1.6 (in a
+temporary Git worktree) and for the current checkout, at ``t = N`` and
+``t = 10N``. The model is ``N = 200``, 10 chromosomes of 20 Mb,
+``\mu = 10^{-8}``, 1 cM/Mb, with 30 replicates. Population statistics use all
+``2N`` haplotypes. Founder statistics use 75 individuals sampled from the final
+generation, over the sites that segregate among them. Positions are counted
+once per haplotype, because v0.1.6 haplotypes can repeat positions.
+
+| Statistic | v0.1.6, ``t = N`` | current, ``t = N`` | v0.1.6, ``t = 10N`` | current, ``t = 10N`` |
+|---|---|---|---|---|
+| Haplotypes unsorted, per replicate (of 400) | 292 | 0 | 283 | 0 |
+| ``S`` | 6,858 | 7,645 | 9,819 | 10,638 |
+| ``\Sigma 2pq`` | 625 | 626 | 1,577 | 1,584 |
+| Sites with MAF ≥ 0.2 | 517 | 511 | 2,187 | 2,198 |
+| Founders: fraction of sites with MAF ≥ 0.2 | 0.093 | 0.088 | 0.254 | 0.246 |
+| Founders: share of ``\Sigma 2pq`` from MAF < 0.05 | 0.207 | 0.214 | 0.092 | 0.095 |
+
+Standard errors and the r² bins are in the output below.
+
+- **v0.1.6 vs. the current release.** ``S`` is 8–10% lower in v0.1.6. These
+  are the missing newest singletons, as expected from the pre-v0.3.5 loop.
+  ``\Sigma 2pq``, the number of sites with MAF ≥ 0.2 and r² among them show
+  no detectable difference. The founder spectrum differs by about 5% in mean
+  ``2pq`` per site, because some of the extra population singletons enter the
+  sample.
+- **v0.1.6 haplotypes are mostly unsorted.** About 70% of them are unsorted,
+  and a few repeat a position. Allele counts are unaffected once positions
+  are counted once per haplotype, as above. Code that assumes sorted, unique
+  positions (binary search, two-pointer merges, chip extraction) can give
+  wrong results on v0.1.x output.
+- **``t = N`` vs. equilibrium.** This difference is much larger than the
+  difference between versions. At ``t = N``, ``\Sigma 2pq`` is 40% and the
+  number of MAF ≥ 0.2 sites is 23% of the equilibrium value (expected
+  ``1 - e^{-1/2} = 0.39`` and ``\theta \ln 4 \approx 2{,}218``). In the
+  founders, only 9% of segregating sites have MAF ≥ 0.2, against 25% at
+  equilibrium. Rare sites (MAF < 0.05) carry 21% of ``\Sigma 2pq``, against
+  9.5%. QTL sampled from such founders are therefore enriched for rare
+  variants.
+
+The allele-frequency results depend on ``t/N`` and on the fraction of the
+population sampled. Here 150 of 400 haplotypes are sampled. A smaller
+fraction reduces the difference between versions, because fewer of the
+newest singletons enter the sample. The r² values do not transfer to other
+values of ``N`` or genome scales.
+
+```bash
+docs/src/validation/scripts/compare-early-version.sh v0.1.6 30 2026 8 \
+    > docs/src/validation/early-version-comparison.txt
+```
+
+The script takes about 3 minutes with 8 threads.
+
+```@eval
+using Markdown, FisherWright
+Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "src", "validation", "early-version-comparison.txt"), String)))
+```
+
+`docs/src/validation/scripts/compare-early-version.jl`:
+
+```@eval
+using Markdown, FisherWright
+Markdown.MD(Markdown.Code("julia", read(joinpath(pkgdir(FisherWright), "docs", "src", "validation", "scripts", "compare-early-version.jl"), String)))
+```
+
+`docs/src/validation/scripts/compare-early-version.sh`:
+
+```@eval
+using Markdown, FisherWright
+Markdown.MD(Markdown.Code("bash", read(joinpath(pkgdir(FisherWright), "docs", "src", "validation", "scripts", "compare-early-version.sh"), String)))
+```
+
 ## History
 
 - **Diversity deficit (fixed in v0.3.5).** A comparison with θ·aₙ and msprime

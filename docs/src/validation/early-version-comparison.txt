@@ -1,0 +1,69 @@
+# Date: 2026-10-06T15:52Z  Commit: 9f346e7 (v0.3.8-1-g9f346e7); tree: clean
+# Early release: v0.1.6 (0c6071b)
+# CPU: AMD Ryzen 9 3900X 12-Core Processor; julia version 1.13.1
+# $ docs/src/validation/scripts/compare-early-version.sh v0.1.6 30 2026 8
+
+FisherWright v0.1.6, N = 200, t = 1N, 10 × 20 Mb, μ = 1e-8, 1 cM/Mb, reps = 30, seed = 2026, threads = 8
+  final generation, per replicate: 292.1 haplotypes unsorted, 13.0 with repeated positions (13.2 repeats in total)
+  population (2N = 400 haplotypes)
+    S                         6857.6 ±   24.4
+    Σ2pq                       625.4 ±    2.4
+    sites with MAF ≥ 0.2       516.8 ±    5.3
+    r², MAF ≥ 0.2, 0.0–0.5 Mb   0.3705 ± 0.0540
+    r², MAF ≥ 0.2, 0.5–2.0 Mb   0.1508 ± 0.0203
+    r², MAF ≥ 0.2, 2.0–5.0 Mb   0.0441 ± 0.0046
+  founder sample (75 individuals, 150 haplotypes; sites segregating in the sample)
+    segregating sites         5711.6 ±   19.8
+    fraction MAF ≥ 0.2        0.0931 ± 0.0009
+    fraction MAF < 0.05       0.6372 ± 0.0022
+    mean 2pq per site         0.1091 ± 0.0004
+    Σ2pq share, MAF < 0.05    0.2070 ± 0.0015
+
+FisherWright v0.3.8, N = 200, t = 1N, 10 × 20 Mb, μ = 1e-8, 1 cM/Mb, reps = 30, seed = 2026, threads = 8
+  final generation, per replicate: 0.0 haplotypes unsorted, 0.0 with repeated positions (0.0 repeats in total)
+  population (2N = 400 haplotypes)
+    S                         7645.2 ±   21.8
+    Σ2pq                       626.1 ±    2.0
+    sites with MAF ≥ 0.2       510.9 ±    4.1
+    r², MAF ≥ 0.2, 0.0–0.5 Mb   0.4498 ± 0.0701
+    r², MAF ≥ 0.2, 0.5–2.0 Mb   0.1435 ± 0.0198
+    r², MAF ≥ 0.2, 2.0–5.0 Mb   0.0435 ± 0.0044
+  founder sample (75 individuals, 150 haplotypes; sites segregating in the sample)
+    segregating sites         5990.1 ±   21.3
+    fraction MAF ≥ 0.2        0.0877 ± 0.0007
+    fraction MAF < 0.05       0.6569 ± 0.0016
+    mean 2pq per site         0.1042 ± 0.0003
+    Σ2pq share, MAF < 0.05    0.2141 ± 0.0012
+
+FisherWright v0.1.6, N = 200, t = 10N, 10 × 20 Mb, μ = 1e-8, 1 cM/Mb, reps = 30, seed = 2026, threads = 8
+  final generation, per replicate: 283.4 haplotypes unsorted, 27.0 with repeated positions (27.0 repeats in total)
+  population (2N = 400 haplotypes)
+    S                         9819.2 ±   38.0
+    Σ2pq                      1577.0 ±   10.9
+    sites with MAF ≥ 0.2      2186.5 ±   20.9
+    r², MAF ≥ 0.2, 0.0–0.5 Mb   0.4512 ± 0.0498
+    r², MAF ≥ 0.2, 0.5–2.0 Mb   0.1386 ± 0.0165
+    r², MAF ≥ 0.2, 2.0–5.0 Mb   0.0438 ± 0.0056
+  founder sample (75 individuals, 150 haplotypes; sites segregating in the sample)
+    segregating sites         8638.2 ±   36.5
+    fraction MAF ≥ 0.2        0.2538 ± 0.0018
+    fraction MAF < 0.05       0.4566 ± 0.0026
+    mean 2pq per site         0.1818 ± 0.0008
+    Σ2pq share, MAF < 0.05    0.0917 ± 0.0009
+
+FisherWright v0.3.8, N = 200, t = 10N, 10 × 20 Mb, μ = 1e-8, 1 cM/Mb, reps = 30, seed = 2026, threads = 8
+  final generation, per replicate: 0.0 haplotypes unsorted, 0.0 with repeated positions (0.0 repeats in total)
+  population (2N = 400 haplotypes)
+    S                        10638.1 ±   42.6
+    Σ2pq                      1584.4 ±    9.3
+    sites with MAF ≥ 0.2      2198.2 ±   20.0
+    r², MAF ≥ 0.2, 0.0–0.5 Mb   0.4620 ± 0.0477
+    r², MAF ≥ 0.2, 0.5–2.0 Mb   0.1409 ± 0.0202
+    r², MAF ≥ 0.2, 2.0–5.0 Mb   0.0457 ± 0.0069
+  founder sample (75 individuals, 150 haplotypes; sites segregating in the sample)
+    segregating sites         8956.0 ±   38.7
+    fraction MAF ≥ 0.2        0.2458 ± 0.0019
+    fraction MAF < 0.05       0.4773 ± 0.0017
+    mean 2pq per site         0.1760 ± 0.0006
+    Σ2pq share, MAF < 0.05    0.0946 ± 0.0006
+
