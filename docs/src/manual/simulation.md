@@ -4,7 +4,8 @@
 
 ```julia
 fisher_wright(ne, nt, chr, mr; M=1e8, mut_base=1e8,
-              result=false, fixation_interval=1, verbose=false)
+              result=false, fixation_interval=1, verbose=false,
+              progress_interval=100)
 ```
 
 Simulate `ne` diploid individuals for `nt` generations. `chr` is a vector of
@@ -17,7 +18,8 @@ new mutations per `mut_base` base pairs per haplotype per meiosis.
 | `mut_base` | `1e8` | Base pairs per unit of `mr`; controls mutation only. |
 | `result` | `false` | Return a `FisherWrightResult` and extract fixed mutations. |
 | `fixation_interval` | `1` | Generations between fixation scans when `result=true`. |
-| `verbose` | `false` | Print progress every 100 generations. |
+| `verbose` | `false` | Report progress (mean mutations per haplotype, substitutions, elapsed time, ETA) to `stderr`. |
+| `progress_interval` | `100` | Generations between progress reports when `verbose=true`. |
 
 With the default `result=false`, the function returns
 `(haplotypes, chromosome_ends)`. There are `2ne` haplotypes, and

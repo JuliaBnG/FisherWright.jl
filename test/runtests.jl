@@ -355,21 +355,33 @@ end
 @testset "Silent by default" begin
     chr = [100_000, 100_000]
 
-    function captured_stdout(f)
+    function captured(redirect, f)
         pipe = Pipe()
         Base.link_pipe!(pipe; reader_supports_async=true, writer_supports_async=true)
         reader = @async read(pipe, String)
         try
-            redirect_stdout(f, pipe)
+            redirect(f, pipe)
         finally
             close(pipe.in)
         end
         return fetch(reader)
     end
 
-    @test isempty(captured_stdout(() -> fisher_wright(10, 120, chr, 1.0)))
-    @test occursin("Generation", captured_stdout(
-        () -> fisher_wright(10, 120, chr, 1.0; verbose=true)))
+    @test isempty(captured(redirect_stdout, () -> fisher_wright(10, 120, chr, 1.0)))
+    @test isempty(captured(redirect_stderr, () -> fisher_wright(10, 120, chr, 1.0)))
+    @test isempty(captured(redirect_stdout,
+        () -> redirect_stderr(devnull) do
+            fisher_wright(10, 120, chr, 1.0; verbose=true)
+        end))
+    log = captured(redirect_stderr,
+        () -> fisher_wright(10, 120, chr, 1.0; verbose=true, progress_interval=50,
+                            result=true))
+    # Non-TTY stderr: one line per report at g = 50, 100 and the final g = 120.
+    @test count("Generation", log) == 3
+    @test occursin("Generation 120 / 120", log)
+    @test occursin("substitutions", log)
+    @test occursin("ETA", log)
+    @test_throws ArgumentError fisher_wright(10, 5, chr, 1.0; progress_interval=0)
 end
 
 @testset "Dense export boundary" begin

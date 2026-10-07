@@ -55,7 +55,8 @@ Keyword arguments:
 | `mut_base` | `1e8` | base pairs per unit of `mr` (mutation only) |
 | `result` | `false` | return a `FisherWrightResult` and extract fixed positions |
 | `fixation_interval` | `1` | generations between fixation scans, when `result = true` |
-| `verbose` | `false` | print a progress line every 100 generations |
+| `verbose` | `false` | report progress (mean muts/hap, substitutions, elapsed, ETA) to `stderr` |
+| `progress_interval` | `100` | generations between progress reports, when `verbose = true` |
 
 Every haplotype is a sorted vector of unique `UInt32` positions, and that
 invariant holds for the returned population.

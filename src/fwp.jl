@@ -1,5 +1,35 @@
 _mean_length(v) = isempty(v) ? 0.0 : sum(length, v) / length(v)
 
+function _fmt_seconds(t::Real)
+    s = round(Int, t)
+    h, s = divrem(s, 3600)
+    m, s = divrem(s, 60)
+    return h > 0 ? string(h, "h", lpad(m, 2, '0'), "m") :
+           m > 0 ? string(m, "m", lpad(s, 2, '0'), "s") : string(s, "s")
+end
+
+# One progress line on stderr. On a terminal the line is redrawn in place;
+# otherwise (log files, batch jobs) each report goes on its own line.
+function _report_progress(io::IO, g, nt, t0, prt, nsub, result::Bool)
+    elapsed = time() - t0
+    eta = elapsed / g * (nt - g)
+    msg = string(
+        "Generation ", g, " / ", nt,
+        " | mean muts/hap: ", round(_mean_length(prt); digits=2),
+        result ? string(" | substitutions: ", nsub) : "",
+        " | elapsed: ", _fmt_seconds(elapsed),
+        " | ETA: ", _fmt_seconds(eta),
+    )
+    if io isa Base.TTY
+        print(io, "\r\e[K", msg)
+        g == nt && println(io)
+    else
+        println(io, msg)
+    end
+    flush(io)
+    return nothing
+end
+
 """
     fisher_wright(
         ne::Integer,
@@ -11,6 +41,7 @@ _mean_length(v) = isempty(v) ? 0.0 : sum(length, v) / length(v)
         result::Bool = false,
         fixation_interval::Int = 1,
         verbose::Bool = false,
+        progress_interval::Integer = 100,
     ) -> Tuple{Vector{Vector{UInt32}}, Vector{UInt32}} | FisherWrightResult
 
 Simulate a diploid Fisher-Wright population of size `ne` over `nt` generations under
@@ -32,7 +63,8 @@ total genome lengths up to ``2^{32} \\approx 4.29 \\times 10^9`` base pairs (bp)
   - If `false` (default), returns `(prt, cbp)` where `prt` is the vector of `2 * ne` haplotypes and `cbp` is cumulative chromosome end coordinates. Fixed mutations remain in all haplotypes.
   - If `true`, returns a [`FisherWrightResult`](@ref), periodically extracting and tracking fixed substitutions to save memory and runtime.
 - `fixation_interval::Int = 1`: Frequency (in generations) to scan for and extract fixed substitutions when `result = true`.
-- `verbose::Bool = false`: If `true`, displays simulation progress every 100 generations. Default is `false`.
+- `verbose::Bool = false`: If `true`, writes a start banner and a progress line to `stderr` every `progress_interval` generations and at the last generation, reporting mean mutations per haplotype, accumulated substitutions (when `result = true`), elapsed wall time, and a linear ETA. On a terminal the line is updated in place; when `stderr` is redirected each report is a separate line.
+- `progress_interval::Integer = 100`: Generations between progress reports when `verbose = true` (must be positive).
 
 # Returns
 - When `result = false`:
@@ -69,12 +101,14 @@ function fisher_wright(
     result::Bool=false,
     fixation_interval::Int=1,
     verbose::Bool=false,
+    progress_interval::Integer=100,
 ) where {T1<:Integer,T2<:Integer,T3<:Integer}
     if !(ne > 1 && nt > 0 && all(chr .> 0) && 0.01 < mr < 20.0)
         throw(ArgumentError("Invalid parameter(s)"))
     end
     fixation_interval > 0 || throw(ArgumentError("fixation_interval must be positive"))
     mut_base > 0 || throw(ArgumentError("mut_base must be positive"))
+    progress_interval > 0 || throw(ArgumentError("progress_interval must be positive"))
 
     tg = sum(chr)
     tg < 2^32 || error("Total genome length must be < 2^32 bp for UInt32 storage")
@@ -101,17 +135,10 @@ function fisher_wright(
 
     verbose &&
         @info "Fisher-Wright population simulation start" ne nt total_bp = Int(tg) threads =
-            Threads.nthreads()
+            Threads.nthreads() progress_interval
+    t0 = time()
 
     for g = 1:nt
-        if verbose && g % 100 == 0
-            print(
-                '\r',
-                ' '^8,
-                "Generation $g / $nt, mean muts/haps: ",
-                round(_mean_length(prt); digits=2),
-            )
-        end
         random_mate!(pm, sex, sires, dams)
 
         Threads.@threads for i = 1:ne
@@ -144,8 +171,10 @@ function fisher_wright(
         if result && (g % fixation_interval == 0 || g == nt)
             substitutions = _fixation_step!(prt, substitutions)
         end
+        if verbose && (g % progress_interval == 0 || g == nt)
+            _report_progress(stderr, g, nt, t0, prt, length(substitutions), result)
+        end
     end
-    verbose && println()
     return result ? FisherWrightResult(prt, cbp, substitutions) : (prt, cbp)
 end
 
@@ -159,6 +188,7 @@ end
         result::Bool = false,
         fixation_interval::Int = 1,
         verbose::Bool = false,
+        progress_interval::Integer = 100,
     ) -> Tuple{Vector{Vector{UInt32}}, Vector{UInt32}} | FisherWrightResult
 
 Simulate a diploid Fisher-Wright population using species parameters from a
@@ -180,7 +210,8 @@ are automatically extracted from `sp`:
 - `mut_base = 1e8`: Base pairs per unit of `mr`.
 - `result::Bool = false`: If `true`, returns a [`FisherWrightResult`](@ref); otherwise returns `(prt, cbp)`.
 - `fixation_interval::Int = 1`: Interval (in generations) to scan for and extract fixed substitutions when `result = true`.
-- `verbose::Bool = false`: If `true`, prints progress every 100 generations.
+- `verbose::Bool = false`: If `true`, reports progress to `stderr`; see the method above.
+- `progress_interval::Integer = 100`: Generations between progress reports when `verbose = true`.
 
 # Examples
 ```julia
@@ -200,6 +231,7 @@ function fisher_wright(
     result::Bool = false,
     fixation_interval::Int = 1,
     verbose::Bool = false,
+    progress_interval::Integer = 100,
 )
     return fisher_wright(
         Int(sp.nid),
@@ -211,5 +243,6 @@ function fisher_wright(
         result = result,
         fixation_interval = fixation_interval,
         verbose = verbose,
+        progress_interval = progress_interval,
     )
 end
