@@ -35,10 +35,11 @@ Starting from monomorphic genomes, the simulation runs for a specified
 number of generations, optionally moves fixed mutations out of the
 active haplotypes, and exports segregating variants. Output formats
 include a bit-packed `BitMatrix` with a linkage map, subsampled SNP-chip
-panels, and native `BnGStructs.jl` haplotype containers designed for
-downstream breeding simulations. `FisherWright.jl` is implemented in
-pure Julia [@bezanson2017julia], MIT-licensed, and available through the
-Julia General Registry.
+panels, and native
+[`BnGStructs.jl`](https://github.com/JuliaBnG/BnGStructs.jl) haplotype
+containers designed for downstream breeding simulations.
+`FisherWright.jl` is implemented in pure Julia [@bezanson2017julia],
+MIT-licensed, and available through the Julia General Registry.
 
 # Statement of need
 
@@ -86,9 +87,16 @@ three reasons. First, the `JuliaBnG` packages needed a founder generator
 without non-Julia dependencies that produces the `BnGStructs.jl`
 haplotype type used throughout the pipeline. Second, it needed to be
 small enough to validate thoroughly against population-genetic theory.
-Third, it was refactored from the author's livestock breeding simulator
-`xyBnG.jl` [@yu2026xybng], which is not publicly available, so that the
-founder step could be released, tested, and cited independently.
+Third, its core algorithm originated on 5 December 2010 as a standalone
+C++ Wright–Fisher simulator
+([`pgsnp.cpp`](https://github.com/xijiang/pop-simulation/blob/f5f71cac6a7f161ae1859e8334c381339d3ecd21/src/pgsnp.cpp)
+in `pop-simulation`), which already represented haplotypes as sorted
+mutation coordinates, spliced parental strands across sorted crossover
+breakpoints, and periodically combed out fixed alleles. That code was
+later ported to Julia inside the author's livestock breeding simulator
+`xyBnG.jl` [@yu2026xybng], which is not publicly available, and then
+extracted into `FisherWright.jl` so that the founder step could be
+released, tested, and cited independently.
 
 # Software design
 
@@ -150,9 +158,10 @@ replicates. All 24 checks passed in each of two independent runs (seeds
 A lightweight statistical suite runs in continuous integration for every
 commit. It passes for five seeds and fails when the simulated $N$ is
 halved, the recombination rate is doubled, or an earlier bug in
-final-generation mutation retention (fixed in v0.3.5) is reintroduced.
-The online documentation includes the complete validation scripts, raw
-output logs, and a comparison with release v0.1.6.
+final-generation mutation retention (inherited from the 2010 C++ loop
+and fixed in v0.3.5) is reintroduced. The online documentation includes
+the complete validation scripts, raw output logs, and a comparison with
+release v0.1.6.
 
 # Research impact statement
 

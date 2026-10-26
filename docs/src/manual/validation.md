@@ -31,7 +31,7 @@ source checkout as shown in [When to rerun](@ref).
 
 ## Summary
 
-| Check | Reference | Result (v0.3.6) |
+| Check | Reference | Result (v0.3.8) |
 |---|---|---|
 | Crossovers per meiosis | Poisson(L/M) per chromosome; 0.5 switch between chromosomes | Mean, variance/mean and switch probability match (\|z\| ≤ 1.8) |
 | Segregating sites S | Watterson's θ·aₙ; msprime | S/θaₙ = 1.006 (msprime 1.010) |
@@ -313,7 +313,9 @@ Markdown.MD(Markdown.Code("bash", read(joinpath(pkgdir(FisherWright), "docs", "s
 
 - **Diversity deficit (fixed in v0.3.5).** A comparison with θ·aₙ and msprime
   showed about 8% fewer segregating sites, while Σ2pq was unaffected. The
-  generation loop mutated parents and then reproduced, so the returned
+  generation loop—inherited from the original C++ implementation
+  ([`pgsnp.cpp`](https://github.com/xijiang/pop-simulation/blob/f5f71cac6a7f161ae1859e8334c381339d3ecd21/src/pgsnp.cpp),
+  5 December 2010)—mutated parents and then reproduced, so the returned
   population had gone through one round of reproduction since its last
   mutations. Expected loss: ``\theta \sum_k e^{-k}/k \approx 0.46\theta``, which
   matched the observed deficit. The loop now mates first and mutates the

@@ -49,6 +49,7 @@ Pages = [
     "manual/simulation.md",
     "manual/results.md",
     "manual/utilities.md",
+    "manual/validation.md",
     "api.md",
 ]
 Depth = 2
