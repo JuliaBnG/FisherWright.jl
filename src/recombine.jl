@@ -169,7 +169,10 @@ emptying `dest` first and returning it.
 
 # Details
 - Within each interval of `map`, the number of crossover events is drawn from a Poisson distribution
-  with the interval's rate, and coordinates are distributed uniformly at random.
+  with the interval's rate, and coordinates are distributed uniformly at random over the gaps the
+  interval owns. A breakpoint `c` switches parent between positions `c - 1` and `c`, so an interval
+  ending at `e` owns gaps `p+1:e`, where `p` is the previous interval end on the same chromosome, or
+  the chromosome's first position for the first interval. A one-bp chromosome has no gaps.
 - Each chromosome boundary (`map.cbp[i]`) is added as a crossover breakpoint with probability 0.5,
   simulating independent chromosome assortment during meiosis.
 - Reusing `dest` across successive meioses eliminates allocations.
@@ -186,12 +189,13 @@ function cobp!(
         ends = map.interval_ends[i]
         samplers = map.samplers[i]
         for j in eachindex(ends)
-            interval_start = j == 1 ? chrom_start : ends[j-1] + UInt32(1)
+            # Gaps p+1:e; gap chrom_start is the assortment breakpoint, not a crossover.
+            p = j == 1 ? chrom_start : ends[j-1]
             interval_end = ends[j]
             nr = rand(rng, samplers[j])
-            if nr > 0 && interval_start < interval_end
+            if nr > 0 && p < interval_end
                 base = length(dest)
-                span = interval_start:(interval_end-UInt32(1))
+                span = (p+UInt32(1)):interval_end
                 for _ = 1:nr
                     push!(dest, rand(rng, span))
                 end

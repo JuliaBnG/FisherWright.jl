@@ -141,20 +141,30 @@ end
     end
 
     # Every crossover must fall in an in-chromosome gap or be an assortment
-    # point. Currently the span is s:e-1 instead of s+1:e, so a crossover can
-    # land on the chromosome start (duplicating or forging the assortment
-    # breakpoint) and the gap before the last bp of each interval is never hit.
-    @check db=false rng=prop_rng() broken=true function cobp_breakpoints_are_valid_gaps(
+    # point (regression: the span was s:e-1 instead of s+1:e).
+    @check db=false rng=prop_rng() function cobp_breakpoints_are_valid_gaps(
         lengths=chr_lengths, seed=Data.Integers{UInt64}())
         rmap = map_from(lengths, seed)
         co = cobp!(UInt32[], rmap; rng=Xoshiro(seed))
         all(c -> valid_breakpoint(c, rmap.cbp), co)
     end
 
-    # Consequence: on a 2 bp chromosome the two sites never recombine.
+    # Every gap is reachable, including the one before the last bp of each
+    # interval: a 2 bp chromosome recombines; a 1 bp chromosome has no gaps.
     two = RecombinationMap(UInt32[2], [UInt32[2]], [[100.0]])
     rng = Xoshiro(1)
-    @test_broken any(_ -> UInt32(2) in cobp!(UInt32[], two; rng=rng), 1:200)
+    @test all(1:200) do _
+        co = cobp!(UInt32[], two; rng=rng)
+        !isempty(co) && all(==(UInt32(2)), co)
+    end
+    one = RecombinationMap(UInt32[1, 3], [UInt32[1], UInt32[3]], [[100.0], [100.0]])
+    @test all(_ -> all(c -> c in UInt32[2, 3], cobp!(UInt32[], one; rng=rng)), 1:200)
+    multi = RecombinationMap(UInt32[6], [UInt32[2, 4, 6]], [[50.0, 50.0, 50.0]])
+    seen = Set{UInt32}()
+    for _ = 1:200
+        union!(seen, cobp!(UInt32[], multi; rng=rng))
+    end
+    @test seen == Set(UInt32(2):UInt32(6))
 
     # Constructor must reject non-increasing chromosome ends, including the
     # case where prev_end + 1 would wrap at typemax(UInt32).
@@ -198,21 +208,34 @@ end
             isempty(_fixed_mutations(H))
     end
 
-    # With result = true a fixed site is dropped from the active haplotypes;
-    # a later recurrent mutation there re-enters as a segregating site, while
-    # with result = false the same event is a no-op. The two modes then report
-    # different polymorphic loci for the same population state.
-    Random.seed!(1)
-    res = fisher_wright(10, 300, [200, 200], 15.0; mut_base=1e3, result=true)
-    @test_broken all(h -> isempty(intersect(h, res.substitutions)), res.active_haplotypes)
+    # A recurrent mutation at a substituted site is a no-op in both return
+    # modes (regression: with result = true it re-entered as segregating).
+    # Saturated toy genome, so such hits are frequent.
+    res = fisher_wright(10, 300, [200, 200], 15.0; mut_base=1e3, result=true, rng=Xoshiro(1))
+    @test length(res.substitutions) > 100
+    @test all(h -> isempty(intersect(h, res.substitutions)), res.active_haplotypes)
+    a, _ = fisher_wright(10, 300, [200, 200], 15.0; mut_base=1e3, rng=Xoshiro(1))
+    @test _with_fixed(res) == a
 
-    # Same seed, same thread count: result = true should be the same realization
-    # as result = false. The extra Threads.@threads in the fixation scan changes
-    # the task-RNG seeds of every later generation, so they diverge.
+    # Same rng state gives the same realization: across return modes, across
+    # repeated calls (the first call in a session used to differ), and with a
+    # fixation scan every generation or only at the end.
+    args = (10, 100, [1_000_000, 1_000_000], 10.0)
     Random.seed!(7)
-    a, _ = fisher_wright(10, 100, [1_000_000, 1_000_000], 10.0)
+    a, _ = fisher_wright(args...)
     Random.seed!(7)
-    r = fisher_wright(10, 100, [1_000_000, 1_000_000], 10.0; result=true)
-    @test !isempty(r.substitutions)  # the comparison below is not vacuous
-    @test_broken _with_fixed(r) == a
+    r = fisher_wright(args...; result=true)
+    @test !isempty(r.substitutions)  # the comparisons below are not vacuous
+    @test _with_fixed(r) == a
+    @test _with_fixed(fisher_wright(args...; result=true, fixation_interval=7, rng=Xoshiro(3))) ==
+          fisher_wright(args...; rng=Xoshiro(3))[1]
+    Random.seed!(7)
+    @test fisher_wright(args...)[1] == a
+
+    # ... and does not depend on the thread count.
+    other = Threads.nthreads() == 1 ? 3 : 1
+    code = "using FisherWright, Random; " *
+           "print(hash(fisher_wright($(args[1]), $(args[2]), $(args[3]), $(args[4]); rng=Xoshiro(11))[1]))"
+    cmd = `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active_project()) -t $other -e $code`
+    @test parse(UInt, read(cmd, String)) == hash(fisher_wright(args...; rng=Xoshiro(11))[1])
 end

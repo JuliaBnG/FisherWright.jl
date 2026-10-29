@@ -95,6 +95,26 @@ function _remove_sorted!(hap::Vector{UInt32}, rm::AbstractVector{UInt32})
 end
 
 """
+    _drop_present!(v::Vector{UInt32}, set::AbstractVector{UInt32}) -> Vector{UInt32}
+
+Delete from `v` in place every element also present in the sorted vector `set`, and return `v`.
+Uses binary search per element, ``O(|v| \\log |set|)``, for a short `v` probed against a long `set`.
+"""
+function _drop_present!(v::Vector{UInt32}, set::AbstractVector{UInt32})
+    isempty(set) && return v
+    n = length(set)
+    w = 0
+    @inbounds for x in v
+        k = searchsortedfirst(set, x)
+        (k <= n && set[k] == x) && continue
+        w += 1
+        v[w] = x
+    end
+    resize!(v, w)
+    return v
+end
+
+"""
     _fixed_mutations(haplotypes::Vector{Vector{UInt32}}) -> Vector{UInt32}
 
 Identify and return sorted mutation positions carried by every haplotype in `haplotypes`.
