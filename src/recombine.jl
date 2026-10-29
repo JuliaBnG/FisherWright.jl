@@ -15,6 +15,7 @@ to maximize performance in meiosis loops ([`cobp!`](@ref)).
 
 # Invariants
 - The outer lengths of `cbp`, `interval_ends`, and `interval_rates` must match the number of chromosomes.
+- `cbp` must be strictly increasing and positive.
 - Within each chromosome, `interval_ends[i]` and `interval_rates[i]` must have the same non-zero length.
 - `interval_ends` must be strictly increasing and terminate at `cbp[i]`.
 - `interval_rates` must be non-negative.
@@ -39,6 +40,8 @@ struct RecombinationMap
         for i in eachindex(cbp)
             ends = interval_ends[i]
             rates = interval_rates[i]
+            cbp[i] > prev_chr_end ||
+                throw(ArgumentError("chromosome ends must be strictly increasing and positive"))
             length(ends) == length(rates) ||
                 throw(ArgumentError("interval ends and rates mismatch on chromosome $i"))
             isempty(ends) && throw(ArgumentError("chromosome $i has no intervals"))

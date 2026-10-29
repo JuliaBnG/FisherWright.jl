@@ -139,7 +139,9 @@ function fisher_wright(
     t0 = time()
 
     for g = 1:nt
-        random_mate!(pm, sex, sires, dams)
+        # Conditioning on both sexes being present is exact rejection sampling;
+        # P(one sex only) = 2^(1-ne), so a fixed retry cap fails for small ne.
+        random_mate!(pm, sex, sires, dams; max_tries=typemax(Int))
 
         Threads.@threads for i = 1:ne
             s = pm[i, 1]

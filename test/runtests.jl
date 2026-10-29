@@ -91,7 +91,7 @@ end
 
     manual = FisherWrightResult(
         [UInt32[1, 3], UInt32[2], UInt32[], UInt32[1, 2, 3]],
-        UInt32[3],
+        UInt32[5],
         UInt32[5],
     )
     hap, loci = to_haplotype(manual)
@@ -109,7 +109,7 @@ end
 @testset "Fixed mutation extraction" begin
     source = FisherWrightResult(
         [UInt32[1, 2, 5], UInt32[2, 5], UInt32[2, 5, 7], UInt32[2, 5]],
-        UInt32[10],
+        UInt32[11],
         UInt32[11],
     )
 
@@ -663,3 +663,5 @@ end
 end
 
 # END population genetics validation
+
+include("properties.jl")
