@@ -13,6 +13,16 @@ using FisherWright: _fixed_mutations, _with_fixed, _intersect_sorted!
 const PROP_RNG_SEED = 20261029
 prop_rng() = Xoshiro(PROP_RNG_SEED)
 
+# Supposition 0.3 counts a failing @check in the enclosing testset only on
+# Julia >= 1.11; on 1.10 it prints the counterexample and the testset still
+# passes. Checks therefore run with record=false and their outcome is asserted.
+function prop_passed(report)
+    res = something(report.result)
+    res isa Supposition.Pass && return true
+    @error "Property $(report.description) failed" result = res
+    return false
+end
+
 # --- Generators --------------------------------------------------------------
 
 sorted_vec(maxpos, maxlen) =
@@ -49,29 +59,29 @@ ref_dense(muts, pos) = BitMatrix([p in h for p in pos, h in muts])
 @testset "Properties: sorted-set kernels" begin
     # Docstring allows non-decreasing inputs (duplicates); existing tests only
     # use unique inputs.
-    @check db=false rng=prop_rng() function merge_is_sorted_union(
+    @test prop_passed(@check db=false record=false rng=prop_rng() function merge_is_sorted_union(
         a=sorted_vec(80, 30), b=sorted_vec(80, 30))
         merge_sorted(a, b) == sort!(union(a, b))
-    end
-    @check db=false rng=prop_rng() function merge_reuses_dirty_buffer(
+    end)
+    @test prop_passed(@check db=false record=false rng=prop_rng() function merge_reuses_dirty_buffer(
         a=sorted_vec(80, 30), b=sorted_vec(80, 30), junk=sorted_vec(80, 50))
         dest = copy(junk)
         merge_sorted!(dest, a, b) === dest && dest == sort!(union(a, b))
-    end
+    end)
     # Both branches (binary probe when 8m < n, linear merge otherwise).
-    @check db=false rng=prop_rng() function intersect_is_set_intersection(
+    @test prop_passed(@check db=false record=false rng=prop_rng() function intersect_is_set_intersection(
         a=sorted_unique_vec(300, 10), b=sorted_unique_vec(300, 200))
         d = UInt32[]
         _intersect_sorted!(d, a, b) == sort!(intersect(a, b)) &&
             _intersect_sorted!(d, b, a) == sort!(intersect(a, b))
-    end
+    end)
 end
 
 # --- Fixation bookkeeping ----------------------------------------------------
 
 @testset "Properties: fixation bookkeeping" begin
     # Removing fixed sites and merging them back must be lossless.
-    @check db=false rng=prop_rng() function fixation_roundtrip(
+    @test prop_passed(@check db=false record=false rng=prop_rng() function fixation_roundtrip(
         haps=haplotypes(60, 15, 8), common=sorted_unique_vec(60, 5))
         haps = [merge_sorted(h, common) for h in haps]
         fixed = reduce(intersect, haps)
@@ -83,7 +93,7 @@ end
             all(h -> isempty(intersect(h, subs)), cleaned) &&
             isempty(_fixed_mutations(cleaned)) &&
             _with_fixed(FisherWrightResult(cleaned, UInt32[60], subs)) == haps
-    end
+    end)
 end
 
 # --- Dense export ------------------------------------------------------------
@@ -91,7 +101,7 @@ end
 @testset "Properties: dense export" begin
     cbp = UInt32[100, 200, 300]
     # Sizes reach the threaded atomic-bit path (nlc >= 64, nhp >= 16).
-    @check db=false rng=prop_rng() max_examples=300 function muts2bitarray_matches_reference(
+    @test prop_passed(@check db=false record=false rng=prop_rng() max_examples=300 function muts2bitarray_matches_reference(
         muts=haplotypes(300, 30, 40))
         pos = sort!(unique!(reduce(vcat, muts; init=UInt32[])))
         xy, lmp = muts2bitarray(muts, cbp; include_fixed=true)
@@ -104,11 +114,11 @@ end
             lmp.frq == Float32.(cnt) ./ length(muts) &&
             all(lmp.ref .!= lmp.alt) &&
             xyp == ref[poly, :] && lmpp.pos == pos[poly]
-    end
-    @check db=false rng=prop_rng() max_examples=300 function chip_matches_reference(
+    end)
+    @test prop_passed(@check db=false record=false rng=prop_rng() max_examples=300 function chip_matches_reference(
         muts=haplotypes(300, 30, 40), chip=sorted_unique_vec(300, 80))
         extract_chip_bitarray(muts, chip) == ref_dense(muts, chip)
-    end
+    end)
 
     # chr::Int8 is the 1-based chromosome index from cbp: more than 127
     # chromosomes, or positions past the genome end, have no valid index.
@@ -133,21 +143,21 @@ function valid_breakpoint(c, cbp)
 end
 
 @testset "Properties: crossover sampling" begin
-    @check db=false rng=prop_rng() function cobp_sorted_within_genome(
+    @test prop_passed(@check db=false record=false rng=prop_rng() function cobp_sorted_within_genome(
         lengths=chr_lengths, seed=Data.Integers{UInt64}())
         rmap = map_from(lengths, seed)
         co = cobp!(UInt32[], rmap; rng=Xoshiro(seed))
         issorted(co) && all(c -> 1 <= c <= rmap.cbp[end], co)
-    end
+    end)
 
     # Every crossover must fall in an in-chromosome gap or be an assortment
     # point (regression: the span was s:e-1 instead of s+1:e).
-    @check db=false rng=prop_rng() function cobp_breakpoints_are_valid_gaps(
+    @test prop_passed(@check db=false record=false rng=prop_rng() function cobp_breakpoints_are_valid_gaps(
         lengths=chr_lengths, seed=Data.Integers{UInt64}())
         rmap = map_from(lengths, seed)
         co = cobp!(UInt32[], rmap; rng=Xoshiro(seed))
         all(c -> valid_breakpoint(c, rmap.cbp), co)
-    end
+    end)
 
     # Every gap is reachable, including the one before the last bp of each
     # interval: a 2 bp chromosome recombines; a 1 bp chromosome has no gaps.
@@ -178,11 +188,11 @@ end
 # --- Mating ------------------------------------------------------------------
 
 @testset "Properties: random mating" begin
-    @check db=false rng=prop_rng() function mates_have_correct_sex(
+    @test prop_passed(@check db=false record=false rng=prop_rng() function mates_have_correct_sex(
         n1=Data.Integers(2, 30), n2=Data.Integers(1, 30), seed=Data.Integers{UInt64}())
         pm, sex = random_mate(n1, n2; rng=Xoshiro(seed), max_tries=1_000)
         all(i -> sex[i], pm[:, 1]) && all(i -> !sex[i], pm[:, 2])
-    end
+    end)
 
     # fisher_wright accepts ne = 2, where one sex only has probability 1/2 per
     # draw; a 10-try cap used to throw about once per 1024 generations.
@@ -194,7 +204,7 @@ end
 # --- Whole simulation --------------------------------------------------------
 
 @testset "Properties: simulation output invariants" begin
-    @check db=false rng=prop_rng() max_examples=40 function simulation_invariants(
+    @test prop_passed(@check db=false record=false rng=prop_rng() max_examples=40 function simulation_invariants(
         ne=Data.Integers(2, 12), nt=Data.Integers(1, 40),
         lengths=Data.Vectors(Data.Integers(1, 500); min_size=1, max_size=3),
         seed=Data.Integers{UInt64}())
@@ -206,7 +216,7 @@ end
             all(h -> issorted(h) && allunique(h) && all(p -> 1 <= p <= G, h), H) &&
             issorted(res.substitutions) && allunique(res.substitutions) &&
             isempty(_fixed_mutations(H))
-    end
+    end)
 
     # A recurrent mutation at a substituted site is a no-op in both return
     # modes (regression: with result = true it re-entered as segregating).

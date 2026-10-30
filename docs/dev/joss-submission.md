@@ -1,6 +1,6 @@
 # JOSS submission checklist
 
-Status as of 2026-10-07 (v0.3.8).
+Status as of 2026-10-30 (v0.4.0 release candidate).
 
 ## 1. Before submitting
 
@@ -26,7 +26,7 @@ Status as of 2026-10-07 (v0.3.8).
         and community guidelines (how to report issues and get support);
         link `CONTRIBUTING.md` from the README;
   - [ ] optional: `CITATION.cff`, code of conduct.
-- [ ] Tag a release (v0.3.10 or later) that contains the paper.
+- [ ] Tag the v0.4.0 release that contains the paper.
 
 ## 2. Submit
 

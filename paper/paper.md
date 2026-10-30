@@ -16,7 +16,7 @@ affiliations:
   - name: Department of Animal and Aquacultural Sciences, Faculty of Biosciences, Norwegian University of Life Sciences (NMBU), Ås, Norway
     index: 1
     ror: 04a1mvv97
-date: 7 October 2026
+date: 30 October 2026
 bibliography: paper.bib
 ---
 
@@ -114,8 +114,12 @@ preallocated buffer (`merge_sorted!`). These kernels and the crossover
 sampler (`cobp!`) write to preallocated thread-local buffers; regression
 tests verify that they perform no heap allocations after warm-up. Within
 each generation, meioses and mutation draws run in parallel using
-`Threads.@threads`; results are reproducible for a fixed random seed and
-thread count.
+`Threads.@threads`. The simulation accepts an explicit random-number generator
+and seeds one `Xoshiro` stream per work slot before entering the threaded
+loops; mating is sampled serially from the supplied generator. Consequently, a
+realization is reproducible from the generator state independently of thread
+count, fixation-extraction interval, and whether fixed substitutions are
+returned separately.
 
 Under neutrality, fixed derived alleles accumulate at the substitution
 rate $\mu L$ per generation across $L$ sites and, if retained,
@@ -137,7 +141,7 @@ panels without instantiating intermediate whole-genome arrays.
 
 # Validation
 
-The validation suite compares `FisherWright.jl` (v0.3.8) with
+The validation suite compares `FisherWright.jl` (v0.4.0) with
 analytical neutral expectations and matched simulations from `msprime`'s
 discrete-time Wright–Fisher (DTWF) model. The validation setting models
 $N = 100$ individuals across 10 chromosomes of 10 Mb each ($L = 100$
