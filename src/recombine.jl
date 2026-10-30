@@ -15,6 +15,7 @@ to maximize performance in meiosis loops ([`cobp!`](@ref)).
 
 # Invariants
 - The outer lengths of `cbp`, `interval_ends`, and `interval_rates` must match the number of chromosomes.
+- `cbp` must be strictly increasing and positive.
 - Within each chromosome, `interval_ends[i]` and `interval_rates[i]` must have the same non-zero length.
 - `interval_ends` must be strictly increasing and terminate at `cbp[i]`.
 - `interval_rates` must be non-negative.
@@ -39,6 +40,8 @@ struct RecombinationMap
         for i in eachindex(cbp)
             ends = interval_ends[i]
             rates = interval_rates[i]
+            cbp[i] > prev_chr_end ||
+                throw(ArgumentError("chromosome ends must be strictly increasing and positive"))
             length(ends) == length(rates) ||
                 throw(ArgumentError("interval ends and rates mismatch on chromosome $i"))
             isempty(ends) && throw(ArgumentError("chromosome $i has no intervals"))
@@ -166,7 +169,10 @@ emptying `dest` first and returning it.
 
 # Details
 - Within each interval of `map`, the number of crossover events is drawn from a Poisson distribution
-  with the interval's rate, and coordinates are distributed uniformly at random.
+  with the interval's rate, and coordinates are distributed uniformly at random over the gaps the
+  interval owns. A breakpoint `c` switches parent between positions `c - 1` and `c`, so an interval
+  ending at `e` owns gaps `p+1:e`, where `p` is the previous interval end on the same chromosome, or
+  the chromosome's first position for the first interval. A one-bp chromosome has no gaps.
 - Each chromosome boundary (`map.cbp[i]`) is added as a crossover breakpoint with probability 0.5,
   simulating independent chromosome assortment during meiosis.
 - Reusing `dest` across successive meioses eliminates allocations.
@@ -183,12 +189,13 @@ function cobp!(
         ends = map.interval_ends[i]
         samplers = map.samplers[i]
         for j in eachindex(ends)
-            interval_start = j == 1 ? chrom_start : ends[j-1] + UInt32(1)
+            # Gaps p+1:e; gap chrom_start is the assortment breakpoint, not a crossover.
+            p = j == 1 ? chrom_start : ends[j-1]
             interval_end = ends[j]
             nr = rand(rng, samplers[j])
-            if nr > 0 && interval_start < interval_end
+            if nr > 0 && p < interval_end
                 base = length(dest)
-                span = interval_start:(interval_end-UInt32(1))
+                span = (p+UInt32(1)):interval_end
                 for _ = 1:nr
                     push!(dest, rand(rng, span))
                 end

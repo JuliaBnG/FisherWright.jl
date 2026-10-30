@@ -45,6 +45,10 @@ matrix (`BitMatrix`) and an accompanying marker linkage map `DataFrame`.
   - `alt::Char`: Alternate nucleotide (sampled from the 3 nucleotides distinct from `ref`).
   - `frq::Float32`: Sample alternate allele frequency (`sum(xy, dims=2) / nhp`).
 
+# Errors
+- Throws an `ArgumentError` if `cbp` has more than 127 chromosomes (the `chr` column is `Int8`).
+- Throws an `ArgumentError` if any mutation position exceeds the genome end `cbp[end]`.
+
 # Details
 - Uses parallel two-pointer scanning / binary search across haplotypes, avoiding hash table overhead.
 - If no qualifying loci remain (e.g. all mutations were fixed and `include_fixed = false`), returns an empty `0 × nhp`
@@ -66,6 +70,8 @@ function muts2bitarray(
     flip::Bool=false,
     include_fixed::Bool=false,
 )
+    length(cbp) <= typemax(Int8) ||
+        throw(ArgumentError("at most $(typemax(Int8)) chromosomes are supported, got $(length(cbp))"))
     nhp = length(muts)
     # Collect all mutations once
     total = 0
@@ -96,6 +102,8 @@ function muts2bitarray(
     end
     resize!(all_mts, ulen)
     nlc = length(all_mts)
+    nlc > 0 && (isempty(cbp) || all_mts[end] > cbp[end]) &&
+        throw(ArgumentError("mutation position $(all_mts[end]) lies beyond the genome end"))
     # Early exit
     if nlc == 0
         return BitArray(undef, 0, nhp),

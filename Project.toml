@@ -2,7 +2,7 @@ name = "FisherWright"
 uuid = "a555c6d9-8fd4-4ecd-87f6-904b8d8d9cbe"
 keywords = ["population-genetics", "simulation", "fisher-wright", "mutation", "drift"]
 license = "MIT"
-version = "0.3.9"
+version = "0.3.10"
 authors = ["Xijiang Yu <xijiang@users.noreply.github.com>"]
 description = "Forward-time Wright-Fisher simulation of whole-genome sequence founder populations."
 docs = "https://juliabng.github.io/FisherWright/"
@@ -20,10 +20,12 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 BnGStructs = "0.2.5"
 DataFrames = "1"
 Distributions = "0.25"
+Supposition = "0.3"
 julia = "1.10"
 
 [extras]
+Supposition = "5a0628fe-1738-4658-9b6d-0b7605a9755b"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test"]
+test = ["Supposition", "Test"]

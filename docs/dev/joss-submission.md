@@ -26,7 +26,7 @@ Status as of 2026-10-07 (v0.3.8).
         and community guidelines (how to report issues and get support);
         link `CONTRIBUTING.md` from the README;
   - [ ] optional: `CITATION.cff`, code of conduct.
-- [ ] Tag a release (e.g. v0.3.9) that contains the paper.
+- [ ] Tag a release (v0.3.10 or later) that contains the paper.
 
 ## 2. Submit
 

@@ -42,6 +42,7 @@ end
         fixation_interval::Int = 1,
         verbose::Bool = false,
         progress_interval::Integer = 100,
+        rng::AbstractRNG = Random.default_rng(),
     ) -> Tuple{Vector{Vector{UInt32}}, Vector{UInt32}} | FisherWrightResult
 
 Simulate a diploid Fisher-Wright population of size `ne` over `nt` generations under
@@ -62,9 +63,11 @@ total genome lengths up to ``2^{32} \\approx 4.29 \\times 10^9`` base pairs (bp)
 - `result::Bool = false`:
   - If `false` (default), returns `(prt, cbp)` where `prt` is the vector of `2 * ne` haplotypes and `cbp` is cumulative chromosome end coordinates. Fixed mutations remain in all haplotypes.
   - If `true`, returns a [`FisherWrightResult`](@ref), periodically extracting and tracking fixed substitutions to save memory and runtime.
+    For the same `rng` state this is the same realization as `result = false`: `FisherWright._with_fixed(res)` equals `prt`.
 - `fixation_interval::Int = 1`: Frequency (in generations) to scan for and extract fixed substitutions when `result = true`.
 - `verbose::Bool = false`: If `true`, writes a start banner and a progress line to `stderr` every `progress_interval` generations and at the last generation, reporting mean mutations per haplotype, accumulated substitutions (when `result = true`), elapsed wall time, and a linear ETA. On a terminal the line is updated in place; when `stderr` is redirected each report is a separate line.
 - `progress_interval::Integer = 100`: Generations between progress reports when `verbose = true` (must be positive).
+- `rng::AbstractRNG = Random.default_rng()`: Random number generator; see *Reproducibility* below.
 
 # Returns
 - When `result = false`:
@@ -75,7 +78,8 @@ total genome lengths up to ``2^{32} \\approx 4.29 \\times 10^9`` base pairs (bp)
 
 # Details
 - **Recombination & Independent Assortment**: Recombination is modeled as a Poisson process along each chromosome with rate `chr[i] / M`. Independent assortment between chromosomes occurs with probability 0.5 at each chromosome boundary.
-- **Multithreading & Reproducibility**: Meiosis and mutation generation are parallelized using `Threads.@threads`. Because task scheduling depends on `Threads.nthreads()`, runs with a fixed seed are strictly reproducible only when the thread count is held constant.
+- **Mutation model**: Each haplotype receives `Poisson(sum(chr) / mut_base * mr)` new mutations per generation at uniformly drawn positions. A new mutation at a position the haplotype already carries, or at a substituted (fixed and removed) position when `result = true`, has no effect, so both return modes describe the same population.
+- **Multithreading & Reproducibility**: Meiosis and mutation generation are parallelized using `Threads.@threads`. Each meiosis/haplotype slot owns a `Xoshiro` stream seeded once from `rng` at the start, and mating is sampled serially from `rng`, so a run is determined by the state of `rng` alone, independent of `Threads.nthreads()` and task scheduling.
 - **Allocation Efficiency**: Working buffers (mutations, crossovers, mating assignments) are allocated once at start and reused, achieving zero steady-state per-generation allocations.
 
 # Examples
@@ -102,6 +106,7 @@ function fisher_wright(
     fixation_interval::Int=1,
     verbose::Bool=false,
     progress_interval::Integer=100,
+    rng::AbstractRNG=Random.default_rng(),
 ) where {T1<:Integer,T2<:Integer,T3<:Integer}
     if !(ne > 1 && nt > 0 && all(chr .> 0) && 0.01 < mr < 20.0)
         throw(ArgumentError("Invalid parameter(s)"))
@@ -132,6 +137,9 @@ function fisher_wright(
     pm = Matrix{Int}(undef, ne, 2)
     sex = Vector{Bool}(undef, ne)
     sires, dams = Int[], Int[]
+    # One stream per meiosis/haplotype slot, seeded serially from rng, so the
+    # realization does not depend on the thread count or task scheduling.
+    srng = [Xoshiro(rand(rng, UInt64)) for _ = 1:nh]
 
     verbose &&
         @info "Fisher-Wright population simulation start" ne nt total_bp = Int(tg) threads =
@@ -139,7 +147,9 @@ function fisher_wright(
     t0 = time()
 
     for g = 1:nt
-        random_mate!(pm, sex, sires, dams)
+        # Conditioning on both sexes being present is exact rejection sampling;
+        # P(one sex only) = 2^(1-ne), so a fixed retry cap fails for small ne.
+        random_mate!(pm, sex, sires, dams; rng=rng, max_tries=typemax(Int))
 
         Threads.@threads for i = 1:ne
             s = pm[i, 1]
@@ -147,25 +157,34 @@ function fisher_wright(
             # recombine empties its target, and cobp! its crossover buffer, so
             # both are safe to reuse across generations.
             co = cbuf[i]
-            recombine(prt[2s-1], prt[2s], off[2i-1], cobp!(co, recomb_map))
-            recombine(prt[2d-1], prt[2d], off[2i], cobp!(co, recomb_map))
+            r = srng[i]
+            recombine(prt[2s-1], prt[2s], off[2i-1], cobp!(co, recomb_map; rng=r); rng=r)
+            recombine(prt[2d-1], prt[2d], off[2i], cobp!(co, recomb_map; rng=r); rng=r)
         end
         prt, off = off, prt
 
         # Mutations (threaded)
-        Threads.@threads for i = 1:nh
-            nm = rand(p_mut)
-            if nm > 0
-                newm = nbuf[i]
-                resize!(newm, nm)
-                @inbounds for k = 1:nm
-                    newm[k] = rand(span)
+        let subs = substitutions
+            Threads.@threads for i = 1:nh
+                r = srng[i]
+                nm = rand(r, p_mut)
+                if nm > 0
+                    newm = nbuf[i]
+                    resize!(newm, nm)
+                    @inbounds for k = 1:nm
+                        newm[k] = rand(r, span)
+                    end
+                    nm <= 32 ? sort!(newm; alg=InsertionSort) : sort!(newm)
+                    # A substituted site is carried by every haplotype, so a new
+                    # mutation there is a no-op, as it is when result = false.
+                    _drop_present!(newm, subs)
+                    # Merge into the scratch buffer, then swap it in: no allocation
+                    # once both buffers have reached their steady-state size.
+                    if !isempty(newm)
+                        merge_sorted!(mbuf[i], prt[i], newm)
+                        prt[i], mbuf[i] = mbuf[i], prt[i]
+                    end
                 end
-                nm <= 32 ? sort!(newm; alg=InsertionSort) : sort!(newm)
-                # Merge into the scratch buffer, then swap it in: no allocation
-                # once both buffers have reached their steady-state size.
-                merge_sorted!(mbuf[i], prt[i], newm)
-                prt[i], mbuf[i] = mbuf[i], prt[i]
             end
         end
         if result && (g % fixation_interval == 0 || g == nt)
@@ -189,6 +208,7 @@ end
         fixation_interval::Int = 1,
         verbose::Bool = false,
         progress_interval::Integer = 100,
+        rng::AbstractRNG = Random.default_rng(),
     ) -> Tuple{Vector{Vector{UInt32}}, Vector{UInt32}} | FisherWrightResult
 
 Simulate a diploid Fisher-Wright population using species parameters from a
@@ -212,6 +232,7 @@ are automatically extracted from `sp`:
 - `fixation_interval::Int = 1`: Interval (in generations) to scan for and extract fixed substitutions when `result = true`.
 - `verbose::Bool = false`: If `true`, reports progress to `stderr`; see the method above.
 - `progress_interval::Integer = 100`: Generations between progress reports when `verbose = true`.
+- `rng::AbstractRNG = Random.default_rng()`: Random number generator; see the method above.
 
 # Examples
 ```julia
@@ -232,6 +253,7 @@ function fisher_wright(
     fixation_interval::Int = 1,
     verbose::Bool = false,
     progress_interval::Integer = 100,
+    rng::AbstractRNG = Random.default_rng(),
 )
     return fisher_wright(
         Int(sp.nid),
@@ -244,5 +266,6 @@ function fisher_wright(
         fixation_interval = fixation_interval,
         verbose = verbose,
         progress_interval = progress_interval,
+        rng = rng,
     )
 end
