@@ -665,3 +665,4 @@ end
 # END population genetics validation
 
 include("properties.jl")
+include("golden.jl")
