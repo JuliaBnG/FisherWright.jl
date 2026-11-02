@@ -8,7 +8,7 @@
 
 using Supposition, Supposition.Data
 using DataFrames: nrow
-using FisherWright: _fixed_mutations, _with_fixed, _intersect_sorted!
+using FisherWright: _fixed_mutations, _with_fixed, _intersect_sorted!, _recombine!
 
 const PROP_RNG_SEED = 20261029
 prop_rng() = Xoshiro(PROP_RNG_SEED)
@@ -143,6 +143,25 @@ function valid_breakpoint(c, cbp)
 end
 
 @testset "Properties: crossover sampling" begin
+    # One meiosis applied to two disjoint mutation streams of the same parents
+    # (one crossover list, one strand) equals the meiosis of their union, split
+    # afterwards: the contract the selected-site stream relies on.
+    @test prop_passed(@check db=false record=false rng=prop_rng() function recombine_streams_commute_with_union(
+        a₁=sorted_unique_vec(60, 8), a₂=sorted_unique_vec(60, 8),
+        b₁=sorted_unique_vec(60, 8), b₂=sorted_unique_vec(60, 8),
+        co=sorted_vec(61, 4), o=Data.Booleans())
+        # make the two streams disjoint: stream b lives on odd positions only
+        two, one = UInt32(2), UInt32(1)
+        a₁, a₂ = two .* a₁, two .* a₂
+        b₁, b₂ = two .* b₁ .- one, two .* b₂ .- one
+        u₁, u₂ = sort!(vcat(a₁, b₁)), sort!(vcat(a₂, b₂))
+        co2 = two .* co
+        oa = _recombine!(a₁, a₂, UInt32[], co2, o)
+        ob = _recombine!(b₁, b₂, UInt32[], co2, o)
+        ou = _recombine!(u₁, u₂, UInt32[], co2, o)
+        oa == filter(iseven, ou) && ob == filter(isodd, ou)
+    end)
+
     @test prop_passed(@check db=false record=false rng=prop_rng() function cobp_sorted_within_genome(
         lengths=chr_lengths, seed=Data.Integers{UInt64}())
         rmap = map_from(lengths, seed)
