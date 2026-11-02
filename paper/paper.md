@@ -114,12 +114,17 @@ preallocated buffer (`merge_sorted!`). These kernels and the crossover
 sampler (`cobp!`) write to preallocated thread-local buffers; regression
 tests verify that they perform no heap allocations after warm-up. Within
 each generation, meioses and mutation draws run in parallel using
-`Threads.@threads`. The simulation accepts an explicit random-number generator
-and seeds one `Xoshiro` stream per work slot before entering the threaded
-loops; mating is sampled serially from the supplied generator. Consequently, a
-realization is reproducible from the generator state independently of thread
-count, fixation-extraction interval, and whether fixed substitutions are
-returned separately.
+`Threads.@threads`. The simulation accepts an explicit random-number
+generator and seeds one `Xoshiro` stream per work slot before entering
+the threaded loops; mating is sampled serially from the supplied
+generator. Consequently, a realization is reproducible from the
+generator state independently of thread count, fixation-extraction
+interval, and whether fixed substitutions are returned separately. This
+guarantee holds within a fixed Julia version and package environment:
+variate algorithms can change between releases (for example, `randn`
+differs between Julia 1.10 and 1.13, which alters Poisson draws with
+mean $\geq 6$ in Distributions.jl), so the same seed can yield a
+different realization under another Julia version.
 
 Under neutrality, fixed derived alleles accumulate at the substitution
 rate $\mu L$ per generation across $L$ sites and, if retained,
