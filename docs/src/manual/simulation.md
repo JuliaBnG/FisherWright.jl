@@ -76,14 +76,20 @@ and `cobp!` are available for advanced internal workflows.
 
 ## Reproducibility
 
-Pass a seeded task-local random-number generator only to the utility functions
-that accept `rng`. `fisher_wright` uses threaded loops, so seeded simulation
-runs are reproducible only when the number of Julia threads is unchanged. Set
-the thread count explicitly when comparing simulations:
+Pass an explicit generator, for example `rng = Xoshiro(2026)`.
+`fisher_wright` seeds one stream per meiosis and haplotype slot from
+`rng` and samples mating serially from it, so a run depends only on the
+state of `rng`, not on the number of threads, the fixation interval, or
+the return mode.
 
-```bash
-julia -t 1 --project=. script.jl
-```
+This holds for a fixed Julia version and package environment. The
+realization also depends on the variate algorithms of Julia's `Random`
+and of Distributions.jl, which can change between releases. For example,
+`randn` differs between Julia 1.10 and 1.13, so Poisson draws with mean
+≥ 6 can differ; in most genome-scale runs that includes the number of
+new mutations per haplotype, and the same seed then gives a different
+population. Keep the Julia version and `Manifest.toml` with simulated
+data.
 
 ## Parameter limits
 

@@ -41,6 +41,7 @@ quickHap
 FisherWright.merge_sorted
 FisherWright.merge_sorted!
 FisherWright.recombine
+FisherWright._recombine!
 FisherWright.cobp
 FisherWright.cobp!
 FisherWright.random_mate

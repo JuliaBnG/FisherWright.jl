@@ -117,7 +117,8 @@ given a sorted list of `cross_overs`.
 - `rng::AbstractRNG = Random.default_rng()`: Random number generator used to select which parental haplotype begins the sequence.
 
 # Details
-- Randomly chooses the starting parent (`h₁` or `h₂`) with equal probability (0.5).
+- Randomly chooses the starting parent (`h₁` or `h₂`) with equal probability (0.5),
+  with one `rand(rng, Bool)` draw, then calls [`_recombine!`](@ref).
 - Swaps active parental templates at each coordinate in `cross_overs`.
 - A mutation coordinate exactly matching a crossover point belongs to the segment starting at that crossover.
 - Reuses `hₒ` in place without reallocation when previously sized, guaranteeing sorted and unique output.
@@ -132,12 +133,31 @@ function recombine(
     cross_overs::Vector{UInt32};
     rng::AbstractRNG = Random.default_rng(),
 )
+    return _recombine!(h₁, h₂, hₒ, cross_overs, rand(rng, Bool))
+end
+
+"""
+    _recombine!(h₁, h₂, hₒ, cross_overs, o::Bool) -> Vector{UInt32}
+
+Deterministic kernel of [`recombine`](@ref): write into `hₒ` the offspring
+haplotype that starts on `h₁` if `o` is `true` and on `h₂` otherwise, switching
+parent at each coordinate in `cross_overs`.
+
+Taking the starting strand as an argument lets one meiosis be applied to
+several mutation streams of the same haplotype pair (for example neutral and
+selected sites) with one crossover list and one strand draw.
+"""
+function _recombine!(
+    h₁::Vector{UInt32},
+    h₂::Vector{UInt32},
+    hₒ::Vector{UInt32},
+    cross_overs::Vector{UInt32},
+    o::Bool,
+)
     empty!(hₒ)
 
     m, n = length(h₁), length(h₂)
     i = j = 1
-    # Randomly select which haplotype to start with
-    o = rand(rng, Bool)
 
     @inbounds for co in cross_overs
         # First index at or beyond the crossover; the segment is [i, i₂-1].

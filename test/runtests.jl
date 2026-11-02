@@ -1,6 +1,6 @@
 using Test
 using Random
-using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_sorted, merge_sorted!, recombine,
+using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_sorted, merge_sorted!, recombine, _recombine!,
     cobp, cobp!, FisherWrightResult, to_haplotype, RecombinationMap,
     uniform_recombination_map, random_mate, random_mate!, _fixed_mutations,
     _drop_mutations, _drop_mutations!, _fixation_step, _fixation_step!, _extract_fixed,
@@ -49,6 +49,8 @@ end
     empty!(ho)
     recombine(h1, h2, ho, cbuf) # warm up
     @test @allocated(recombine(h1, h2, ho, cbuf)) == 0
+    _recombine!(h1, h2, ho, cbuf, true) # warm up
+    @test @allocated(_recombine!(h1, h2, ho, cbuf, true)) == 0
 
     muts = [UInt32(15), UInt32(30)]
     buf = zeros(UInt32, 2000)
@@ -235,6 +237,23 @@ end
     a = recombine(UInt32[1, 3], UInt32[2, 4], UInt32[], UInt32[2]; rng=MersenneTwister(1))
     b = recombine(UInt32[1, 3], UInt32[2, 4], UInt32[], UInt32[2]; rng=MersenneTwister(1))
     @test a == b
+
+    # The kernel with an explicit strand reproduces the reference phase exactly,
+    # and `recombine` is the kernel after exactly one `rand(rng, Bool)` draw,
+    # so the simulation's RNG draw order is unchanged by the split.
+    Random.seed!(20241)
+    for _ = 1:5_000
+        h₁ = sort(unique(rand(UInt32(1):UInt32(50), rand(0:6))))
+        h₂ = sort(unique(rand(UInt32(1):UInt32(50), rand(0:6))))
+        co = sort(unique(rand(UInt32(1):UInt32(50), rand(0:3))))
+        for o in (true, false)
+            @test _recombine!(h₁, h₂, out, co, o) == ref_recombine(h₁, h₂, co, o)
+        end
+        seed = rand(UInt64)
+        r₁, r₂ = Xoshiro(seed), Xoshiro(seed)
+        @test recombine(h₁, h₂, UInt32[], co; rng=r₁) == _recombine!(h₁, h₂, out, co, rand(r₂, Bool))
+        @test rand(r₁, UInt64) == rand(r₂, UInt64)
+    end
 end
 
 @testset "Flat-vector invariants" begin
@@ -665,3 +684,4 @@ end
 # END population genetics validation
 
 include("properties.jl")
+include("golden.jl")
