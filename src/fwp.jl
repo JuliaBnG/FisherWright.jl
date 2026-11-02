@@ -40,6 +40,7 @@ end
         mut_base = 1e8,
         result::Bool = false,
         fixation_interval::Int = 1,
+        mutate::Bool = true,
         verbose::Bool = false,
         progress_interval::Integer = 100,
         rng::AbstractRNG = Random.default_rng(),
@@ -65,6 +66,7 @@ total genome lengths up to ``2^{32} \\approx 4.29 \\times 10^9`` base pairs (bp)
   - If `true`, returns a [`FisherWrightResult`](@ref), periodically extracting and tracking fixed substitutions to save memory and runtime.
     For the same `rng` state this is the same realization as `result = false`: `FisherWright._with_fixed(res)` equals `prt`.
 - `fixation_interval::Int = 1`: Frequency (in generations) to scan for and extract fixed substitutions when `result = true`.
+- `mutate::Bool = true`: If `false`, no new mutations are generated: the population evolves by drift and recombination only, and `mr` and `mut_base` are not used (`mr` must still lie in its valid range). Mating is drawn from `rng` exactly as with `mutate = true`, but meiosis shares the per-slot streams with the skipped mutation draws, so for the same seed the two settings give different realizations. Intended for validation runs that start from a polymorphic population, for example heterozygosity decay ``H_t/H_0 = (1 - 1/(2N_e))^t``; until a starting population can be supplied, a run with `mutate = false` stays monomorphic.
 - `verbose::Bool = false`: If `true`, writes a start banner and a progress line to `stderr` every `progress_interval` generations and at the last generation, reporting mean mutations per haplotype, accumulated substitutions (when `result = true`), elapsed wall time, and a linear ETA. On a terminal the line is updated in place; when `stderr` is redirected each report is a separate line.
 - `progress_interval::Integer = 100`: Generations between progress reports when `verbose = true` (must be positive).
 - `rng::AbstractRNG = Random.default_rng()`: Random number generator; see *Reproducibility* below.
@@ -105,6 +107,7 @@ function fisher_wright(
     mut_base=1e8,
     result::Bool=false,
     fixation_interval::Int=1,
+    mutate::Bool=true,
     verbose::Bool=false,
     progress_interval::Integer=100,
     rng::AbstractRNG=Random.default_rng(),
@@ -164,27 +167,29 @@ function fisher_wright(
         end
         prt, off = off, prt
 
-        # Mutations (threaded)
-        let subs = substitutions
-            Threads.@threads for i = 1:nh
-                r = srng[i]
-                nm = rand(r, p_mut)
-                if nm > 0
-                    newm = nbuf[i]
-                    resize!(newm, nm)
-                    @inbounds for k = 1:nm
-                        newm[k] = rand(r, span)
-                    end
-                    nm <= 32 ? sort!(newm; alg=InsertionSort) : sort!(newm)
-                    # A substituted site is carried by every haplotype, so a new
-                    # mutation there is a no-op, as it is when result = false.
-                    _drop_present!(newm, subs)
-                    # Insert into the scratch buffer by block copies, then swap it
-                    # in: no allocation once both buffers have reached their
-                    # steady-state size.
-                    if !isempty(newm)
-                        _insert_sorted!(mbuf[i], prt[i], newm)
-                        prt[i], mbuf[i] = mbuf[i], prt[i]
+        # Mutations (threaded); skipped entirely when mutate = false.
+        if mutate
+            let subs = substitutions
+                Threads.@threads for i = 1:nh
+                    r = srng[i]
+                    nm = rand(r, p_mut)
+                    if nm > 0
+                        newm = nbuf[i]
+                        resize!(newm, nm)
+                        @inbounds for k = 1:nm
+                            newm[k] = rand(r, span)
+                        end
+                        nm <= 32 ? sort!(newm; alg=InsertionSort) : sort!(newm)
+                        # A substituted site is carried by every haplotype, so a new
+                        # mutation there is a no-op, as it is when result = false.
+                        _drop_present!(newm, subs)
+                        # Insert into the scratch buffer by block copies, then swap
+                        # it in: no allocation once both buffers have reached their
+                        # steady-state size.
+                        if !isempty(newm)
+                            _insert_sorted!(mbuf[i], prt[i], newm)
+                            prt[i], mbuf[i] = mbuf[i], prt[i]
+                        end
                     end
                 end
             end
@@ -208,6 +213,7 @@ end
         mut_base = 1e8,
         result::Bool = false,
         fixation_interval::Int = 1,
+        mutate::Bool = true,
         verbose::Bool = false,
         progress_interval::Integer = 100,
         rng::AbstractRNG = Random.default_rng(),
@@ -232,6 +238,7 @@ are automatically extracted from `sp`:
 - `mut_base = 1e8`: Base pairs per unit of `mr`.
 - `result::Bool = false`: If `true`, returns a [`FisherWrightResult`](@ref); otherwise returns `(prt, cbp)`.
 - `fixation_interval::Int = 1`: Interval (in generations) to scan for and extract fixed substitutions when `result = true`.
+- `mutate::Bool = true`: If `false`, no new mutations are generated; see the method above.
 - `verbose::Bool = false`: If `true`, reports progress to `stderr`; see the method above.
 - `progress_interval::Integer = 100`: Generations between progress reports when `verbose = true`.
 - `rng::AbstractRNG = Random.default_rng()`: Random number generator; see the method above.
@@ -253,6 +260,7 @@ function fisher_wright(
     mut_base = 1e8,
     result::Bool = false,
     fixation_interval::Int = 1,
+    mutate::Bool = true,
     verbose::Bool = false,
     progress_interval::Integer = 100,
     rng::AbstractRNG = Random.default_rng(),
@@ -266,6 +274,7 @@ function fisher_wright(
         mut_base = mut_base,
         result = result,
         fixation_interval = fixation_interval,
+        mutate = mutate,
         verbose = verbose,
         progress_interval = progress_interval,
         rng = rng,

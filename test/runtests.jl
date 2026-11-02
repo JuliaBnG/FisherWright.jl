@@ -412,6 +412,31 @@ end
     @test_throws ArgumentError fisher_wright(30, 5, chr, 1.0; mut_base=0.0)
 end
 
+@testset "Mutation switch" begin
+    chr = [100_000, 200_000]
+    args = (12, 40, chr, 5.0)
+    kw = (M=5e4, mut_base=1e5)
+
+    # Without mutation a monomorphic start stays monomorphic, in both return
+    # modes and through the Species method.
+    haps, cbp = fisher_wright(args...; kw..., mutate=false, rng=Xoshiro(1))
+    @test length(haps) == 24 && all(isempty, haps)
+    @test cbp == UInt32.(cumsum(chr))
+    res = fisher_wright(args...; kw..., mutate=false, result=true, rng=Xoshiro(1))
+    @test all(isempty, res.active_haplotypes) && isempty(res.substitutions)
+    sp = GenericSpecies("NoMut", Int32(8), UInt32.(chr), UInt32(50_000))
+    @test all(isempty, fisher_wright(sp, 10; mutate=false, rng=Xoshiro(2))[1])
+
+    # mutate = true is the default and the switch does not alter it.
+    @test fisher_wright(args...; kw..., rng=Xoshiro(3))[1] ==
+          fisher_wright(args...; kw..., mutate=true, rng=Xoshiro(3))[1]
+    @test !all(isempty, fisher_wright(args...; kw..., rng=Xoshiro(3))[1])
+
+    # mr is still validated when it is not used.
+    @test_throws ArgumentError fisher_wright(12, 4, chr, 0.0; mutate=false)
+    @test_throws ArgumentError fisher_wright(12, 4, chr, 25.0; mutate=false)
+end
+
 @testset "Simulation invariants at scale" begin
     Random.seed!(31)
     res = fisher_wright(60, 80, [5_000_000, 5_000_000, 5_000_000], 4.0;
