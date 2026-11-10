@@ -4,7 +4,8 @@ using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_s
     cobp, cobp!, FisherWrightResult, to_haplotype, RecombinationMap,
     uniform_recombination_map, random_mate, random_mate!, _fixed_mutations,
     _drop_mutations, _drop_mutations!, _fixation_step, _fixation_step!, _extract_fixed,
-    _intersect_sorted!, _remove_sorted!, _with_fixed
+    _intersect_sorted!, _remove_sorted!, _with_fixed, _simulate!, _initial_state,
+    SimState, ConstantSize, RandomMating, Neutral
 using BnGStructs
 using Distributions: Poisson
 using Statistics: mean, var, cor
@@ -514,6 +515,52 @@ end
     @test run(bad(v -> v[end] = UInt32[1, tbp]))[1] isa Vector{Vector{UInt32}}
     @test_throws ArgumentError run(burn; c=[200_000, 100_000])
     @test_throws ArgumentError run(FisherWrightResult(empty_start(), UInt32[100_000, 300_000], UInt32[9, 3]))
+end
+
+@testset "Simulation engine" begin
+    chr = [1_000_000, 1_000_000]
+    ne, cbp = 50, UInt32[1_000_000, 2_000_000]
+    kw = (M=1e6, mut_base=1e6)
+    rmap = uniform_recombination_map(chr; M=1e6)
+    span = UInt32(1):UInt32(2_000_000)
+    engine!(st, rng, nt; mutate=true, track=false) = _simulate!(
+        st, ConstantSize(ne), RandomMating(), Neutral(), nt, rmap, Poisson(10.0), span;
+        mutate=mutate, track=track, fixation_interval=1, verbose=false,
+        progress_interval=100, rng=rng)
+
+    # The state takes exactly one seed per haplotype slot from rng, in order.
+    rng, ref = Xoshiro(5), Xoshiro(5)
+    st = SimState(_initial_state(nothing, 2ne, cbp, false)..., ne, rng)
+    seeds = [rand(ref, UInt64) for _ = 1:2ne]
+    @test st.srng == Xoshiro.(seeds)
+    @test rand(rng, UInt64) == rand(ref, UInt64)
+    @test length(st.prt) == length(st.off) == length(st.mbuf) == length(st.nbuf) == 2ne
+    @test length(st.cbuf) == length(st.sex) == size(st.pm, 1) == ne
+
+    # fisher_wright is the engine behind validation: same seed, same output.
+    rng = Xoshiro(9)
+    st = SimState(_initial_state(nothing, 2ne, cbp, true)..., ne, rng)
+    @test engine!(st, rng, 120; track=true) === st
+    res = fisher_wright(ne, 120, chr, 5.0; kw..., result=true, rng=Xoshiro(9))
+    @test st.prt == res.active_haplotypes && st.substitutions == res.substitutions
+
+    # Inference: the engine returns its state, and fisher_wright one of its
+    # two documented return types, with no abstract element type.
+    @test (@inferred engine!(st, rng, 1)) === st
+    f(r) = fisher_wright(ne, 2, chr, 5.0; result=r)
+    @test only(Base.return_types(f, (Bool,))) ==
+          Union{FisherWrightResult,Tuple{Vector{Vector{UInt32}},Vector{UInt32}}}
+
+    # Steady state: a generation allocates task overhead only, far less than
+    # one copy of the haplotypes (over 1 MB here), with or without mutation.
+    rng = Xoshiro(11)
+    st = SimState(_initial_state(nothing, 2ne, cbp, false)..., ne, rng)
+    engine!(st, rng, 400)
+    @test sum(length, st.prt) > 250_000
+    for mutate in (true, false)
+        engine!(st, rng, 50; mutate=mutate)
+        @test @allocated(engine!(st, rng, 50; mutate=mutate)) / 50 < 2^16
+    end
 end
 
 @testset "Simulation invariants at scale" begin

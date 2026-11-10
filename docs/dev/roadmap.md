@@ -4,8 +4,19 @@ Status: planned (drafted 2026-10-07 against v0.3.8; selection added
 2026-11-02 against v0.4.0). v0.4.0 shipped without the refactor below,
 so the staging is renumbered from 0.5.0. Implemented so far, all from
 the 0.5.0 row: the golden-output regression test and the `_recombine!`
-kernel (v0.4.2), and the `mutate` and `init` keywords (2026-11-10, not
-yet released).
+kernel (v0.4.2), the `mutate` and `init` keywords, and the first step of
+the internal refactor (all 2026-11-10, not yet released).
+
+The refactor so far (`src/simulate.jl`): a `SimState` struct holds the
+haplotypes, buffers and per-slot streams; `fisher_wright` builds it and
+calls `_simulate!(st, demog, mating, fitness, …)` once, specialised on
+the concrete types. Each axis has only its default model
+(`ConstantSize`, `RandomMating`, `Neutral`), none of them exported, and
+no keyword was added. Still to do in 0.5.0: buffers that follow a
+changing N, which `popsize` needs (`pm` is a fixed `Matrix`, and the
+fixation scan and the output assume `length(prt) == 2N`); the public
+`popsize` and `mating` keywords; fixed sex ratio; census and Ne metadata
+in results.
 
 ## Current model (v0.4.0)
 

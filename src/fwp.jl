@@ -30,53 +30,6 @@ function _report_progress(io::IO, g, nt, t0, prt, nsub, result::Bool)
     return nothing
 end
 
-# Positions of a starting population: each vector strictly increasing and
-# within the genome.
-function _check_positions(v::Vector{UInt32}, tbp::UInt32, what)
-    isempty(v) && return nothing
-    @inbounds begin
-        v[1] >= 1 || throw(ArgumentError("$what: positions are 1-based"))
-        for k = 2:length(v)
-            v[k-1] < v[k] ||
-                throw(ArgumentError("$what: positions must be sorted and unique"))
-        end
-        v[end] <= tbp ||
-            throw(ArgumentError("$what: position $(Int(v[end])) exceeds the genome length $(Int(tbp))"))
-    end
-    return nothing
-end
-
-function _check_haplotypes(haps::Vector{Vector{UInt32}}, nh::Int, tbp::UInt32)
-    length(haps) == nh ||
-        throw(ArgumentError("init has $(length(haps)) haplotypes; 2ne = $nh are required"))
-    for (i, h) in pairs(haps)
-        _check_positions(h, tbp, "init haplotype $i")
-    end
-    return nothing
-end
-
-# Starting haplotypes and substitutions. `init` is copied, never modified or
-# aliased by the run.
-_initial_state(::Nothing, nh::Int, cbp::Vector{UInt32}, result::Bool) =
-    ([Vector{UInt32}() for _ = 1:nh], UInt32[])
-
-function _initial_state(init::Vector{Vector{UInt32}}, nh::Int, cbp::Vector{UInt32}, result::Bool)
-    _check_haplotypes(init, nh, cbp[end])
-    return ([copy(h) for h in init], UInt32[])
-end
-
-function _initial_state(init::FisherWrightResult, nh::Int, cbp::Vector{UInt32}, result::Bool)
-    init.chromosome_ends == cbp ||
-        throw(ArgumentError("init.chromosome_ends does not match cumsum(chr)"))
-    haps, subs = init.active_haplotypes, init.substitutions
-    _check_haplotypes(haps, nh, cbp[end])
-    _check_positions(subs, cbp[end], "init.substitutions")
-    # A substitution is carried by every haplotype: kept apart when the run
-    # tracks substitutions, merged back into the haplotypes when it does not.
-    return result ? ([_remove_sorted!(copy(h), subs) for h in haps], copy(subs)) :
-           ([merge_sorted(h, subs) for h in haps], UInt32[])
-end
-
 """
     fisher_wright(
         ne::Integer,
@@ -182,79 +135,24 @@ function fisher_wright(
     recomb_map = uniform_recombination_map(chr; M=M)
     span = UInt32(1):UInt32(tbp)
 
-    nh = 2 * ne
-    prt, substitutions = _initial_state(init, nh, cbp, result)
-    off = [Vector{UInt32}() for _ = 1:nh]
-
-    # Reusable scratch: one merge target and one new-mutation buffer per
-    # haplotype, one crossover buffer per mating, one mating table.
-    mbuf = [Vector{UInt32}() for _ = 1:nh]
-    nbuf = [Vector{UInt32}() for _ = 1:nh]
-    cbuf = [Vector{UInt32}() for _ = 1:ne]
-    pm = Matrix{Int}(undef, ne, 2)
-    sex = Vector{Bool}(undef, ne)
-    sires, dams = Int[], Int[]
-    # One stream per meiosis/haplotype slot, seeded serially from rng, so the
-    # realization does not depend on the thread count or task scheduling.
-    srng = [Xoshiro(rand(rng, UInt64)) for _ = 1:nh]
+    demog = ConstantSize(Int(ne))
+    prt, substitutions = _initial_state(init, 2 * demog.n, cbp, result)
+    st = SimState(prt, substitutions, _maxsize(demog, nt), rng)
 
     verbose &&
         @info "Fisher-Wright population simulation start" ne nt total_bp = Int(tg) threads =
             Threads.nthreads() progress_interval
-    t0 = time()
 
-    for g = 1:nt
-        # Conditioning on both sexes being present is exact rejection sampling;
-        # P(one sex only) = 2^(1-ne), so a fixed retry cap fails for small ne.
-        random_mate!(pm, sex, sires, dams; rng=rng, max_tries=typemax(Int))
-
-        Threads.@threads for i = 1:ne
-            s = pm[i, 1]
-            d = pm[i, 2]
-            # recombine empties its target, and cobp! its crossover buffer, so
-            # both are safe to reuse across generations.
-            co = cbuf[i]
-            r = srng[i]
-            recombine(prt[2s-1], prt[2s], off[2i-1], cobp!(co, recomb_map; rng=r); rng=r)
-            recombine(prt[2d-1], prt[2d], off[2i], cobp!(co, recomb_map; rng=r); rng=r)
-        end
-        prt, off = off, prt
-
-        # Mutations (threaded); skipped entirely when mutate = false.
-        if mutate
-            let subs = substitutions
-                Threads.@threads for i = 1:nh
-                    r = srng[i]
-                    nm = rand(r, p_mut)
-                    if nm > 0
-                        newm = nbuf[i]
-                        resize!(newm, nm)
-                        @inbounds for k = 1:nm
-                            newm[k] = rand(r, span)
-                        end
-                        nm <= 32 ? sort!(newm; alg=InsertionSort) : sort!(newm)
-                        # A substituted site is carried by every haplotype, so a new
-                        # mutation there is a no-op, as it is when result = false.
-                        _drop_present!(newm, subs)
-                        # Insert into the scratch buffer by block copies, then swap
-                        # it in: no allocation once both buffers have reached their
-                        # steady-state size.
-                        if !isempty(newm)
-                            _insert_sorted!(mbuf[i], prt[i], newm)
-                            prt[i], mbuf[i] = mbuf[i], prt[i]
-                        end
-                    end
-                end
-            end
-        end
-        if result && (g % fixation_interval == 0 || g == nt)
-            substitutions = _fixation_step!(prt, substitutions)
-        end
-        if verbose && (g % progress_interval == 0 || g == nt)
-            _report_progress(stderr, g, nt, t0, prt, length(substitutions), result)
-        end
-    end
-    return result ? FisherWrightResult(prt, cbp, substitutions) : (prt, cbp)
+    _simulate!(
+        st, demog, RandomMating(), Neutral(), Int(nt), recomb_map, p_mut, span;
+        mutate=mutate,
+        track=result,
+        fixation_interval=fixation_interval,
+        verbose=verbose,
+        progress_interval=Int(progress_interval),
+        rng=rng,
+    )
+    return result ? FisherWrightResult(st.prt, cbp, st.substitutions) : (st.prt, cbp)
 end
 
 """
