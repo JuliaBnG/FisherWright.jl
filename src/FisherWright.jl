@@ -36,6 +36,7 @@ include("merge-sorted.jl")
 include("recombine.jl")
 include("muts2bitarray.jl")
 include("result.jl")
+include("simulate.jl")
 include("fwp.jl")
 include("quick-genotypes.jl")
 
