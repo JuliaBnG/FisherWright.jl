@@ -1,8 +1,11 @@
 # Roadmap: variable population size, non-random mating, and selection
 
-Status: planned, not implemented (drafted 2026-10-07 against v0.3.8;
-selection added 2026-11-02 against v0.4.0). v0.4.0 shipped without the
-refactor below, so the staging is renumbered from 0.5.0.
+Status: planned (drafted 2026-10-07 against v0.3.8; selection added
+2026-11-02 against v0.4.0). v0.4.0 shipped without the refactor below,
+so the staging is renumbered from 0.5.0. Implemented so far, all from
+the 0.5.0 row: the golden-output regression test and the `_recombine!`
+kernel (v0.4.2), and the `mutate` and `init` keywords (2026-11-10, not
+yet released).
 
 ## Current model (v0.4.0)
 
@@ -219,6 +222,9 @@ replicates and seeds; logs go under `docs/src/validation/`.
 2. **Ne under constant N, against theory:**
    - Start from a polymorphic population via `init`, run without new
      mutation (`mutate = false`), and fit H_t/H_0 = (1 − 1/(2Ne))^t.
+     Done for `RandomMating()` as a CI test against the exact two-sex
+     recursion ("Heterozygosity decay without mutation", N = 20); the
+     other schemes follow with their implementation.
    - Equilibrium π and S against θ = 4Neμ with Ne from the formulas
      above.
    - Cases: skewed sex ratio (10♂/90♀ → Ne = 36), NegBinomial family

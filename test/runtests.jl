@@ -4,7 +4,7 @@ using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_s
     cobp, cobp!, FisherWrightResult, to_haplotype, RecombinationMap,
     uniform_recombination_map, random_mate, random_mate!, _fixed_mutations,
     _drop_mutations, _drop_mutations!, _fixation_step, _fixation_step!, _extract_fixed,
-    _intersect_sorted!, _remove_sorted!
+    _intersect_sorted!, _remove_sorted!, _with_fixed
 using BnGStructs
 using Distributions: Poisson
 using Statistics: mean, var, cor
@@ -437,6 +437,85 @@ end
     @test_throws ArgumentError fisher_wright(12, 4, chr, 25.0; mutate=false)
 end
 
+@testset "Starting population (init)" begin
+    chr = [100_000, 200_000]
+    ne, tbp = 12, UInt32(300_000)
+    kw = (M=5e4, mut_base=1e5)
+    burn = fisher_wright(ne, 300, chr, 5.0; kw..., result=true, rng=Xoshiro(1))
+    @test !isempty(burn.substitutions) && !all(isempty, burn.active_haplotypes)
+    full = _with_fixed(burn)
+
+    # The same continuation whether the state is given as a result or as plain
+    # haplotypes, in both return modes and for any fixation interval.
+    a = fisher_wright(ne, 40, chr, 5.0; kw..., init=burn, result=true, rng=Xoshiro(2))
+    b, cbp = fisher_wright(ne, 40, chr, 5.0; kw..., init=burn, rng=Xoshiro(2))
+    c, _ = fisher_wright(ne, 40, chr, 5.0; kw..., init=full, rng=Xoshiro(2))
+    d = fisher_wright(ne, 40, chr, 5.0; kw..., init=full, result=true, fixation_interval=7, rng=Xoshiro(2))
+    @test cbp == burn.chromosome_ends
+    @test _with_fixed(a) == b == c == _with_fixed(d)
+    @test a.substitutions == d.substitutions
+    @test issubset(burn.substitutions, a.substitutions)
+    @test length(a.substitutions) > length(burn.substitutions)
+    @test all(h -> isempty(intersect(h, a.substitutions)), a.active_haplotypes)
+
+    # init is neither modified nor aliased by the run.
+    snap = deepcopy(burn)
+    r = fisher_wright(ne, 3, chr, 5.0; kw..., init=burn, result=true, rng=Xoshiro(3))
+    @test burn.active_haplotypes == snap.active_haplotypes
+    @test burn.substitutions == snap.substitutions
+    @test r.substitutions !== burn.substitutions
+    @test !any(x -> any(y -> x === y, burn.active_haplotypes), r.active_haplotypes)
+    snap = deepcopy(full)
+    h, _ = fisher_wright(ne, 3, chr, 5.0; kw..., init=full, rng=Xoshiro(3))
+    @test full == snap
+    @test !any(x -> any(y -> x === y, full), h)
+
+    # Drift and recombination only: no new site appears, every site carried
+    # by all haplotypes stays, and the substitutions are those of init plus
+    # sites lost from segregation by fixation.
+    nomut = fisher_wright(ne, 60, chr, 5.0; kw..., init=burn, mutate=false, result=true, rng=Xoshiro(4))
+    seg₀ = reduce(union, burn.active_haplotypes)
+    @test issubset(reduce(union, nomut.active_haplotypes), seg₀)
+    @test issubset(burn.substitutions, nomut.substitutions)
+    @test issubset(setdiff(nomut.substitutions, burn.substitutions), seg₀)
+    @test length(reduce(union, nomut.active_haplotypes)) < length(seg₀)
+
+    # Without crossovers (one chromosome, 1e-7 Morgan) each offspring
+    # haplotype is a copy of one parental haplotype.
+    start = [sort!(unique!(rand(Xoshiro(100 + i), UInt32(1):UInt32(1000), 20))) for i = 1:2ne]
+    kids, _ = fisher_wright(ne, 1, [1000], 1.0; M=1e10, init=start, mutate=false, rng=Xoshiro(5))
+    @test all(in(start), kids)
+    # Individual i is haplotypes 2i-1 and 2i: its two gametes come from a
+    # sire and a dam, never from the same parent.
+    owner(k) = (findfirst(==(k), start) + 1) ÷ 2
+    @test allunique(start)
+    @test all(i -> owner(kids[2i-1]) != owner(kids[2i]), 1:ne)
+
+    # A site carried by every starting haplotype is a substitution.
+    fixedstart = [UInt32[7, 50 + i] for i = 1:2ne]
+    res = fisher_wright(ne, 1, [1000], 1.0; init=fixedstart, mutate=false, result=true, rng=Xoshiro(6))
+    @test res.substitutions == UInt32[7]
+    @test all(h -> !(UInt32(7) in h), res.active_haplotypes)
+
+    # Species method.
+    sp = GenericSpecies("Init", Int32(ne), UInt32.(chr), UInt32(50_000))
+    @test fisher_wright(sp, 40, 5.0; mut_base=1e5, init=burn, rng=Xoshiro(2))[1] == b
+
+    # Invalid starting populations.
+    empty_start() = [UInt32[] for _ = 1:2ne]
+    bad(f) = (v = empty_start(); f(v); v)
+    run(init; n=ne, c=chr) = fisher_wright(n, 2, c, 5.0; init=init)
+    @test_throws ArgumentError run(empty_start()[1:end-1])
+    @test_throws ArgumentError run(burn; n=ne + 1)
+    @test_throws ArgumentError run(bad(v -> v[3] = UInt32[5, 4]))
+    @test_throws ArgumentError run(bad(v -> v[3] = UInt32[5, 5]))
+    @test_throws ArgumentError run(bad(v -> v[3] = UInt32[0, 5]))
+    @test_throws ArgumentError run(bad(v -> v[end] = UInt32[5, tbp + 1]))
+    @test run(bad(v -> v[end] = UInt32[1, tbp]))[1] isa Vector{Vector{UInt32}}
+    @test_throws ArgumentError run(burn; c=[200_000, 100_000])
+    @test_throws ArgumentError run(FisherWrightResult(empty_start(), UInt32[100_000, 300_000], UInt32[9, 3]))
+end
+
 @testset "Simulation invariants at scale" begin
     Random.seed!(31)
     res = fisher_wright(60, 80, [5_000_000, 5_000_000, 5_000_000], 4.0;
@@ -704,6 +783,60 @@ end
             @test 0.85 < num[j] / den[j] / ref[j] < 1.15
         end
     end
+end
+
+# Expected Σ2pq / L over all 2N haplotypes after each of `nt` generations,
+# starting from independent alleles at frequency ½. Exact for the model:
+# sex Binomial(N, ½) conditioned on both sexes, sire and dam drawn with
+# replacement. hB and hW are the heterozygosities of two genes in different
+# individuals and in one individual (docs/src/manual/validation.md,
+# "Effective size"); the sex counts are independent of the genotypes and
+# across generations, so the expectation uses a = E[1/(4Nm) + 1/(4Nf)].
+function expected_heterozygosity(N, nt)
+    w = [binomial(big(N), m) for m = 1:N-1]
+    a = Float64(sum(w[m] * (1 // (4m) + 1 // (4(N - m))) for m = 1:N-1) / sum(w))
+    hB = hW = 0.5
+    H = Float64[]
+    for _ = 1:nt
+        hB, hW = (1 - a) * hB + a / 2 * hW, hB
+        push!(H, hW / 2N + (1 - 1 / N) * hB)
+    end
+    return H
+end
+
+@testset "Heterozygosity decay without mutation" begin
+    # Drift alone, from a polymorphic start given by init: Σ2pq must follow
+    # the exact recursion of the two-sex model, whose leading eigenvalue is
+    # 1 - 1/(2Ne) with Ne = 19.38 for N = 20. 400 replicates of 1,000 sites on
+    # 20 chromosomes of 1 Morgan; the second leg continues the first through
+    # a FisherWrightResult. z-scores against the replicate standard error;
+    # over four seeds they ranged from -1.63 to 2.53.
+    N, chr, reps, t₁, t₂ = 20, fill(50, 20), 400, 10, 30
+    L = sum(chr)
+    rng = Xoshiro(20261110)
+    het(haps) = (n = length(haps); c = zeros(Int, L);
+        for h in haps, p in h
+            c[p] += 1
+        end;
+        sum(x -> 2 * (x / n) * (1 - x / n), c) / L)
+    H₁, H₂ = zeros(reps), zeros(reps)
+    for r = 1:reps
+        start = [UInt32.(findall(rand(rng, Bool, L))) for _ = 1:2N]
+        mid = fisher_wright(N, t₁, chr, 1.0; M=50, init=start, mutate=false, result=true, rng=rng)
+        last, _ = fisher_wright(N, t₂, chr, 1.0; M=50, init=mid, mutate=false, rng=rng)
+        H₁[r] = het(_with_fixed(mid))
+        H₂[r] = het(last)
+    end
+    E = expected_heterozygosity(N, t₁ + t₂)
+    z₁ = (mean(H₁) - E[t₁]) / sqrt(var(H₁) / reps)
+    z₂ = (mean(H₂) - E[t₁+t₂]) / sqrt(var(H₂) / reps)
+    @test abs(z₁) < 3.5
+    @test abs(z₂) < 3.5
+    # The test separates Ne from N: an ideal monoecious population of N = 20,
+    # ½(1 - 1/2N)^(t+1) (the extra factor is the realized Σ2pq of the start),
+    # is 8 to 11 standard errors away.
+    ideal = 0.5 * (1 - 1 / 2N)^(t₁ + t₂ + 1)
+    @test (ideal - mean(H₂)) / sqrt(var(H₂) / reps) > 3.5
 end
 
 @testset "Crossovers per meiosis matches Poisson and assortment" begin
