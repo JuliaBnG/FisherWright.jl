@@ -4,8 +4,8 @@
 
 ```julia
 fisher_wright(ne, nt, chr, mr; M=1e8, mut_base=1e8,
-              result=false, fixation_interval=1, verbose=false,
-              progress_interval=100)
+              result=false, fixation_interval=1, mutate=true,
+              init=nothing, verbose=false, progress_interval=100)
 ```
 
 Simulate `ne` diploid individuals for `nt` generations. `chr` is a vector of
@@ -18,6 +18,8 @@ new mutations per `mut_base` base pairs per haplotype per meiosis.
 | `mut_base` | `1e8` | Base pairs per unit of `mr`; controls mutation only. |
 | `result` | `false` | Return a `FisherWrightResult` and extract fixed mutations. |
 | `fixation_interval` | `1` | Generations between fixation scans when `result=true`. |
+| `mutate` | `true` | Generate new mutations; `false` leaves drift and recombination only. |
+| `init` | `nothing` | Starting population: `2ne` haplotypes or a `FisherWrightResult`; `nothing` starts monomorphic. |
 | `verbose` | `false` | Report progress (mean mutations per haplotype, substitutions, elapsed time, ETA) to `stderr`. |
 | `progress_interval` | `100` | Generations between progress reports when `verbose=true`. |
 
@@ -73,6 +75,42 @@ uniform_recombination_map(species).cbp
 Each chromosome end is treated as an independent assortment boundary. The
 package does not expose a custom map through `fisher_wright`; `RecombinationMap`
 and `cobp!` are available for advanced internal workflows.
+
+## Continuing a run
+
+By default a run starts monomorphic. `init` supplies the starting
+population instead, either as a vector of `2ne` haplotypes (each a
+sorted, unique `Vector{UInt32}` of positions in `1:sum(chr)`) or as a
+`FisherWrightResult` with the same chromosomes. Haplotypes `2i - 1` and
+`2i` form individual `i`, as in the output, and these individuals are
+the parents of generation 1. `init` is copied and left unmodified.
+
+```@example simulation
+burnin = fisher_wright(20, 200, [100_000, 100_000], 1.0; result=true)
+replicate = fisher_wright(20, 50, [100_000, 100_000], 1.0;
+                          init=burnin, result=true)
+length(replicate.substitutions) >= length(burnin.substitutions)
+```
+
+The substitutions of a `FisherWrightResult` are carried over when
+`result=true` and merged back into every haplotype when `result=false`,
+so both return modes still describe the same population.
+
+With `mutate=false` no new mutations arise, and the starting variants
+change only by drift and recombination. This is the setting for checks
+such as the decay of heterozygosity, ``H_t/H_0 = (1 - 1/(2N_e))^t``:
+
+```@example simulation
+drift = fisher_wright(20, 50, [100_000, 100_000], 1.0;
+                      init=burnin, mutate=false, result=true)
+issubset(reduce(union, drift.active_haplotypes),
+         reduce(union, burnin.active_haplotypes))
+```
+
+The per-slot random streams are seeded anew from `rng` on every call.
+Two calls of `nt₁` and `nt₂` generations are therefore a valid
+realization of `nt₁ + nt₂` generations, but not the one a single call
+gives for the same seed.
 
 ## Reproducibility
 

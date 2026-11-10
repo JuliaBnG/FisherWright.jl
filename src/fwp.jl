@@ -30,6 +30,53 @@ function _report_progress(io::IO, g, nt, t0, prt, nsub, result::Bool)
     return nothing
 end
 
+# Positions of a starting population: each vector strictly increasing and
+# within the genome.
+function _check_positions(v::Vector{UInt32}, tbp::UInt32, what)
+    isempty(v) && return nothing
+    @inbounds begin
+        v[1] >= 1 || throw(ArgumentError("$what: positions are 1-based"))
+        for k = 2:length(v)
+            v[k-1] < v[k] ||
+                throw(ArgumentError("$what: positions must be sorted and unique"))
+        end
+        v[end] <= tbp ||
+            throw(ArgumentError("$what: position $(Int(v[end])) exceeds the genome length $(Int(tbp))"))
+    end
+    return nothing
+end
+
+function _check_haplotypes(haps::Vector{Vector{UInt32}}, nh::Int, tbp::UInt32)
+    length(haps) == nh ||
+        throw(ArgumentError("init has $(length(haps)) haplotypes; 2ne = $nh are required"))
+    for (i, h) in pairs(haps)
+        _check_positions(h, tbp, "init haplotype $i")
+    end
+    return nothing
+end
+
+# Starting haplotypes and substitutions. `init` is copied, never modified or
+# aliased by the run.
+_initial_state(::Nothing, nh::Int, cbp::Vector{UInt32}, result::Bool) =
+    ([Vector{UInt32}() for _ = 1:nh], UInt32[])
+
+function _initial_state(init::Vector{Vector{UInt32}}, nh::Int, cbp::Vector{UInt32}, result::Bool)
+    _check_haplotypes(init, nh, cbp[end])
+    return ([copy(h) for h in init], UInt32[])
+end
+
+function _initial_state(init::FisherWrightResult, nh::Int, cbp::Vector{UInt32}, result::Bool)
+    init.chromosome_ends == cbp ||
+        throw(ArgumentError("init.chromosome_ends does not match cumsum(chr)"))
+    haps, subs = init.active_haplotypes, init.substitutions
+    _check_haplotypes(haps, nh, cbp[end])
+    _check_positions(subs, cbp[end], "init.substitutions")
+    # A substitution is carried by every haplotype: kept apart when the run
+    # tracks substitutions, merged back into the haplotypes when it does not.
+    return result ? ([_remove_sorted!(copy(h), subs) for h in haps], copy(subs)) :
+           ([merge_sorted(h, subs) for h in haps], UInt32[])
+end
+
 """
     fisher_wright(
         ne::Integer,
@@ -40,6 +87,8 @@ end
         mut_base = 1e8,
         result::Bool = false,
         fixation_interval::Int = 1,
+        mutate::Bool = true,
+        init = nothing,
         verbose::Bool = false,
         progress_interval::Integer = 100,
         rng::AbstractRNG = Random.default_rng(),
@@ -65,6 +114,8 @@ total genome lengths up to ``2^{32} \\approx 4.29 \\times 10^9`` base pairs (bp)
   - If `true`, returns a [`FisherWrightResult`](@ref), periodically extracting and tracking fixed substitutions to save memory and runtime.
     For the same `rng` state this is the same realization as `result = false`: `FisherWright._with_fixed(res)` equals `prt`.
 - `fixation_interval::Int = 1`: Frequency (in generations) to scan for and extract fixed substitutions when `result = true`.
+- `mutate::Bool = true`: If `false`, no new mutations are generated: the population evolves by drift and recombination only, and `mr` and `mut_base` are not used (`mr` must still lie in its valid range). Mating is drawn from `rng` exactly as with `mutate = true`, but meiosis shares the per-slot streams with the skipped mutation draws, so for the same seed the two settings give different realizations. Intended for validation runs that start from a polymorphic population given by `init`, for example heterozygosity decay ``H_t/H_0 = (1 - 1/(2N_e))^t``; without `init`, a run with `mutate = false` stays monomorphic.
+- `init = nothing`: Starting population; `nothing` starts monomorphic. Either a `Vector{Vector{UInt32}}` of `2 * ne` haplotypes (each sorted, unique, with positions in `1:sum(chr)`), or a [`FisherWrightResult`](@ref) whose `chromosome_ends` equal `cumsum(chr)`. Haplotypes `2i - 1` and `2i` form individual `i`, the convention of the output, and these individuals are the parents of generation 1. `init` is copied and left unmodified. The substitutions of a `FisherWrightResult` are carried over when `result = true` and merged back into every haplotype when `result = false`; given as plain haplotypes, sites carried by all of them are extracted at the first fixation scan when `result = true`. See *Continuing a run* below.
 - `verbose::Bool = false`: If `true`, writes a start banner and a progress line to `stderr` every `progress_interval` generations and at the last generation, reporting mean mutations per haplotype, accumulated substitutions (when `result = true`), elapsed wall time, and a linear ETA. On a terminal the line is updated in place; when `stderr` is redirected each report is a separate line.
 - `progress_interval::Integer = 100`: Generations between progress reports when `verbose = true` (must be positive).
 - `rng::AbstractRNG = Random.default_rng()`: Random number generator; see *Reproducibility* below.
@@ -81,6 +132,7 @@ total genome lengths up to ``2^{32} \\approx 4.29 \\times 10^9`` base pairs (bp)
 - **Mutation model**: Each haplotype receives `Poisson(sum(chr) / mut_base * mr)` new mutations per generation at uniformly drawn positions. A new mutation at a position the haplotype already carries, or at a substituted (fixed and removed) position when `result = true`, has no effect, so both return modes describe the same population.
 - **Multithreading & Reproducibility**: Meiosis and mutation generation are parallelized using `Threads.@threads`. Each meiosis/haplotype slot owns a `Xoshiro` stream seeded once from `rng` at the start, and mating is sampled serially from `rng`, so a run is determined by the state of `rng` alone, independent of `Threads.nthreads()` and task scheduling.
   This holds for a fixed Julia version and package environment. The realization also depends on the variate algorithms of Julia's `Random` and of Distributions.jl, which can change between versions: `randn` differs between Julia 1.10 and 1.13, so Poisson draws with mean ≥ 6 (Distributions' `PoissonADSampler`; in practice the per-haplotype mutation count of most genome-scale runs) can differ, and the same seed then gives a different population. Record the Julia version and `Manifest.toml` with simulated data.
+- **Continuing a run**: With `init`, the population evolves for `nt` further generations from the given state, for example to burn in once and then start several replicates, or to follow a set of standing variants with `mutate = false`. The per-slot streams are seeded anew from `rng` on every call, so two calls of `nt₁` and `nt₂` generations are a valid realization of `nt₁ + nt₂` generations but not the one a single call would give for the same seed.
 - **Allocation Efficiency**: Working buffers (mutations, crossovers, mating assignments) are allocated once at start and reused, achieving zero steady-state per-generation allocations.
 
 # Examples
@@ -94,6 +146,9 @@ length(haps) # 100 haplotypes
 # Return a structured result tracking fixed mutations
 res = fisher_wright(50, 10, [100_000, 100_000], 1.0; result=true)
 res.chromosome_ends
+
+# Continue that population for 5 generations of drift without new mutations
+res2 = fisher_wright(50, 5, [100_000, 100_000], 1.0; init=res, mutate=false, result=true)
 ```
 """
 function fisher_wright(
@@ -105,6 +160,8 @@ function fisher_wright(
     mut_base=1e8,
     result::Bool=false,
     fixation_interval::Int=1,
+    mutate::Bool=true,
+    init::Union{Nothing,Vector{Vector{UInt32}},FisherWrightResult}=nothing,
     verbose::Bool=false,
     progress_interval::Integer=100,
     rng::AbstractRNG=Random.default_rng(),
@@ -126,9 +183,8 @@ function fisher_wright(
     span = UInt32(1):UInt32(tbp)
 
     nh = 2 * ne
-    prt = [Vector{UInt32}() for _ = 1:nh]
+    prt, substitutions = _initial_state(init, nh, cbp, result)
     off = [Vector{UInt32}() for _ = 1:nh]
-    substitutions = UInt32[]
 
     # Reusable scratch: one merge target and one new-mutation buffer per
     # haplotype, one crossover buffer per mating, one mating table.
@@ -164,27 +220,29 @@ function fisher_wright(
         end
         prt, off = off, prt
 
-        # Mutations (threaded)
-        let subs = substitutions
-            Threads.@threads for i = 1:nh
-                r = srng[i]
-                nm = rand(r, p_mut)
-                if nm > 0
-                    newm = nbuf[i]
-                    resize!(newm, nm)
-                    @inbounds for k = 1:nm
-                        newm[k] = rand(r, span)
-                    end
-                    nm <= 32 ? sort!(newm; alg=InsertionSort) : sort!(newm)
-                    # A substituted site is carried by every haplotype, so a new
-                    # mutation there is a no-op, as it is when result = false.
-                    _drop_present!(newm, subs)
-                    # Insert into the scratch buffer by block copies, then swap it
-                    # in: no allocation once both buffers have reached their
-                    # steady-state size.
-                    if !isempty(newm)
-                        _insert_sorted!(mbuf[i], prt[i], newm)
-                        prt[i], mbuf[i] = mbuf[i], prt[i]
+        # Mutations (threaded); skipped entirely when mutate = false.
+        if mutate
+            let subs = substitutions
+                Threads.@threads for i = 1:nh
+                    r = srng[i]
+                    nm = rand(r, p_mut)
+                    if nm > 0
+                        newm = nbuf[i]
+                        resize!(newm, nm)
+                        @inbounds for k = 1:nm
+                            newm[k] = rand(r, span)
+                        end
+                        nm <= 32 ? sort!(newm; alg=InsertionSort) : sort!(newm)
+                        # A substituted site is carried by every haplotype, so a new
+                        # mutation there is a no-op, as it is when result = false.
+                        _drop_present!(newm, subs)
+                        # Insert into the scratch buffer by block copies, then swap
+                        # it in: no allocation once both buffers have reached their
+                        # steady-state size.
+                        if !isempty(newm)
+                            _insert_sorted!(mbuf[i], prt[i], newm)
+                            prt[i], mbuf[i] = mbuf[i], prt[i]
+                        end
                     end
                 end
             end
@@ -208,6 +266,8 @@ end
         mut_base = 1e8,
         result::Bool = false,
         fixation_interval::Int = 1,
+        mutate::Bool = true,
+        init = nothing,
         verbose::Bool = false,
         progress_interval::Integer = 100,
         rng::AbstractRNG = Random.default_rng(),
@@ -232,6 +292,8 @@ are automatically extracted from `sp`:
 - `mut_base = 1e8`: Base pairs per unit of `mr`.
 - `result::Bool = false`: If `true`, returns a [`FisherWrightResult`](@ref); otherwise returns `(prt, cbp)`.
 - `fixation_interval::Int = 1`: Interval (in generations) to scan for and extract fixed substitutions when `result = true`.
+- `mutate::Bool = true`: If `false`, no new mutations are generated; see the method above.
+- `init = nothing`: Starting population of `2 * sp.nid` haplotypes, or a [`FisherWrightResult`](@ref); see the method above.
 - `verbose::Bool = false`: If `true`, reports progress to `stderr`; see the method above.
 - `progress_interval::Integer = 100`: Generations between progress reports when `verbose = true`.
 - `rng::AbstractRNG = Random.default_rng()`: Random number generator; see the method above.
@@ -253,6 +315,8 @@ function fisher_wright(
     mut_base = 1e8,
     result::Bool = false,
     fixation_interval::Int = 1,
+    mutate::Bool = true,
+    init::Union{Nothing,Vector{Vector{UInt32}},FisherWrightResult} = nothing,
     verbose::Bool = false,
     progress_interval::Integer = 100,
     rng::AbstractRNG = Random.default_rng(),
@@ -266,6 +330,8 @@ function fisher_wright(
         mut_base = mut_base,
         result = result,
         fixation_interval = fixation_interval,
+        mutate = mutate,
+        init = init,
         verbose = verbose,
         progress_interval = progress_interval,
         rng = rng,
