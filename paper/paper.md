@@ -170,10 +170,13 @@ variance-to-mean ratio for each chromosome) and independent assortment;
 segregating sites ($S$) against Watterson's $\theta a_n$; gene diversity
 ($\sum 2pq$) against $\theta(1 - 1/n)$; whole-population and sampled
 ($n = 20$) site frequency spectra; and LD decay ($\sigma^2_d$, MAF
-$\geq 0.1$) across five distance bins from 10 kb to 3 Mb. A check fails
-when $|z| > 3.5$, where $z$ is calculated from means over the 50
-replicates. All 24 checks passed in each of two independent runs (seeds
-7 and 2026; maximum $|z|$ values of 3.12 and 2.55, respectively).
+$\geq 0.1$) across five distance bins from 10 kb to 3 Mb. Expectations
+use $\theta = 4N_e\mu L$ with $N_e = 99.48$, the effective size of the
+two-sex model with binomial sex counts; `msprime`'s DTWF model has
+$N_e = N$, so its diversity and SFS counts are scaled by $N_e/N$. A
+check fails when $|z| > 3.5$, where $z$ is calculated from means over
+the 50 replicates. All 24 checks passed in each of two independent runs
+(seeds 7 and 2026; maximum $|z|$ values of 2.37 and 1.91, respectively).
 
 A lightweight statistical suite runs in continuous integration for every
 commit. It passes for five seeds and fails when the simulated $N$ is

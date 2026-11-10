@@ -34,8 +34,8 @@ source checkout as shown in [When to rerun](@ref).
 | Check | Reference | Result (v0.4.1, seed 2026) |
 |---|---|---|
 | Crossovers per meiosis | Poisson(L/M) per chromosome; 0.5 switch between chromosomes | Mean, variance/mean and switch probability match (\|z\| ≤ 1.8) |
-| Segregating sites S | Watterson's θ·aₙ; msprime | S/θaₙ = 1.002 (msprime 1.010) |
-| Heterozygosity Σ2pq | θ(1 − 1/n); msprime | 389.8 ± 3.2 vs. 398.0 (msprime 393.4 ± 3.6) |
+| Segregating sites S | Watterson's θ·aₙ, θ = 4Nₑμ·L; msprime | S/θaₙ = 1.007 (msprime 1.010) |
+| Heterozygosity Σ2pq | θ(1 − 1/n); msprime × Nₑ/N | 389.8 ± 3.2 vs. 395.9 (msprime 391.4 ± 3.6) |
 | SFS, whole population | msprime DTWF | All 5 frequency classes match |
 | SFS, sample of 20 haplotypes | coalescent θ/k | All 5 frequency classes match |
 | LD decay σ²_d, 10 kb–3 Mb | msprime DTWF | All 5 distance bins match |
@@ -60,15 +60,49 @@ All checks use the same neutral model:
   recombination between chromosomes;
 - the whole population is the sample.
 
-With ``\theta = 4N\mu L`` for total genome length ``L``:
+With ``\theta = 4N_e\mu L`` for total genome length ``L`` and the effective
+size ``N_e`` of the two-sex model (see [Effective size](@ref)):
 
 | Statistic | Definition | Expectation used |
 |---|---|---|
 | ``S`` | number of segregating sites | ``\theta a_n``, ``a_n = \sum_{i=1}^{n-1} 1/i`` |
-| ``\Sigma 2pq`` | ``\sum_\text{sites} 2p(1-p)`` with population frequencies | ``\theta (1 - 1/n)`` in the full validation; ``\theta`` in CI, where the 0.5% difference is far inside the bounds |
+| ``\Sigma 2pq`` | ``\sum_\text{sites} 2p(1-p)`` with population frequencies | ``\theta (1 - 1/n)`` in the full validation; ``\theta = 4N\mu L`` in CI, where the 0.5% differences from ``1 - 1/n`` and from ``N_e`` are far inside the bounds |
 | ``\xi_k`` | number of sites with ``k`` derived copies | ``\theta / k`` for a sample much smaller than the population |
 | ``\sigma^2_d`` | ``\sum D^2 / \sum p_1 q_1 p_2 q_2`` over SNP pairs in a distance bin, MAF ≥ 0.1 | msprime DTWF under the same model and filter |
 | crossovers | count per chromosome per meiosis | Poisson with mean ``L_\text{chr}/M`` |
+
+### Effective size
+
+FisherWright assigns sex Binomial(``N``, ½) each generation, conditioned on
+both sexes being present, and draws each offspring's sire from the ``N_m``
+males and its dam from the ``N_f`` females, with replacement. Two genes in
+different individuals coalesce in the parental generation with probability
+``a/2``, ``a = 1/(4N_m) + 1/(4N_f)``. The two genes of one individual come
+from a sire and a dam and cannot. Their heterozygosities follow
+
+```math
+H_B' = (1 - a)H_B + \tfrac{a}{2}H_W, \qquad H_W' = H_B,
+```
+
+which decay at the leading eigenvalue ``\lambda``, so
+``N_e = 1/(2(1 - \lambda)) \approx 4N_mN_f/N + 1/2``. Averaged over the sex
+counts, ``N = 100`` gives ``N_e = 99.48``: the binomial sex ratio lowers
+``N_e`` by about 1 and the sire–dam structure raises it by ½. msprime's
+DTWF picks both parents from one pool, so its ``N_e = N``. The full
+validation therefore uses ``\theta = 4N_e\mu L`` for the theory columns and
+scales msprime's ``S``, ``\Sigma 2pq`` and SFS counts, which are
+proportional to ``\theta``, by ``N_e/N`` before comparing.
+
+The correction is 0.5%, below the resolution of 50 replicates, but it is
+resolved by 1,000. In two runs of 1,000 replicates at v0.4.1 (seeds 101
+and 102), FisherWright's ``\Sigma 2pq`` was 396.0 ± 0.6 against
+``\theta_e(1 - 1/n) = 395.9``, and its ``S`` was 0.994 times msprime's
+against an expected 0.9948.
+
+At that resolution the ``S``-versus-``\theta a_n`` check fails for both
+simulators: Watterson's ``a_n`` assumes ``n \ll 2N_e``, and with the whole
+population sampled, discrete generations add recent singletons, so ``S`` is
+about 1.5% above ``\theta a_n`` in FisherWright and msprime alike.
 
 ### Choice of references
 
@@ -86,7 +120,10 @@ With ``\theta = 4N\mu L`` for total genome length ``L``:
   for reference.
 - **msprime settings.** `DiscreteTimeWrightFisher()` with no duration, so
   genealogies run to full coalescence; each chromosome is simulated separately
-  (free recombination); only biallelic sites are used.
+  (free recombination); only biallelic sites are used. ``S``, ``\Sigma 2pq``
+  and SFS counts are scaled by ``N_e/N``; LD is compared unscaled, since
+  ``N_e/N`` enters only through ``\rho = 4N_ec`` and shifts ``\sigma^2_d`` by
+  less than 0.5%.
 
 ## CI tests
 
@@ -180,12 +217,10 @@ Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "s
 
 ### Reading the results
 
-- **Diversity.** S is within 0.2% of θ·aₙ in both runs (msprime: 1.0% and
-  2.1% above). The largest |z| of either run, −3.12 for S against msprime with
-  seed 7, comes mostly from that msprime run being high. Σ2pq is below
-  θ(1 − 1/n) in both runs (z = −2.55 and −2.41) and below msprime (z = −0.75
-  and −2.56). Each check passes, but the deficit has the same sign in both
-  runs and in both v0.3.8 runs; more replicates would settle it.
+- **Diversity.** With θ = 4Nₑμ·L (see [Effective size](@ref)), S is 0.7%
+  and 0.5% above θ·aₙ, as expected for the whole population, and within 1.0
+  and 2.3 SE of msprime. Σ2pq is 1.9 SE below θ(1 − 1/n) in both runs; the
+  1,000-replicate runs put it at θ(1 − 1/n) within 0.2 SE.
 - **SFS.** The whole-population classes match msprime, including the excess
   of singletons over θ, which both simulators share. The sample SFS matches
   θ/k.

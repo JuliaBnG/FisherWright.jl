@@ -5,7 +5,9 @@
 #   julia -t 8 validate-popgen-theory.jl [reps] [ne] [seed]
 #
 # 1. Crossovers per meiosis: Poisson counts per chromosome, 0.5 assortment.
-# 2. Equilibrium diversity: S vs. Watterson's θ·aₙ, Σ2pq vs. θ.
+# 2. Equilibrium diversity: S vs. Watterson's θ·aₙ, Σ2pq vs. θ(1 - 1/n).
+#    θ = 4Ne·μL uses the effective size of FisherWright's two-sex model
+#    (`dioecious_ne`; 99.48 for N = 100), not N.
 # 3. Site frequency spectrum: whole population vs. msprime DTWF, and a random
 #    sample of `nsub` ≪ 2N haplotypes vs. the coalescent θ/k.
 # 4. LD decay: pooled σ²_d = ΣD²/Σp₁q₁p₂q₂ per distance bin vs. msprime DTWF.
@@ -14,9 +16,12 @@
 # FisherWright runs `ne` diploids for 20ne generations (10×2N, equilibrium) on
 # 10 chromosomes of 10 Mb, μ = r = 1e-8, and `reps` replicates; msprime DTWF
 # (via `uv`, docs/src/validation/scripts/validate-popgen-msprime.py) simulates
-# the same model. Each
-# comparison is a z-score, and a check fails when |z| > ZMAX. The script exits
-# with status 1 if any check fails.
+# the same model, except that msprime's DTWF picks both parents from one pool
+# (Ne = N). Its S, Σ2pq and SFS counts are proportional to θ, so they are
+# scaled by Ne/N before the comparison; LD is compared unscaled (Ne/N enters
+# only through ρ = 4Ne·c, a shift below 0.5%). Each comparison is a z-score,
+# and a check fails when |z| > ZMAX. The script exits with status 1 if any
+# check fails.
 
 using FisherWright: uniform_recombination_map, cobp!, fisher_wright, muts2bitarray
 using Random, Statistics, Printf
@@ -57,6 +62,22 @@ function ld_sums(bm, chr, pos)
         end
     end
     return num, den
+end
+
+# Effective size of FisherWright's population. Each generation assigns sex
+# Binomial(N, 1/2), conditioned on both sexes being present, and draws each
+# offspring's sire from the N_m males and dam from the N_f females, with
+# replacement. Two genes in different individuals coalesce in the parental
+# generation with probability a/2, a = 1/(4N_m) + 1/(4N_f); the two genes of
+# one individual come from a sire and a dam and cannot. Their heterozygosities
+#   H_B' = (1 - a)·H_B + (a/2)·H_W,   H_W' = H_B
+# decay at the leading eigenvalue λ, and Ne = 1/(2(1 - λ)) ≈ 4N_mN_f/N + 1/2.
+# N = 100 gives Ne = 99.48.
+function dioecious_ne(N)
+    w = [Float64(binomial(big(N), k) / big(2)^N) for k = 1:N-1]
+    a = sum(w[k] * (1 / 4k + 1 / 4(N - k)) for k = 1:N-1) / sum(w)
+    λ = ((1 - a) + sqrt((1 - a)^2 + 2a)) / 2
+    return 1 / (2(1 - λ))
 end
 
 # Per-replicate statistics in the same layout as validate-popgen-msprime.py.
@@ -132,8 +153,12 @@ function main(reps = 50, ne = 100, seed = 2026)
     @printf("  done in %.1f s\n", t)
 
     n = 2ne
-    θ = 4ne * MU * NCHR * CHRLEN
+    nₑ = dioecious_ne(ne)
+    θ = 4nₑ * MU * NCHR * CHRLEN
     aₙ = sum(1 / i for i = 1:n-1)
+    @printf("\nTheory: Ne = %.2f (two sexes, binomial sex counts), θ = 4Ne·μL = %.1f\n", nₑ, θ)
+    @printf("msprime DTWF (Ne = N) S, Σ2pq and SFS are scaled by Ne/N = %.4f\n", nₑ / ne)
+    ms[:, 1:2+length(WHOLE)+length(SUB)] .*= nₑ / ne
     col(M, j) = M[:, j]
     zdiff(a, b) = (mean(a) - mean(b)) / sqrt(se(a)^2 + se(b)^2)
     zth(a, e) = (mean(a) - e) / se(a)
@@ -151,6 +176,10 @@ function main(reps = 50, ne = 100, seed = 2026)
     row("Σ2pq (θ(1-1/n))", col(fw, 2), col(ms, 2), θ * (1 - 1 / n), zth(col(fw, 2), θ * (1 - 1 / n)))
     row("Σ2pq vs. msprime", col(fw, 2), col(ms, 2), θ * (1 - 1 / n), zdiff(col(fw, 2), col(ms, 2)))
     @printf("  %-22s %9.3f %28.3f\n", "S / θ·aₙ", mean(col(fw, 1)) / (θ * aₙ), mean(col(ms, 1)) / (θ * aₙ))
+    # The S check uses Watterson's θ·aₙ, which assumes n ≪ 2Ne; here n = 2N is the
+    # whole population and discrete generations add recent singletons, so S is
+    # about 1.5% above θ·aₙ for both simulators. 50 replicates cannot resolve
+    # this; with about 500 or more the check fails for msprime as well.
 
     println("\n[3/4] Site frequency spectrum")
     section[] = "SFS whole population"
@@ -180,7 +209,7 @@ function main(reps = 50, ne = 100, seed = 2026)
         pooled(M) = sum(M[:, o+j]) / sum(M[:, o+nb+j])
         a, b = r(fw), r(ms)
         z = (pooled(fw) - pooled(ms)) / sqrt(se(a)^2 + se(b)^2)
-        ρ = 4ne * sqrt(lo * hi) * 1e-8
+        ρ = 4nₑ * sqrt(lo * hi) * 1e-8
         name = @sprintf("%g-%g Mb", lo / 1e6, hi / 1e6)
         @printf("  %-14s %9.4f ± %-6.4f %9.4f ± %-6.4f %9.2f %8.4f %8.4f  %s\n", name, pooled(fw), se(a),
             pooled(ms), se(b), z, (10 + ρ) / (22 + 13ρ + ρ^2), 1 / (1 + ρ), check(name, z))
