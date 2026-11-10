@@ -31,11 +31,11 @@ source checkout as shown in [When to rerun](@ref).
 
 ## Summary
 
-| Check | Reference | Result (v0.3.8) |
+| Check | Reference | Result (v0.4.1, seed 2026) |
 |---|---|---|
 | Crossovers per meiosis | Poisson(L/M) per chromosome; 0.5 switch between chromosomes | Mean, variance/mean and switch probability match (\|z\| ≤ 1.8) |
-| Segregating sites S | Watterson's θ·aₙ; msprime | S/θaₙ = 1.006 (msprime 1.010) |
-| Heterozygosity Σ2pq | θ(1 − 1/n); msprime | 390.0 ± 3.4 vs. 398.0 (msprime 393.4 ± 3.6) |
+| Segregating sites S | Watterson's θ·aₙ; msprime | S/θaₙ = 1.002 (msprime 1.010) |
+| Heterozygosity Σ2pq | θ(1 − 1/n); msprime | 389.8 ± 3.2 vs. 398.0 (msprime 393.4 ± 3.6) |
 | SFS, whole population | msprime DTWF | All 5 frequency classes match |
 | SFS, sample of 20 haplotypes | coalescent θ/k | All 5 frequency classes match |
 | LD decay σ²_d, 10 kb–3 Mb | msprime DTWF | All 5 distance bins match |
@@ -129,8 +129,8 @@ one known error at a time:
 | Case | Expected outcome | Result |
 |---|---|---|
 | Correct model, seeds 2026, 1, 7, 42, 99 | all pass | all pass |
-| Simulated Ne halved (theory assumes 100) | diversity, SFS and LD fail | all 9 fail: ratios ≈ 0.5; LD 1.35, 1.64 |
-| Recombination rate doubled | LD and crossover counts fail | LD 0.65, 0.54; both crossover means fail |
+| Simulated Ne halved (theory assumes 100) | diversity, SFS and LD fail | all 9 fail: ratios ≈ 0.5; LD 1.32, 1.63 |
+| Recombination rate doubled | LD and crossover counts fail | LD 0.66, 0.55; both crossover means fail |
 | Pre-v0.3.5 generation loop | S fails | S/θaₙ = 0.919 |
 
 Each error is caught by the test aimed at it, and only by tests that should be
@@ -180,14 +180,17 @@ Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "s
 
 ### Reading the results
 
-- **Diversity.** S is within 1% of θ·aₙ in both runs, as for msprime.
-  Σ2pq was slightly below msprime in both runs (z = −0.67 and −1.97). This is
-  not significant; more replicates would settle it.
+- **Diversity.** S is within 0.2% of θ·aₙ in both runs (msprime: 1.0% and
+  2.1% above). The largest |z| of either run, −3.12 for S against msprime with
+  seed 7, comes mostly from that msprime run being high. Σ2pq is below
+  θ(1 − 1/n) in both runs (z = −2.55 and −2.41) and below msprime (z = −0.75
+  and −2.56). Each check passes, but the deficit has the same sign in both
+  runs and in both v0.3.8 runs; more replicates would settle it.
 - **SFS.** The whole-population classes match msprime, including the excess
   of singletons over θ, which both simulators share. The sample SFS matches
   θ/k.
 - **LD.** FisherWright is slightly below msprime in all bins with seed 2026
-  and above it at 0.1–3 Mb with seed 7. The bins share simulations, so their
+  and above it at 10 kb–1 Mb with seed 7. The bins share simulations, so their
   z-scores are correlated; the change of sign shows no consistent bias.
 
 ### Driver scripts

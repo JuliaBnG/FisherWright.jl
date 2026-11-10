@@ -61,10 +61,10 @@ function run_case(setup, sets; edits = (), package = nothing)
     Core.eval(m, :(using Test, Random, Statistics))
     Core.eval(m, :(const Collect = $Collect))
     if package === nothing
-        Core.eval(m, :(using FisherWright: fisher_wright, muts2bitarray, uniform_recombination_map, cobp!))
+        Core.eval(m, :(using FisherWright: fisher_wright, muts2bitarray, uniform_recombination_map, cobp!, recombine))
     else
         Base.include(m, package)
-        Core.eval(m, :(using .FisherWright: fisher_wright, muts2bitarray, uniform_recombination_map, cobp!))
+        Core.eval(m, :(using .FisherWright: fisher_wright, muts2bitarray, uniform_recombination_map, cobp!, recombine))
     end
     Base.include_string(m, setup)
     return map(sets) do s

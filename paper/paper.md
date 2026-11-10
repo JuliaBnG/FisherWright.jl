@@ -148,16 +148,16 @@ The repository includes reproducible benchmark drivers to quantify the
 performance of this design. In one run with $N = 2{,}000$ individuals
 evolved for 2,000 generations ($t = N$, before equilibrium) on a 1 Gb
 genome ($10 \times 100$ Mb chromosomes), forward simulation required
-59.8 s on 8 threads of an AMD Ryzen 9 3900X. Converting the resulting
-567,975 segregating sites across 4,000 haplotypes to a 271 MiB
-`BitMatrix` required a further 9.0 s. By comparison, `SLiM` with
-tree-sequence recording required 51.6 s for forward simulation and
-11.2 s for variant export, whereas `msprime` using its DTWF model
-completed the equivalent steps in 9.6 s and 7.6 s, respectively.
+67.9 s on 8 threads of an AMD Ryzen 9 3900X. Converting the resulting
+571,686 segregating sites across 4,000 haplotypes to a 273 MiB
+`BitMatrix` required a further 8.5 s. By comparison, `SLiM` with
+tree-sequence recording required 51.6 s for forward simulation and 12.4
+s for variant export, whereas `msprime` using its DTWF model completed
+the equivalent steps in 9.5 s and 7.9 s, respectively.
 
 # Validation
 
-The validation suite compares `FisherWright.jl` (v0.4.0) with
+The validation suite compares `FisherWright.jl` (v0.4.1) with
 analytical neutral expectations and matched simulations from `msprime`'s
 discrete-time Wright–Fisher (DTWF) model. The validation setting models
 $N = 100$ individuals across 10 chromosomes of 10 Mb each ($L = 100$
@@ -173,7 +173,7 @@ segregating sites ($S$) against Watterson's $\theta a_n$; gene diversity
 $\geq 0.1$) across five distance bins from 10 kb to 3 Mb. A check fails
 when $|z| > 3.5$, where $z$ is calculated from means over the 50
 replicates. All 24 checks passed in each of two independent runs (seeds
-7 and 2026; maximum $|z|$ values of 2.24 and 2.49, respectively).
+7 and 2026; maximum $|z|$ values of 3.12 and 2.55, respectively).
 
 A lightweight statistical suite runs in continuous integration for every
 commit. It passes for five seeds and fails when the simulated $N$ is
