@@ -1,8 +1,8 @@
-# Date: 2026-11-10T11:08Z  Release: v0.4.1 (cd5720a, git archive)
+# Date: 2026-11-10T12:01Z  Commit: 0a83dce (v0.4.2, git archive)
 # CPU: AMD Ryzen 9 5950X 16-Core Processor; julia version 1.13.3; deps: BnGStructs v0.2.7 DataFrames v1.8.3 Distributions v0.25.134 Random v1.11.0 Statistics v1.11.5; SLiM version 5.2, built Sep 30 2026 16:33:26
 # $ bash bench/run-comparison.sh 2000 2000 10 100000000 1.0 42 8
 
-# Date: 2026-11-10T11:08Z  Commit: unknown
+# Date: 2026-11-10T12:01Z  Commit: unknown
 # CPU: AMD Ryzen 9 5950X 16-Core Processor (8 threads), Linux x86_64
 # bench/run-comparison.sh 2000 2000 10 100000000 1.0 42 8
 
@@ -25,14 +25,14 @@ Independent assortment  : Yes (0.5 crossover probability at autosome ends)
 Threads                 : 8
 Random seed             : 42
 -----------------------------------------------------------------
-Simulation runtime      : 61.150 s
-BitMatrix conversion    : 5.833 s
-Total runtime           : 66.983 s
+Simulation runtime      : 57.001 s
+BitMatrix conversion    : 6.699 s
+Total runtime           : 63.699 s
 Polymorphic SNPs found  : 571686
 Fixed substitutions     : 4
 BitMatrix dimension     : 571686 loci × 4000 haplotypes
 BitMatrix memory size   : 272.60 MiB (1.00 bits/element)
-Process peak RSS        : 2501.05 MiB
+Process peak RSS        : 2518.19 MiB
 =================================================================
 
 >>> [2/3] Running msprime (Backwards DTWF / Coalescent in Python)...
@@ -47,19 +47,19 @@ Recombination rate      : 1e-08 / bp / generation (1 cM/Mb)
 Model                   : DTWF (Discrete-Time Wright-Fisher)
 Random seed             : 42
 -----------------------------------------------------------------
-Ancestry runtime        : 7.069 s
-Mutation runtime        : 0.457 s
-BitArray packing time   : 5.574 s
-Total runtime           : 13.099 s
+Ancestry runtime        : 7.071 s
+Mutation runtime        : 0.455 s
+BitArray packing time   : 5.567 s
+Total runtime           : 13.093 s
 Polymorphic SNPs found  : 569235
 BitArray shape (packed) : (569235, 500) (dtype: uint8)
 BitArray memory size    : 271.43 MiB (8 bits per byte, 1 bit/genotype)
-Process peak RSS        : 2125.11 MiB
+Process peak RSS        : 2124.38 MiB
 =================================================================
 
 >>> [3/3] Checking SLiM (Gold Standard Forward Simulator)...
 // Initial random seed:
-494460904167348617
+802335525658958188
 
 // RunInitializeCallbacks():
 initializeTreeSeq();
@@ -77,24 +77,24 @@ initializeRecombinationRate(c(1e-08, 0.5, 1e-08, 0.5, 1e-08, 0.5, 1e-08, 0.5, 1e
 =================================================================
 Using SLiM binary: /home/xijiang/devel/JuliaBnG/FisherWright/SLiM/build/slim
 Running recipe: bench/simulate-slim.slim ...
-SLiM forward simulation finished in: 34.99 s
-Tree load time          : 0.100 s
-Mutation overlay time   : 0.817 s
-BitArray packing time   : 5.538 s
-Total post-process time : 6.454 s
+SLiM forward simulation finished in: 34.94 s
+Tree load time          : 0.101 s
+Mutation overlay time   : 0.820 s
+BitArray packing time   : 5.610 s
+Total post-process time : 6.531 s
 Polymorphic SNPs found  : 565757
 BitArray shape (packed) : (565757, 500) (dtype: uint8)
 BitArray memory size    : 269.77 MiB
-Peak RSS                : 9535.71 MiB
+Peak RSS                : 9523.17 MiB
 =================================================================
 # exit status: 0
 
 
-# Date: 2026-11-10T11:11Z  Release: v0.4.1 (cd5720a, git archive)
+# Date: 2026-11-10T12:03Z  Commit: 0a83dce (v0.4.2, git archive)
 # CPU: AMD Ryzen 9 5950X 16-Core Processor; julia version 1.13.3; deps: BnGStructs v0.2.7 DataFrames v1.8.3 Distributions v0.25.134 Random v1.11.0 Statistics v1.11.5; SLiM version 5.2, built Sep 30 2026 16:33:26
 # $ bash bench/run-comparison.sh 2000 2000 10 100000000 1.0 42 8
 
-# Date: 2026-11-10T11:11Z  Commit: unknown
+# Date: 2026-11-10T12:03Z  Commit: unknown
 # CPU: AMD Ryzen 9 5950X 16-Core Processor (8 threads), Linux x86_64
 # bench/run-comparison.sh 2000 2000 10 100000000 1.0 42 8
 
@@ -117,14 +117,14 @@ Independent assortment  : Yes (0.5 crossover probability at autosome ends)
 Threads                 : 8
 Random seed             : 42
 -----------------------------------------------------------------
-Simulation runtime      : 61.211 s
-BitMatrix conversion    : 5.821 s
-Total runtime           : 67.032 s
+Simulation runtime      : 56.942 s
+BitMatrix conversion    : 5.799 s
+Total runtime           : 62.741 s
 Polymorphic SNPs found  : 571686
 Fixed substitutions     : 4
 BitMatrix dimension     : 571686 loci × 4000 haplotypes
 BitMatrix memory size   : 272.60 MiB (1.00 bits/element)
-Process peak RSS        : 2515.84 MiB
+Process peak RSS        : 2466.36 MiB
 =================================================================
 
 >>> [2/3] Running msprime (Backwards DTWF / Coalescent in Python)...
@@ -139,19 +139,19 @@ Recombination rate      : 1e-08 / bp / generation (1 cM/Mb)
 Model                   : DTWF (Discrete-Time Wright-Fisher)
 Random seed             : 42
 -----------------------------------------------------------------
-Ancestry runtime        : 7.116 s
+Ancestry runtime        : 7.123 s
 Mutation runtime        : 0.456 s
-BitArray packing time   : 5.579 s
+BitArray packing time   : 5.573 s
 Total runtime           : 13.152 s
 Polymorphic SNPs found  : 569235
 BitArray shape (packed) : (569235, 500) (dtype: uint8)
 BitArray memory size    : 271.43 MiB (8 bits per byte, 1 bit/genotype)
-Process peak RSS        : 2124.69 MiB
+Process peak RSS        : 2120.66 MiB
 =================================================================
 
 >>> [3/3] Checking SLiM (Gold Standard Forward Simulator)...
 // Initial random seed:
-1417441187241463620
+258068455839431353
 
 // RunInitializeCallbacks():
 initializeTreeSeq();
@@ -169,24 +169,24 @@ initializeRecombinationRate(c(1e-08, 0.5, 1e-08, 0.5, 1e-08, 0.5, 1e-08, 0.5, 1e
 =================================================================
 Using SLiM binary: /home/xijiang/devel/JuliaBnG/FisherWright/SLiM/build/slim
 Running recipe: bench/simulate-slim.slim ...
-SLiM forward simulation finished in: 35.08 s
+SLiM forward simulation finished in: 35.03 s
 Tree load time          : 0.100 s
-Mutation overlay time   : 0.819 s
-BitArray packing time   : 5.546 s
-Total post-process time : 6.466 s
+Mutation overlay time   : 0.820 s
+BitArray packing time   : 5.535 s
+Total post-process time : 6.455 s
 Polymorphic SNPs found  : 565757
 BitArray shape (packed) : (565757, 500) (dtype: uint8)
 BitArray memory size    : 269.77 MiB
-Peak RSS                : 9534.62 MiB
+Peak RSS                : 9533.91 MiB
 =================================================================
 # exit status: 0
 
 
-# Date: 2026-11-10T11:13Z  Release: v0.4.1 (cd5720a, git archive)
+# Date: 2026-11-10T12:05Z  Commit: 0a83dce (v0.4.2, git archive)
 # CPU: AMD Ryzen 9 5950X 16-Core Processor; julia version 1.13.3; deps: BnGStructs v0.2.7 DataFrames v1.8.3 Distributions v0.25.134 Random v1.11.0 Statistics v1.11.5; SLiM version 5.2, built Sep 30 2026 16:33:26
 # $ bash bench/run-comparison.sh 2000 2000 10 100000000 1.0 42 8
 
-# Date: 2026-11-10T11:13Z  Commit: unknown
+# Date: 2026-11-10T12:05Z  Commit: unknown
 # CPU: AMD Ryzen 9 5950X 16-Core Processor (8 threads), Linux x86_64
 # bench/run-comparison.sh 2000 2000 10 100000000 1.0 42 8
 
@@ -209,14 +209,14 @@ Independent assortment  : Yes (0.5 crossover probability at autosome ends)
 Threads                 : 8
 Random seed             : 42
 -----------------------------------------------------------------
-Simulation runtime      : 61.358 s
-BitMatrix conversion    : 5.801 s
-Total runtime           : 67.158 s
+Simulation runtime      : 57.126 s
+BitMatrix conversion    : 5.921 s
+Total runtime           : 63.047 s
 Polymorphic SNPs found  : 571686
 Fixed substitutions     : 4
 BitMatrix dimension     : 571686 loci × 4000 haplotypes
 BitMatrix memory size   : 272.60 MiB (1.00 bits/element)
-Process peak RSS        : 2526.36 MiB
+Process peak RSS        : 2429.38 MiB
 =================================================================
 
 >>> [2/3] Running msprime (Backwards DTWF / Coalescent in Python)...
@@ -231,19 +231,19 @@ Recombination rate      : 1e-08 / bp / generation (1 cM/Mb)
 Model                   : DTWF (Discrete-Time Wright-Fisher)
 Random seed             : 42
 -----------------------------------------------------------------
-Ancestry runtime        : 7.084 s
-Mutation runtime        : 0.452 s
-BitArray packing time   : 5.570 s
-Total runtime           : 13.105 s
+Ancestry runtime        : 7.145 s
+Mutation runtime        : 0.455 s
+BitArray packing time   : 5.585 s
+Total runtime           : 13.185 s
 Polymorphic SNPs found  : 569235
 BitArray shape (packed) : (569235, 500) (dtype: uint8)
 BitArray memory size    : 271.43 MiB (8 bits per byte, 1 bit/genotype)
-Process peak RSS        : 2124.23 MiB
+Process peak RSS        : 2119.95 MiB
 =================================================================
 
 >>> [3/3] Checking SLiM (Gold Standard Forward Simulator)...
 // Initial random seed:
-1766680481256050657
+1488062241569624665
 
 // RunInitializeCallbacks():
 initializeTreeSeq();
@@ -261,14 +261,14 @@ initializeRecombinationRate(c(1e-08, 0.5, 1e-08, 0.5, 1e-08, 0.5, 1e-08, 0.5, 1e
 =================================================================
 Using SLiM binary: /home/xijiang/devel/JuliaBnG/FisherWright/SLiM/build/slim
 Running recipe: bench/simulate-slim.slim ...
-SLiM forward simulation finished in: 34.99 s
-Tree load time          : 0.098 s
-Mutation overlay time   : 0.821 s
-BitArray packing time   : 5.561 s
-Total post-process time : 6.480 s
+SLiM forward simulation finished in: 35.04 s
+Tree load time          : 0.100 s
+Mutation overlay time   : 0.817 s
+BitArray packing time   : 5.582 s
+Total post-process time : 6.499 s
 Polymorphic SNPs found  : 565757
 BitArray shape (packed) : (565757, 500) (dtype: uint8)
 BitArray memory size    : 269.77 MiB
-Peak RSS                : 9525.82 MiB
+Peak RSS                : 9528.69 MiB
 =================================================================
 # exit status: 0

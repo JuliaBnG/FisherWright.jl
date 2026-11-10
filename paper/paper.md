@@ -147,14 +147,17 @@ panels without instantiating intermediate whole-genome arrays.
 The repository includes reproducible benchmark drivers to quantify the
 performance of this design. With $N = 2{,}000$ individuals evolved for
 2,000 generations ($t = N$, before equilibrium) on a 1 Gb genome
-($10 \times 100$ Mb chromosomes), forward simulation required 61.2 s on
-8 threads of an AMD Ryzen 9 5950X (three runs, range 61.2–61.4 s).
-Converting the resulting 571,686 segregating sites across 4,000
-haplotypes to a 273 MiB `BitMatrix` required a further 5.8 s. By
-comparison, `SLiM` with tree-sequence recording required 35.0 s for
-forward simulation and 6.5 s for variant export, whereas `msprime` using
-its DTWF model completed the equivalent steps in 7.5 s and 5.6 s,
-respectively.
+($10 \times 100$ Mb chromosomes), forward simulation with v0.4.2
+required 57.0 s on 8 threads of an AMD Ryzen 9 5950X (mean of three
+runs, range 56.9–57.1 s). Converting the resulting 571,686 segregating
+sites across 4,000 haplotypes to a 273 MiB `BitMatrix` required a
+further 6.1 s. By comparison, single-threaded `SLiM` with tree-sequence
+recording, which records only the genealogy during the run, required
+35.0 s, and overlaying neutral mutations with `msprime` and exporting
+the variants required a further 6.5 s; `msprime` using its DTWF model
+completed the equivalent steps in 7.6 s and 5.6 s, respectively. Both
+tools avoid carrying alleles through each generation, which
+`FisherWright.jl` does by design.
 
 # Validation
 
