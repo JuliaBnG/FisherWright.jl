@@ -57,6 +57,7 @@ Keyword arguments:
 | `fixation_interval` | `1` | generations between fixation scans, when `result = true` |
 | `verbose` | `false` | report progress (mean muts/hap, substitutions, elapsed, ETA) to `stderr` |
 | `progress_interval` | `100` | generations between progress reports, when `verbose = true` |
+| `rng` | `Random.default_rng()` | random number generator; the realization depends only on its state |
 
 Every haplotype is a sorted vector of unique `UInt32` positions, and that
 invariant holds for the returned population.
@@ -110,7 +111,8 @@ chr = fill(10_000_000, 10)  # 10 chromosomes of 10 Mbp
 res = fisher_wright(ne, 10ne, chr, 1.0; result = true)
 
 # Expected neutral values at equilibrium, for a quick check:
-# θ = 4ne·μ·L with μ = mr / mut_base per bp per generation
+# θ = 4ne·μ·L with μ = mr / mut_base per bp per generation (two sexes with
+# binomial counts make Ne about ne - 0.5, a difference too small to matter here)
 θ = 4ne * (1.0 / 1e8) * sum(chr)                  # Σ2pq ≈ θ
 S = θ * sum(1 / i for i in 1:2ne-1)               # segregating sites ≈ θ·aₙ
 ```
@@ -119,8 +121,10 @@ S = θ * sum(1 / i for i in 1:2ne-1)               # segregating sites ≈ θ·a
   haplotypes into `substitutions`, which keeps memory bounded.
 - `mr` is the mutation rate per `mut_base` bp per generation, and `M` sets
   recombination only, so the two can be changed independently.
-- Runs with a fixed seed are reproducible only with the same thread count
-  (`julia -t N`).
+- Pass `rng = Xoshiro(seed)` for a reproducible run. The realization
+  depends only on the state of `rng`, not on the thread count, for a
+  fixed Julia version and package environment: variate algorithms can
+  change between Julia releases.
 - For whole-genome populations where only chip markers are needed, use
   `extract_chip_bitarray` or `to_haplotype(result, chip_positions)` rather
   than building the full `BitMatrix`.
@@ -229,6 +233,67 @@ into complementary offspring haplotypes.
 with four Julia threads. The repository includes reproducible benchmark drivers
 and captured validation output for the 1 Gb transient comparison and founder
 simulation example.
+
+## Changes in v0.3.9 and v0.3.10
+
+**Robustness.** Property-based tests (Supposition.jl) check the
+documented contracts against naive references. `muts2bitarray` throws
+`ArgumentError` for more than 127 chromosomes and for positions beyond
+the last chromosome end; `RecombinationMap` requires strictly
+increasing, positive chromosome ends. Sexes are rejection-sampled
+without a retry cap: with `ne = 2` the old 10-try cap threw about once
+per 1,024 generations. Runs that completed before draw the same numbers.
+
+## Changes in v0.4.0
+
+**Bug fixes. Seeded output changes relative to v0.3.10.**
+
+- `cobp!` draws the crossovers of an interval ending at `e` from
+  `p+1:e`, where `p` is the previous interval end. It drew from `p:e-1`,
+  so the gap before each interval's last position was never sampled and
+  a crossover could fall on the chromosome start. The bias was about
+  1/L.
+- With `result = true`, a new mutation at a substituted (fixed and
+  removed) site has no effect, as with `result = false`. Before, it
+  re-entered the active haplotypes as a spurious segregating site.
+
+**Reproducibility.** New `rng` keyword. Each meiosis and haplotype slot
+owns a `Xoshiro` stream seeded once from `rng`, and mating is drawn
+serially from `rng`. A realization therefore depends only on the state
+of `rng`: it is the same for any thread count, for both return modes and
+for any `fixation_interval`.
+
+## Changes in v0.4.1
+
+Documentation themes (JuliaBnG Sepia and Black). The simulation is
+unchanged.
+
+## Changes in v0.4.2
+
+**Performance.** New mutations are inserted into each haplotype by block
+copies between insertion points (`_insert_sorted!`) instead of an
+element-by-element merge. The position searches in recombination and
+mutation insertion use interpolation search (`_isearchfirst`), since
+positions are close to uniform along the genome, and finish with a
+binary search. On the 1 Gb benchmark (`ne = 2000`, `nt = 2000`, 10 × 100
+Mbp, 8 threads, AMD Ryzen 9 5950X), simulation time went from 61.3 s to
+56.9 s, 7% faster (means of three interleaved runs).
+
+**Seeded output is unchanged.** New tests pin the v0.4.0 realizations
+with golden-output digests, and the new kernels are tested against
+`searchsortedfirst` and `merge_sorted!`.
+
+**Documentation.** The reproducibility guarantee holds for a fixed Julia
+version and package environment: `randn` differs between Julia 1.10 and
+1.13, which changes Poisson draws with mean ≥ 6 and hence the
+realization for a given seed.
+
+**Validation.** Theoretical expectations use the effective size of the
+two-sex model, Ne = 99.48 for N = 100, instead of N, and msprime's
+diversity and SFS counts are scaled by Ne/N. In 1,000-replicate runs,
+Σ2pq was 396.0 ± 0.6 against an expected 395.9. The validation and
+benchmark logs were rerun at v0.4.1, and the power check of the CI tests
+now also runs the chromosome-boundary test.
 
 ## Contributing and support
 

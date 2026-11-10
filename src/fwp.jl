@@ -179,10 +179,11 @@ function fisher_wright(
                     # A substituted site is carried by every haplotype, so a new
                     # mutation there is a no-op, as it is when result = false.
                     _drop_present!(newm, subs)
-                    # Merge into the scratch buffer, then swap it in: no allocation
-                    # once both buffers have reached their steady-state size.
+                    # Insert into the scratch buffer by block copies, then swap it
+                    # in: no allocation once both buffers have reached their
+                    # steady-state size.
                     if !isempty(newm)
-                        merge_sorted!(mbuf[i], prt[i], newm)
+                        _insert_sorted!(mbuf[i], prt[i], newm)
                         prt[i], mbuf[i] = mbuf[i], prt[i]
                     end
                 end

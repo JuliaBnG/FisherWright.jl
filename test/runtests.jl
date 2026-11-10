@@ -1,6 +1,6 @@
 using Test
 using Random
-using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_sorted, merge_sorted!, recombine, _recombine!,
+using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_sorted, merge_sorted!, recombine, _recombine!, _insert_sorted!, _isearchfirst,
     cobp, cobp!, FisherWrightResult, to_haplotype, RecombinationMap,
     uniform_recombination_map, random_mate, random_mate!, _fixed_mutations,
     _drop_mutations, _drop_mutations!, _fixation_step, _fixation_step!, _extract_fixed,
@@ -57,6 +57,8 @@ end
     empty!(buf)
     merge_sorted!(buf, ho, muts) # warm up
     @test @allocated(merge_sorted!(buf, ho, muts)) == 0
+    _insert_sorted!(buf, ho, muts) # warm up
+    @test @allocated(_insert_sorted!(buf, ho, muts)) == 0
 end
 
 @testset "FisherWright basic" begin
@@ -190,6 +192,54 @@ end
         a = sort(unique(rand(UInt32(1):UInt32(40), rand(0:20))))
         b = sort(unique(rand(UInt32(1):UInt32(40), rand(0:20))))
         @test merge_sorted(a, b) == sort(union(a, b))
+    end
+end
+
+@testset "_isearchfirst matches searchsortedfirst" begin
+    ref(v, x, lo, hi) = searchsortedfirst(v, x, lo, hi, Base.Order.Forward)
+    @test _isearchfirst(UInt32[], UInt32(5), 1, 0) == 1
+    v = UInt32[10, 20, 30]
+    @test _isearchfirst(v, UInt32(5), 1, 3) == 1
+    @test _isearchfirst(v, UInt32(30), 1, 3) == 3
+    @test _isearchfirst(v, UInt32(31), 1, 3) == 4
+    @test _isearchfirst(v, UInt32(25), 3, 2) == 3
+    Random.seed!(5)
+    G = UInt32(1_000_000_000)
+    for _ = 1:300
+        # Uniform, clustered (most positions in a narrow band) and with repeats.
+        L = rand(0:5000)
+        v = sort!(rand(UInt32(1):G, L))
+        w = sort!(vcat(rand(UInt32(1):UInt32(1000), L), rand(UInt32(1):G, 5)))
+        u = sort!(rand(UInt32(1):UInt32(50), L))
+        for h in (v, w, u), _ = 1:50
+            n = length(h)
+            lo = rand(1:n+1)
+            hi = rand(lo-1:n)
+            x = isempty(h) || rand(Bool) ? rand(UInt32(0):G) : h[rand(1:n)]
+            @test _isearchfirst(h, x, lo, hi) == ref(h, x, lo, hi)
+        end
+    end
+    h = sort!(rand(UInt32(1):G, 10_000))
+    _isearchfirst(h, UInt32(500_000_000), 1, 10_000) # warm up
+    @test @allocated(_isearchfirst(h, UInt32(500_000_000), 1, 10_000)) == 0
+end
+
+@testset "_insert_sorted! matches merge_sorted!" begin
+    ins! = _insert_sorted!
+    @test ins!(UInt32[], UInt32[], UInt32[]) == UInt32[]
+    @test ins!(UInt32[], UInt32[], UInt32[2, 2, 5]) == UInt32[2, 5]
+    @test ins!(UInt32[], UInt32[3, 7], UInt32[]) == UInt32[3, 7]
+    @test ins!(UInt32[], UInt32[3, 7], UInt32[1, 3, 3, 7, 9, 9]) == UInt32[1, 3, 7, 9]
+    v = UInt32[1, 2]
+    @test_throws ArgumentError ins!(v, v, UInt32[3])
+
+    Random.seed!(11)
+    dest, ref = UInt32[], UInt32[]
+    for _ = 1:2000
+        v = sort!(unique!(rand(UInt32(1):UInt32(60), rand(0:40))))
+        # Short, sorted, with repeats and elements of v.
+        ins = sort!(vcat(rand(UInt32(1):UInt32(60), rand(0:6)), isempty(v) ? UInt32[] : rand(v, rand(0:2))))
+        @test ins!(dest, v, ins) == merge_sorted!(ref, v, ins)
     end
 end
 

@@ -161,8 +161,8 @@ function _recombine!(
 
     @inbounds for co in cross_overs
         # First index at or beyond the crossover; the segment is [i, i₂-1].
-        i₂ = searchsortedfirst(h₁, co, i, m, Base.Order.Forward)
-        j₂ = searchsortedfirst(h₂, co, j, n, Base.Order.Forward)
+        i₂ = _isearchfirst(h₁, co, i, m)
+        j₂ = _isearchfirst(h₂, co, j, n)
         if o
             i₂ > i && append!(hₒ, view(h₁, i:(i₂-1)))
         else
