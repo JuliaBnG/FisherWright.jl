@@ -219,9 +219,12 @@ end
             @test _isearchfirst(h, x, lo, hi) == ref(h, x, lo, hi)
         end
     end
+    # Measured inside a function: at testset scope, Julia 1.10 counts the
+    # boxing of the returned Int against the call.
+    alloc(v, x) = @allocated _isearchfirst(v, x, 1, length(v))
     h = sort!(rand(UInt32(1):G, 10_000))
-    _isearchfirst(h, UInt32(500_000_000), 1, 10_000) # warm up
-    @test @allocated(_isearchfirst(h, UInt32(500_000_000), 1, 10_000)) == 0
+    alloc(h, UInt32(500_000_000)) # warm up
+    @test alloc(h, UInt32(500_000_000)) == 0
 end
 
 @testset "_insert_sorted! matches merge_sorted!" begin
