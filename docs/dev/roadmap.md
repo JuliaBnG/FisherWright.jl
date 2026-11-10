@@ -1,22 +1,23 @@
 # Roadmap: variable population size, non-random mating, and selection
 
-Status: planned (drafted 2026-10-07 against v0.3.8; selection added
+Status: in progress (drafted 2026-10-07 against v0.3.8; selection added
 2026-11-02 against v0.4.0). v0.4.0 shipped without the refactor below,
 so the staging is renumbered from 0.5.0. Implemented so far, all from
 the 0.5.0 row: the golden-output regression test and the `_recombine!`
-kernel (v0.4.2), the `mutate` and `init` keywords, and the first step of
-the internal refactor (all 2026-11-10, not yet released).
+kernel (v0.4.2); the `mutate` and `init` keywords, the internal
+refactor, and exogenous `popsize` (2026-11-10, not yet released).
 
-The refactor so far (`src/simulate.jl`): a `SimState` struct holds the
+The refactor (`src/simulate.jl`): a `SimState` struct holds the
 haplotypes, buffers and per-slot streams; `fisher_wright` builds it and
 calls `_simulate!(st, demog, mating, fitness, …)` once, specialised on
-the concrete types. Each axis has only its default model
-(`ConstantSize`, `RandomMating`, `Neutral`), none of them exported, and
-no keyword was added. Still to do in 0.5.0: buffers that follow a
-changing N, which `popsize` needs (`pm` is a fixed `Matrix`, and the
-fixation scan and the output assume `length(prt) == 2N`); the public
-`popsize` and `mating` keywords; fixed sex ratio; census and Ne metadata
-in results.
+the concrete types. Buffers are allocated for the largest census size
+of the run, and the current cohort occupies their leading entries.
+Demography is `ConstantSize` or `SizeTrajectory` (from `popsize`, a
+vector or a function evaluated before the run); mating and fitness have
+only their defaults (`RandomMating`, `Neutral`). None of these types is
+exported. Still to do in 0.5.0: the public `mating` keyword with a
+fixed sex ratio, census and Ne metadata in results, the trajectory
+helpers (`bottleneck`, `growth`), and validation 3 against msprime.
 
 ## Current model (v0.4.0)
 
@@ -240,7 +241,11 @@ replicates and seeds; logs go under `docs/src/validation/`.
      above.
    - Cases: skewed sex ratio (10♂/90♀ → Ne = 36), NegBinomial family
      sizes, equal families, selfing s ∈ {0.2, 0.5}.
-3. **Variable N, against msprime DTWF with the same demography:** SFS, π
+3. **Variable N.** Done as a CI test: heterozygosity through a
+   bottleneck and an expansion against the exact two-sex recursion
+   (30 → 6 for 8 generations → 60 for 12), which also shows that the
+   drift of generation g follows its N_{g−1} parents. Still to do,
+   **against msprime DTWF with the same demography:** SFS, π
    and σ²_d per distance bin after a bottleneck and after an expansion,
    reusing the existing msprime harness. msprime DTWF is monoecious and
    Poisson-like, so this matches only `RandomMating`; the O(1/N) dioecy
