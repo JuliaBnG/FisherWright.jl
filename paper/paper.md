@@ -144,6 +144,17 @@ matrices are unwieldy, `extract_chip_bitarray` and
 coordinates directly against sparse haplotypes to generate target SNP
 panels without instantiating intermediate whole-genome arrays.
 
+The repository includes reproducible benchmark drivers to quantify the
+performance of this design. In one run with $N = 2{,}000$ individuals
+evolved for 2,000 generations ($t = N$, before equilibrium) on a 1 Gb
+genome ($10 \times 100$ Mb chromosomes), forward simulation required
+59.8 s on 8 threads of an AMD Ryzen 9 3900X. Converting the resulting
+567,975 segregating sites across 4,000 haplotypes to a 271 MiB
+`BitMatrix` required a further 9.0 s. By comparison, `SLiM` with
+tree-sequence recording required 51.6 s for forward simulation and
+11.2 s for variant export, whereas `msprime` using its DTWF model
+completed the equivalent steps in 9.6 s and 7.6 s, respectively.
+
 # Validation
 
 The validation suite compares `FisherWright.jl` (v0.4.0) with
@@ -174,24 +185,39 @@ release v0.1.6.
 
 # Research impact statement
 
-`FisherWright.jl` is the founder-population generator for the
-`JuliaBnG` ecosystem and directly produces `BnGStructs.jl` haplotype
-containers. An earlier release (v0.1.x) simulated the historical base
-population for an evaluation of enteric methane breeding objectives in
-the Norwegian White Sheep program [@yu2026effects]. That release
-predates the corrections listed in the package changelog; their effects
-on the founders are documented in the manual.
+In applied breeding research with the Norwegian Association of Sheep and
+Goat Breeders (NSG), an early release (v0.1.x), run within the breeding
+simulator `xyBnG.jl` [@yu2026xybng], generated the historical base
+population used to evaluate enteric methane ($\text{CH}_4$) index
+weights and Portable Accumulation Chamber phenotyping intensities in the
+Norwegian White Sheep breeding program [@yu2026effects]. NSG will
+present these results to breeders at the Sheep Breeders Round Table 2026
+[@jakobsen2026integrating]. That release predates the corrections listed
+in the package changelog; their effects on the founders are documented
+in the manual.
 
-The package repository includes reproducible benchmark drivers. In one
-run with $N = 2{,}000$ individuals evolved for 2,000 generations
-($t = N$, before equilibrium) on a 1 Gb genome ($10 \times 100$ Mb
-chromosomes), forward simulation required 59.8 s on 8 threads of an AMD
-Ryzen 9 3900X. Converting the resulting 567,975 segregating sites across
-4,000 haplotypes to a 271 MiB `BitMatrix` required a further 9.0 s. By
-comparison, `SLiM` with tree-sequence recording required 51.6 s for
-forward simulation and 11.2 s for variant export, whereas `msprime`
-using its DTWF model completed the equivalent steps in 9.6 s and 7.6 s,
-respectively.
+The current release is used in a pre-registered follow-up study
+(manuscript in preparation) that asks whether the conclusions of that
+evaluation depend on founder design. `FisherWright.jl` generates three
+of its six historical designs: the original burn-in ($N = 5{,}000$ for
+5,000 generations) with the early and with the corrected release, and a
+small population ($N = 200$) at mutation–drift equilibrium; `msprime`
+generates the others. The study tests whether the corrections change the
+$\text{CH}_4$ contrast between selection scenarios, and whether that
+contrast, genomic prediction accuracy and the ranking of scenarios are
+robust to founder design.
+
+Within the open-source [`JuliaBnG`](https://juliabng.github.io/)
+ecosystem, `FisherWright.jl` is the founder step: the breeding-scheme
+simulator `BnGsim.jl` (in development) and
+[`RelationshipMatrices.jl`](https://github.com/JuliaBnG/RelationshipMatrices.jl)
+consume its output through
+[`BnGStructs.jl`](https://github.com/JuliaBnG/BnGStructs.jl) types. The
+algorithm descends from a C++ program (`pgsnp.cpp`, 2010), which
+generated founder populations for simulation studies of genotype
+imputation [@yu2014prioritizing], genomic prediction [@luan2014genomic;
+@iheshiulor2016within], and gene-editing-assisted selection
+[@yu2022simulator].
 
 # AI usage disclosure
 
