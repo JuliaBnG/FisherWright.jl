@@ -93,8 +93,24 @@ function random_mate!(
     rng = Random.default_rng(),
     max_tries::Int = 10,
 )
-    n1, n2 = length(sex), size(pm, 1)
-    (n1 > 1 && n2 > 0) || error("n1 must >1 and n2 >0")
+    return _random_mate!(pm, sex, sires, dams, size(pm, 1), rng, max_tries)
+end
+
+# Kernel of `random_mate!`: `length(sex)` parents, and matings written to rows
+# `1:n2` of `pm`, which may have more rows. The draws from `rng` are the sex
+# vector (redrawn until both sexes are present), then sire and dam of each
+# offspring in turn.
+function _random_mate!(
+    pm::Matrix{Int},
+    sex::Vector{Bool},
+    sires::Vector{Int},
+    dams::Vector{Int},
+    n2::Int,
+    rng,
+    max_tries::Int,
+)
+    n1 = length(sex)
+    (n1 > 1 && 0 < n2 <= size(pm, 1)) || error("n1 must >1 and n2 >0")
     tries = 0
     while true
         rand!(rng, sex)

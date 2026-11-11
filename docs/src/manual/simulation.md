@@ -5,7 +5,8 @@
 ```julia
 fisher_wright(ne, nt, chr, mr; M=1e8, mut_base=1e8,
               result=false, fixation_interval=1, mutate=true,
-              init=nothing, verbose=false, progress_interval=100)
+              init=nothing, popsize=nothing, verbose=false,
+              progress_interval=100)
 ```
 
 Simulate `ne` diploid individuals for `nt` generations. `chr` is a vector of
@@ -20,6 +21,7 @@ new mutations per `mut_base` base pairs per haplotype per meiosis.
 | `fixation_interval` | `1` | Generations between fixation scans when `result=true`. |
 | `mutate` | `true` | Generate new mutations; `false` leaves drift and recombination only. |
 | `init` | `nothing` | Starting population: `2ne` haplotypes or a `FisherWrightResult`; `nothing` starts monomorphic. |
+| `popsize` | `nothing` | Census size per generation: a vector of `nt` sizes or a function of the generation; `nothing` keeps `ne`. |
 | `verbose` | `false` | Report progress (mean mutations per haplotype, substitutions, elapsed time, ETA) to `stderr`. |
 | `progress_interval` | `100` | Generations between progress reports when `verbose=true`. |
 
@@ -112,6 +114,43 @@ Two calls of `nt₁` and `nt₂` generations are therefore a valid
 realization of `nt₁ + nt₂` generations, but not the one a single call
 gives for the same seed.
 
+## Changing population size
+
+By default the census size stays at `ne`. `popsize` gives the size of
+every generation instead, either as a vector of `nt` integers or as a
+function `g -> N_g`, which is called once for each `g = 1, …, nt` before
+the run. Every size must exceed one. `ne` is then the starting size
+``N_0``, and the run returns ``2N_{nt}`` haplotypes.
+
+```@example simulation
+sizes = [fill(10, 5); fill(40, 15)]   # bottleneck, then recovery
+haplotypes, _ = fisher_wright(40, 20, [100_000, 100_000], 1.0;
+                              popsize=sizes)
+length(haplotypes)
+```
+
+```@example simulation
+growth = g -> round(Int, 20 * 1.05^g)   # 5% growth per generation
+haplotypes, _ = fisher_wright(20, 20, [100_000, 100_000], 1.0;
+                              popsize=growth)
+length(haplotypes) == 2growth(20)
+```
+
+Generation ``g`` draws the sire and dam of each of its ``N_g`` offspring
+from the ``N_{g-1}`` individuals of the previous generation, whose sexes
+are drawn as in the constant case. The drift of generation ``g``
+therefore follows the number of parents, ``N_{g-1}``: its effective size
+is that of the two-sex model for ``N_{g-1}`` individuals (see
+[Effective size](@ref)), whatever the number of offspring. Mutation is
+per haplotype, so the number of new mutations follows ``N_g``.
+
+The population is not at mutation–drift equilibrium after a change in
+size; combine `popsize` with `init` to burn in at constant size first.
+
+Buffers and random streams are allocated once for the largest size of
+the run, so the realization for a given seed depends on that maximum. A
+trajectory that stays at `ne` reproduces the run without `popsize`.
+
 ## Reproducibility
 
 Pass an explicit generator, for example `rng = Xoshiro(2026)`.
@@ -131,6 +170,7 @@ data.
 
 ## Parameter limits
 
-`ne` must exceed one, `nt` must be positive, and chromosome lengths must be
-positive. `mr` must be strictly between `0.01` and `20.0`. The total genome
-length must be smaller than `2^32`, because positions use `UInt32`.
+`ne` and every entry of `popsize` must exceed one, `nt` must be
+positive, and chromosome lengths must be positive. `mr` must be strictly
+between `0.01` and `20.0`. The total genome length must be smaller than
+`2^32`, because positions use `UInt32`.

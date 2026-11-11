@@ -42,6 +42,7 @@ end
         fixation_interval::Int = 1,
         mutate::Bool = true,
         init = nothing,
+        popsize = nothing,
         verbose::Bool = false,
         progress_interval::Integer = 100,
         rng::AbstractRNG = Random.default_rng(),
@@ -54,7 +55,7 @@ Mutations are tracked as sorted, unique vectors of `UInt32` genomic coordinates,
 total genome lengths up to ``2^{32} \\approx 4.29 \\times 10^9`` base pairs (bp).
 
 # Arguments
-- `ne::Integer`: Effective diploid population size (number of individuals, `ne > 1`). Total haplotypes simulated is `2 * ne`.
+- `ne::Integer`: Diploid population size (number of individuals, `ne > 1`), constant unless `popsize` is given; `2 * ne` haplotypes are simulated. With `popsize`, `ne` is the size of the starting population.
 - `nt::Integer`: Number of generations to simulate (`nt > 0`).
 - `chr::Vector{<:Integer}`: Chromosome lengths in base pairs (all entries must be positive). Total genome length `sum(chr)` must be `< 2^32`.
 - `mr::Float64`: Expected mutation rate per `mut_base` base pairs per meiosis (must satisfy `0.01 < mr < 20.0`).
@@ -69,13 +70,14 @@ total genome lengths up to ``2^{32} \\approx 4.29 \\times 10^9`` base pairs (bp)
 - `fixation_interval::Int = 1`: Frequency (in generations) to scan for and extract fixed substitutions when `result = true`.
 - `mutate::Bool = true`: If `false`, no new mutations are generated: the population evolves by drift and recombination only, and `mr` and `mut_base` are not used (`mr` must still lie in its valid range). Mating is drawn from `rng` exactly as with `mutate = true`, but meiosis shares the per-slot streams with the skipped mutation draws, so for the same seed the two settings give different realizations. Intended for validation runs that start from a polymorphic population given by `init`, for example heterozygosity decay ``H_t/H_0 = (1 - 1/(2N_e))^t``; without `init`, a run with `mutate = false` stays monomorphic.
 - `init = nothing`: Starting population; `nothing` starts monomorphic. Either a `Vector{Vector{UInt32}}` of `2 * ne` haplotypes (each sorted, unique, with positions in `1:sum(chr)`), or a [`FisherWrightResult`](@ref) whose `chromosome_ends` equal `cumsum(chr)`. Haplotypes `2i - 1` and `2i` form individual `i`, the convention of the output, and these individuals are the parents of generation 1. `init` is copied and left unmodified. The substitutions of a `FisherWrightResult` are carried over when `result = true` and merged back into every haplotype when `result = false`; given as plain haplotypes, sites carried by all of them are extracted at the first fixation scan when `result = true`. See *Continuing a run* below.
+- `popsize = nothing`: Census size per generation; `nothing` keeps it at `ne`. Either a vector of `nt` integers or a function `g -> N_g` of the generation `g = 1, …, nt`, which is called once per generation before the run; every size must exceed 1. Generation `g` draws the parents of its `N_g` offspring from the `N_{g-1}` individuals of the previous generation (`N_0 = ne`), so the run returns `2 * N_nt` haplotypes. See *Changing population size* below.
 - `verbose::Bool = false`: If `true`, writes a start banner and a progress line to `stderr` every `progress_interval` generations and at the last generation, reporting mean mutations per haplotype, accumulated substitutions (when `result = true`), elapsed wall time, and a linear ETA. On a terminal the line is updated in place; when `stderr` is redirected each report is a separate line.
 - `progress_interval::Integer = 100`: Generations between progress reports when `verbose = true` (must be positive).
 - `rng::AbstractRNG = Random.default_rng()`: Random number generator; see *Reproducibility* below.
 
 # Returns
 - When `result = false`:
-  - `prt::Vector{Vector{UInt32}}`: Active haplotypes (`2 * ne`), each containing sorted, unique 1-based genomic mutation positions.
+  - `prt::Vector{Vector{UInt32}}`: Active haplotypes (`2 * ne`, or `2 * N_nt` with `popsize`), each containing sorted, unique 1-based genomic mutation positions.
   - `cbp::Vector{UInt32}`: Cumulative chromosome end positions in base pairs (`cumsum(chr)`).
 - When `result = true`:
   - A [`FisherWrightResult`](@ref) containing `active_haplotypes`, `chromosome_ends`, and accumulated `substitutions`.
@@ -86,6 +88,7 @@ total genome lengths up to ``2^{32} \\approx 4.29 \\times 10^9`` base pairs (bp)
 - **Multithreading & Reproducibility**: Meiosis and mutation generation are parallelized using `Threads.@threads`. Each meiosis/haplotype slot owns a `Xoshiro` stream seeded once from `rng` at the start, and mating is sampled serially from `rng`, so a run is determined by the state of `rng` alone, independent of `Threads.nthreads()` and task scheduling.
   This holds for a fixed Julia version and package environment. The realization also depends on the variate algorithms of Julia's `Random` and of Distributions.jl, which can change between versions: `randn` differs between Julia 1.10 and 1.13, so Poisson draws with mean ≥ 6 (Distributions' `PoissonADSampler`; in practice the per-haplotype mutation count of most genome-scale runs) can differ, and the same seed then gives a different population. Record the Julia version and `Manifest.toml` with simulated data.
 - **Continuing a run**: With `init`, the population evolves for `nt` further generations from the given state, for example to burn in once and then start several replicates, or to follow a set of standing variants with `mutate = false`. The per-slot streams are seeded anew from `rng` on every call, so two calls of `nt₁` and `nt₂` generations are a valid realization of `nt₁ + nt₂` generations but not the one a single call would give for the same seed.
+- **Changing population size**: With `popsize`, the census size follows the given trajectory, for example a bottleneck or an expansion; mating, meiosis and mutation are otherwise as described above, and sex is redrawn in every generation, so the effective size of generation `g` follows the `N_{g-1}` parents. Working buffers and the per-slot streams are allocated once for the largest size of the run, so the realization for a given seed depends on that maximum: a trajectory that stays at `ne` reproduces the run without `popsize`, while two trajectories with different maxima share no random numbers.
 - **Allocation Efficiency**: Working buffers (mutations, crossovers, mating assignments) are allocated once at start and reused, achieving zero steady-state per-generation allocations.
 
 # Examples
@@ -102,6 +105,14 @@ res.chromosome_ends
 
 # Continue that population for 5 generations of drift without new mutations
 res2 = fisher_wright(50, 5, [100_000, 100_000], 1.0; init=res, mutate=false, result=true)
+
+# A bottleneck of 10 individuals for 5 generations, then recovery to 50
+sizes = [fill(10, 5); fill(50, 15)]
+haps, _ = fisher_wright(50, 20, [100_000, 100_000], 1.0; popsize=sizes)
+length(haps) # 100 haplotypes
+
+# Exponential growth from 50, as a function of the generation
+haps, _ = fisher_wright(50, 20, [100_000, 100_000], 1.0; popsize=g -> round(Int, 50 * 1.05^g))
 ```
 """
 function fisher_wright(
@@ -115,6 +126,7 @@ function fisher_wright(
     fixation_interval::Int=1,
     mutate::Bool=true,
     init::Union{Nothing,Vector{Vector{UInt32}},FisherWrightResult}=nothing,
+    popsize=nothing,
     verbose::Bool=false,
     progress_interval::Integer=100,
     rng::AbstractRNG=Random.default_rng(),
@@ -135,8 +147,8 @@ function fisher_wright(
     recomb_map = uniform_recombination_map(chr; M=M)
     span = UInt32(1):UInt32(tbp)
 
-    demog = ConstantSize(Int(ne))
-    prt, substitutions = _initial_state(init, 2 * demog.n, cbp, result)
+    demog = _demography(Int(ne), Int(nt), popsize)
+    prt, substitutions = _initial_state(init, 2 * Int(ne), cbp, result)
     st = SimState(prt, substitutions, _maxsize(demog, nt), rng)
 
     verbose &&
@@ -152,7 +164,9 @@ function fisher_wright(
         progress_interval=Int(progress_interval),
         rng=rng,
     )
-    return result ? FisherWrightResult(st.prt, cbp, st.substitutions) : (st.prt, cbp)
+    # Drop the spare buffers beyond the final cohort.
+    haps = resize!(st.prt, 2 * st.n)
+    return result ? FisherWrightResult(haps, cbp, st.substitutions) : (haps, cbp)
 end
 
 """
@@ -166,6 +180,7 @@ end
         fixation_interval::Int = 1,
         mutate::Bool = true,
         init = nothing,
+        popsize = nothing,
         verbose::Bool = false,
         progress_interval::Integer = 100,
         rng::AbstractRNG = Random.default_rng(),
@@ -192,6 +207,7 @@ are automatically extracted from `sp`:
 - `fixation_interval::Int = 1`: Interval (in generations) to scan for and extract fixed substitutions when `result = true`.
 - `mutate::Bool = true`: If `false`, no new mutations are generated; see the method above.
 - `init = nothing`: Starting population of `2 * sp.nid` haplotypes, or a [`FisherWrightResult`](@ref); see the method above.
+- `popsize = nothing`: Census size per generation, as a vector of `nt` integers or a function of the generation; see the method above.
 - `verbose::Bool = false`: If `true`, reports progress to `stderr`; see the method above.
 - `progress_interval::Integer = 100`: Generations between progress reports when `verbose = true`.
 - `rng::AbstractRNG = Random.default_rng()`: Random number generator; see the method above.
@@ -215,6 +231,7 @@ function fisher_wright(
     fixation_interval::Int = 1,
     mutate::Bool = true,
     init::Union{Nothing,Vector{Vector{UInt32}},FisherWrightResult} = nothing,
+    popsize = nothing,
     verbose::Bool = false,
     progress_interval::Integer = 100,
     rng::AbstractRNG = Random.default_rng(),
@@ -230,6 +247,7 @@ function fisher_wright(
         fixation_interval = fixation_interval,
         mutate = mutate,
         init = init,
+        popsize = popsize,
         verbose = verbose,
         progress_interval = progress_interval,
         rng = rng,

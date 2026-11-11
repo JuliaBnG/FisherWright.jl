@@ -237,6 +237,22 @@ end
             isempty(_fixed_mutations(H))
     end)
 
+    # The same invariants under an arbitrary census trajectory, in both
+    # return modes.
+    @test prop_passed(@check db=false record=false rng=prop_rng() max_examples=40 function popsize_invariants(
+        ne=Data.Integers(2, 12),
+        sizes=Data.Vectors(Data.Integers(2, 16); min_size=1, max_size=30),
+        seed=Data.Integers{UInt64}())
+        kw = (mut_base=1e3, M=200, popsize=sizes)
+        res = fisher_wright(ne, length(sizes), [300, 200], 15.0; kw..., result=true, rng=Xoshiro(seed))
+        haps, _ = fisher_wright(ne, length(sizes), [300, 200], 15.0; kw..., rng=Xoshiro(seed))
+        H = res.active_haplotypes
+        length(H) == 2sizes[end] &&
+            all(h -> issorted(h) && allunique(h) && all(p -> 1 <= p <= 500, h), H) &&
+            issorted(res.substitutions) && allunique(res.substitutions) &&
+            isempty(_fixed_mutations(H)) && _with_fixed(res) == haps
+    end)
+
     # A recurrent mutation at a substituted site is a no-op in both return
     # modes (regression: with result = true it re-entered as segregating).
     # Saturated toy genome, so such hits are frequent.

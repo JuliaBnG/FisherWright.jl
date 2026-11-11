@@ -5,7 +5,7 @@ using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_s
     uniform_recombination_map, random_mate, random_mate!, _fixed_mutations,
     _drop_mutations, _drop_mutations!, _fixation_step, _fixation_step!, _extract_fixed,
     _intersect_sorted!, _remove_sorted!, _with_fixed, _simulate!, _initial_state,
-    SimState, ConstantSize, RandomMating, Neutral
+    SimState, ConstantSize, SizeTrajectory, RandomMating, Neutral
 using BnGStructs
 using Distributions: Poisson
 using Statistics: mean, var, cor
@@ -561,6 +561,79 @@ end
         engine!(st, rng, 50; mutate=mutate)
         @test @allocated(engine!(st, rng, 50; mutate=mutate)) / 50 < 2^16
     end
+
+    # The same holds while the census size changes: buffers are sized for the
+    # largest cohort, and those of a smaller one are kept.
+    demog = SizeTrajectory(ne, repeat([20, 35, 50, 35], 25))
+    cycle!(st, rng) = _simulate!(
+        st, demog, RandomMating(), Neutral(), 100, rmap, Poisson(10.0), span;
+        mutate=false, track=false, fixation_interval=1, verbose=false,
+        progress_interval=100, rng=rng)
+    cycle!(st, rng)
+    @test st.n == 35 && length(st.prt) == 2ne
+    @test @allocated(cycle!(st, rng)) / 100 < 2^16
+end
+
+@testset "Changing population size" begin
+    chr = [100_000, 200_000]
+    args = (20, 60, chr, 5.0)
+    kw = (M=5e4, mut_base=1e5)
+    valid(h, G) = issorted(h) && allunique(h) && all(p -> 1 <= p <= G, h)
+
+    # A trajectory that stays at ne is the run without popsize, as a vector
+    # and as a function.
+    a = fisher_wright(args...; kw..., rng=Xoshiro(3))
+    @test fisher_wright(args...; kw..., popsize=fill(20, 60), rng=Xoshiro(3)) == a
+    @test fisher_wright(args...; kw..., popsize=g -> 20, rng=Xoshiro(3)) == a
+    @test fisher_wright(args...; kw..., popsize=fill(Int32(20), 60), rng=Xoshiro(3)) == a
+
+    # Bottleneck, expansion and an odd final size: 2N_nt haplotypes come
+    # back, both return modes agree, and a vector equals the same function.
+    sizes = [fill(5, 20); fill(45, 39); 13]
+    res = fisher_wright(args...; kw..., popsize=sizes, result=true, rng=Xoshiro(4))
+    haps, cbp = fisher_wright(args...; kw..., popsize=sizes, rng=Xoshiro(4))
+    @test length(haps) == length(res.active_haplotypes) == 26
+    @test cbp == res.chromosome_ends == UInt32[100_000, 300_000]
+    @test _with_fixed(res) == haps
+    @test fisher_wright(args...; kw..., popsize=g -> sizes[g], rng=Xoshiro(4))[1] == haps
+    @test fisher_wright(args...; kw..., popsize=sizes, result=true, fixation_interval=7,
+        rng=Xoshiro(4)).substitutions == res.substitutions
+    @test !isempty(res.substitutions) && !all(isempty, res.active_haplotypes)
+    @test all(h -> valid(h, 300_000), res.active_haplotypes)
+    @test isempty(_fixed_mutations(res.active_haplotypes))
+    @test all(h -> isempty(intersect(h, res.substitutions)), res.active_haplotypes)
+
+    # The smallest population, and growth from it.
+    tiny = fisher_wright(2, 80, chr, 5.0; kw..., popsize=fill(2, 80), result=true, rng=Xoshiro(5))
+    @test length(tiny.active_haplotypes) == 4
+    grown, _ = fisher_wright(2, 6, chr, 5.0; kw..., popsize=g -> 2^(g + 1), rng=Xoshiro(5))
+    @test length(grown) == 2 * 2^7 && all(h -> valid(h, 300_000), grown)
+
+    # With init, ne is the size of the starting population; without mutation
+    # an expansion only redistributes its variants.
+    start = fisher_wright(8, 100, chr, 5.0; kw..., result=true, rng=Xoshiro(6))
+    big = fisher_wright(8, 5, chr, 5.0; kw..., init=start, popsize=fill(64, 5),
+        mutate=false, result=true, rng=Xoshiro(7))
+    @test length(big.active_haplotypes) == 128
+    @test issubset(reduce(union, big.active_haplotypes), reduce(union, start.active_haplotypes))
+    @test issubset(start.substitutions, big.substitutions)
+    @test start.active_haplotypes == fisher_wright(8, 100, chr, 5.0; kw..., result=true,
+        rng=Xoshiro(6)).active_haplotypes   # init left untouched
+
+    # Species method.
+    sp = GenericSpecies("Size", Int32(20), UInt32.(chr), UInt32(50_000))
+    @test fisher_wright(sp, 60, 5.0; mut_base=1e5, popsize=sizes, rng=Xoshiro(4))[1] == haps
+
+    # Invalid trajectories.
+    run(p; nt=10) = fisher_wright(20, nt, chr, 5.0; popsize=p)
+    @test_throws ArgumentError run(fill(20, 9))
+    @test_throws ArgumentError run(fill(20, 11))
+    @test_throws ArgumentError run([fill(20, 9); 1])
+    @test_throws ArgumentError run([0; fill(20, 9)])
+    @test_throws ArgumentError run(g -> 20.0)
+    @test_throws ArgumentError run(g -> g == 4 ? 1 : 20)
+    @test_throws ArgumentError run(20)
+    @test_throws "generation 4" run(g -> g == 4 ? 1 : 20)
 end
 
 @testset "Simulation invariants at scale" begin
@@ -832,23 +905,40 @@ end
     end
 end
 
-# Expected Σ2pq / L over all 2N haplotypes after each of `nt` generations,
-# starting from independent alleles at frequency ½. Exact for the model:
-# sex Binomial(N, ½) conditioned on both sexes, sire and dam drawn with
-# replacement. hB and hW are the heterozygosities of two genes in different
-# individuals and in one individual (docs/src/manual/validation.md,
-# "Effective size"); the sex counts are independent of the genotypes and
-# across generations, so the expectation uses a = E[1/(4Nm) + 1/(4Nf)].
-function expected_heterozygosity(N, nt)
-    w = [binomial(big(N), m) for m = 1:N-1]
-    a = Float64(sum(w[m] * (1 // (4m) + 1 // (4(N - m))) for m = 1:N-1) / sum(w))
+# Expected Σ2pq / L over all haplotypes of each generation, starting from
+# independent alleles at frequency ½ in `n0` individuals; `sizes[g]` is the
+# number of offspring of generation g. Exact for the model: the parents' sex
+# is Binomial(N, ½) conditioned on both sexes, and sire and dam are drawn
+# with replacement. hB and hW are the heterozygosities of two genes in
+# different individuals and in one individual (docs/src/manual/validation.md,
+# "Effective size"). The sex counts are independent of the genotypes and
+# across generations, so the expectation uses a = E[1/(4Nm) + 1/(4Nf)] over
+# the N parents of each generation, whatever the number of offspring.
+function expected_heterozygosity(n0, sizes)
+    function coalescence(N)
+        w = [binomial(big(N), m) for m = 1:N-1]
+        return Float64(sum(w[m] * (1 // (4m) + 1 // (4(N - m))) for m = 1:N-1) / sum(w))
+    end
     hB = hW = 0.5
     H = Float64[]
-    for _ = 1:nt
+    N = n0
+    for n in sizes
+        a = coalescence(N)
         hB, hW = (1 - a) * hB + a / 2 * hW, hB
-        push!(H, hW / 2N + (1 - 1 / N) * hB)
+        push!(H, hW / 2n + (1 - 1 / n) * hB)
+        N = n
     end
     return H
+end
+
+# Mean Σ2pq / L over the haplotypes `haps`, for sites 1:L.
+function site_heterozygosity(haps, L)
+    n = length(haps)
+    c = zeros(Int, L)
+    for h in haps, p in h
+        c[p] += 1
+    end
+    return sum(x -> 2 * (x / n) * (1 - x / n), c) / L
 end
 
 @testset "Heterozygosity decay without mutation" begin
@@ -861,11 +951,7 @@ end
     N, chr, reps, t₁, t₂ = 20, fill(50, 20), 400, 10, 30
     L = sum(chr)
     rng = Xoshiro(20261110)
-    het(haps) = (n = length(haps); c = zeros(Int, L);
-        for h in haps, p in h
-            c[p] += 1
-        end;
-        sum(x -> 2 * (x / n) * (1 - x / n), c) / L)
+    het(haps) = site_heterozygosity(haps, L)
     H₁, H₂ = zeros(reps), zeros(reps)
     for r = 1:reps
         start = [UInt32.(findall(rand(rng, Bool, L))) for _ = 1:2N]
@@ -874,7 +960,7 @@ end
         H₁[r] = het(_with_fixed(mid))
         H₂[r] = het(last)
     end
-    E = expected_heterozygosity(N, t₁ + t₂)
+    E = expected_heterozygosity(N, fill(N, t₁ + t₂))
     z₁ = (mean(H₁) - E[t₁]) / sqrt(var(H₁) / reps)
     z₂ = (mean(H₂) - E[t₁+t₂]) / sqrt(var(H₂) / reps)
     @test abs(z₁) < 3.5
@@ -884,6 +970,40 @@ end
     # is 8 to 11 standard errors away.
     ideal = 0.5 * (1 - 1 / 2N)^(t₁ + t₂ + 1)
     @test (ideal - mean(H₂)) / sqrt(var(H₂) / reps) > 3.5
+end
+
+@testset "Heterozygosity through a bottleneck and an expansion" begin
+    # Drift under a changing census size. 30 individuals are reduced to 6
+    # for 8 generations and then expand to 60 for 12; the second leg starts
+    # from the first through init. Σ2pq must follow the exact recursion, in
+    # which the drift of generation g is set by its N_{g-1} parents. 400
+    # replicates of 1,000 sites on 20 chromosomes of 1 Morgan; z-scores
+    # against the replicate standard error; over four seeds |z| was at most
+    # 1.34, and the alternative below 12 to 15 standard errors away.
+    N₀, Nb, Nx, chr, reps, t₁, t₂ = 30, 6, 60, fill(50, 20), 400, 8, 12
+    L = sum(chr)
+    rng = Xoshiro(20261111)
+    H₁, H₂ = zeros(reps), zeros(reps)
+    for r = 1:reps
+        start = [UInt32.(findall(rand(rng, Bool, L))) for _ = 1:2N₀]
+        mid = fisher_wright(N₀, t₁, chr, 1.0; M=50, init=start, popsize=fill(Nb, t₁),
+            mutate=false, result=true, rng=rng)
+        last, _ = fisher_wright(Nb, t₂, chr, 1.0; M=50, init=mid, popsize=g -> Nx,
+            mutate=false, rng=rng)
+        H₁[r] = site_heterozygosity(_with_fixed(mid), L)
+        H₂[r] = site_heterozygosity(last, L)
+    end
+    sizes = [fill(Nb, t₁); fill(Nx, t₂)]
+    E = expected_heterozygosity(N₀, sizes)
+    se₁, se₂ = sqrt(var(H₁) / reps), sqrt(var(H₂) / reps)
+    @test abs(mean(H₁) - E[t₁]) / se₁ < 3.5
+    @test abs(mean(H₂) - E[end]) / se₂ < 3.5
+    # The test can tell parents from offspring: if the drift of generation g
+    # followed its own size N_g, the first generation would drift as 6
+    # individuals instead of 30.
+    wrong = expected_heterozygosity(Nb, sizes)
+    @test (mean(H₁) - wrong[t₁]) / se₁ > 3.5
+    @test (mean(H₂) - wrong[end]) / se₂ > 3.5
 end
 
 @testset "Crossovers per meiosis matches Poisson and assortment" begin

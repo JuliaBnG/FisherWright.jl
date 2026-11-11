@@ -120,7 +120,7 @@ end
 Identify and return sorted mutation positions carried by every haplotype in `haplotypes`.
 Each inner vector in `haplotypes` must be sorted and unique.
 """
-function _fixed_mutations(haplotypes::Vector{Vector{UInt32}})
+function _fixed_mutations(haplotypes::AbstractVector{Vector{UInt32}})
     isempty(haplotypes) && return UInt32[]
     fixed = copy(haplotypes[1])
     isempty(fixed) && return fixed
@@ -139,7 +139,7 @@ end
 Remove `mutations` from every haplotype in `haplotypes` in place and return `haplotypes`.
 Parallelized across haplotypes via `Threads.@threads`.
 """
-function _drop_mutations!(haplotypes::Vector{Vector{UInt32}}, mutations::Vector{UInt32})
+function _drop_mutations!(haplotypes::AbstractVector{Vector{UInt32}}, mutations::Vector{UInt32})
     isempty(mutations) && return haplotypes
     Threads.@threads for i in eachindex(haplotypes)
         _remove_sorted!(haplotypes[i], mutations)
@@ -169,7 +169,7 @@ Extract positions carried by all `haplotypes`, remove them from `haplotypes` in 
 and return the updated, sorted substitution list merged with newly fixed mutations.
 """
 function _fixation_step!(
-    haplotypes::Vector{Vector{UInt32}},
+    haplotypes::AbstractVector{Vector{UInt32}},
     substitutions::Vector{UInt32},
 )
     fixed = _fixed_mutations(haplotypes)

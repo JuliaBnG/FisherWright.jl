@@ -10,9 +10,11 @@
 """
     AbstractDemography
 
-Census size per generation. A subtype implements `_popsize(d, g)`, the
-number of offspring of generation `g`, and `_maxsize(d, nt)`, the largest
-size over `nt` generations, by which the working buffers are allocated.
+Census size per generation. Generation `g` uses the `N_{g-1}` individuals
+of the previous cohort as parents and produces `N_g` offspring; `N_0` is the
+starting size. A subtype implements `_popsize(d, g)`, which returns `N_g`
+for `g ≥ 1`, and `_maxsize(d, nt)`, the largest of `N_0, …, N_nt`, by which
+the working buffers are allocated.
 """
 abstract type AbstractDemography end
 
@@ -20,7 +22,8 @@ abstract type AbstractDemography end
     AbstractMating
 
 Assignment of a sire and a dam to each offspring. A subtype implements
-`_mate!(m, st, rng)`, which fills `st.pm`.
+`_mate!(m, st, no, rng)`, which assigns sex to the `st.n` parents and writes
+the sire and dam of each of `no` offspring to rows `1:no` of `st.pm`.
 """
 abstract type AbstractMating end
 
@@ -35,13 +38,55 @@ abstract type AbstractFitness end
 """
     ConstantSize(n)
 
-Constant census size of `n` diploid individuals: the only demography so far.
+Constant census size of `n` diploid individuals.
 """
 struct ConstantSize <: AbstractDemography
     n::Int
 end
 _popsize(d::ConstantSize, ::Integer) = d.n
 _maxsize(d::ConstantSize, ::Integer) = d.n
+
+"""
+    SizeTrajectory(n0, sizes)
+
+Census size given in advance: `n0` individuals at the start and `sizes[g]`
+offspring in generation `g`.
+"""
+struct SizeTrajectory <: AbstractDemography
+    n0::Int
+    sizes::Vector{Int}
+end
+_popsize(d::SizeTrajectory, g::Integer) = @inbounds d.sizes[g]
+_maxsize(d::SizeTrajectory, nt::Integer) = max(d.n0, maximum(view(d.sizes, 1:Int(nt))))
+
+# Demography from the `popsize` keyword of `fisher_wright`: nothing, a vector
+# of `nt` sizes, or a callable `g -> N_g`, which is evaluated once for
+# `g = 1:nt` so that the trajectory is known before the run.
+_demography(ne::Int, ::Int, ::Nothing) = ConstantSize(ne)
+
+function _demography(ne::Int, nt::Int, popsize::AbstractVector{<:Integer})
+    length(popsize) == nt ||
+        throw(ArgumentError("popsize has $(length(popsize)) entries; nt = $nt are required"))
+    sizes = Vector{Int}(undef, nt)
+    for (g, n) in enumerate(popsize)
+        n > 1 || throw(ArgumentError("popsize must exceed 1 in every generation; it is $n in generation $g"))
+        sizes[g] = n
+    end
+    return SizeTrajectory(ne, sizes)
+end
+
+function _demography(ne::Int, nt::Int, popsize)
+    applicable(popsize, 1) || throw(ArgumentError(
+        "popsize must be nothing, a vector of nt integers, or a function of the generation"))
+    sizes = Vector{Int}(undef, nt)
+    for g = 1:nt
+        n = popsize(g)
+        n isa Integer ||
+            throw(ArgumentError("popsize($g) returned $(repr(n)); an integer is required"))
+        sizes[g] = n
+    end
+    return _demography(ne, nt, sizes)
+end
 
 """
     RandomMating()
@@ -63,8 +108,12 @@ struct Neutral <: AbstractFitness end
     SimState
 
 Mutable state of one run. Individual `i` is haplotypes `2i - 1` and `2i`.
+Every buffer is allocated for the largest census size of the run, and the
+current cohort occupies the leading entries.
 
-- `prt`: haplotypes of the current cohort; each sorted and unique.
+- `n`: number of individuals in the current cohort.
+- `prt`: haplotypes; the first `2n` are the current cohort (`_cohort`), each
+  sorted and unique, and the rest are spare buffers.
 - `off`: target of the next meiosis; swapped with `prt` every generation.
 - `substitutions`: sorted positions fixed and removed from `prt`.
 - `mbuf`, `nbuf`: per-haplotype scratch for mutation insertion and for the
@@ -76,6 +125,7 @@ Mutable state of one run. Individual `i` is haplotypes `2i - 1` and `2i`.
   caller's rng, so a run does not depend on the thread count or scheduling.
 """
 mutable struct SimState
+    n::Int
     prt::Vector{Vector{UInt32}}
     off::Vector{Vector{UInt32}}
     substitutions::Vector{UInt32}
@@ -89,22 +139,31 @@ mutable struct SimState
     const srng::Vector{Xoshiro}
 end
 
-# Buffers for up to `nmax` individuals. The only draws from `rng` are the
-# 2nmax stream seeds, taken in slot order.
+# State for the starting cohort `prt` (two haplotypes per individual), with
+# buffers for up to `nmax` individuals; `prt` is extended in place with spare
+# buffers. The only draws from `rng` are the 2nmax stream seeds, taken in
+# slot order.
 function SimState(
     prt::Vector{Vector{UInt32}},
     substitutions::Vector{UInt32},
     nmax::Int,
     rng::AbstractRNG,
 )
+    n = length(prt) ÷ 2
+    (iseven(length(prt)) && 1 < n <= nmax) ||
+        throw(ArgumentError("starting cohort of $(length(prt)) haplotypes does not fit nmax = $nmax"))
     nh = 2nmax
-    bufs(n) = [Vector{UInt32}() for _ = 1:n]
+    bufs(k) = [Vector{UInt32}() for _ = 1:k]
+    append!(prt, bufs(nh - 2n))
     return SimState(
-        prt, bufs(nh), substitutions, bufs(nh), bufs(nh), bufs(nmax),
-        Matrix{Int}(undef, nmax, 2), Vector{Bool}(undef, nmax), Int[], Int[],
+        n, prt, bufs(nh), substitutions, bufs(nh), bufs(nh), bufs(nmax),
+        Matrix{Int}(undef, nmax, 2), sizehint!(Vector{Bool}(undef, n), nmax), Int[], Int[],
         [Xoshiro(rand(rng, UInt64)) for _ = 1:nh],
     )
 end
+
+# Haplotypes of the current cohort.
+_cohort(st::SimState) = view(st.prt, 1:2*st.n)
 
 # Positions of a starting population: each vector strictly increasing and
 # within the genome.
@@ -157,14 +216,16 @@ _fitness!(::Neutral, ::SimState) = nothing
 
 # Conditioning on both sexes being present is exact rejection sampling;
 # P(one sex only) = 2^(1-n), so a fixed retry cap fails for small n.
-function _mate!(::RandomMating, st::SimState, rng::AbstractRNG)
-    random_mate!(st.pm, st.sex, st.sires, st.dams; rng=rng, max_tries=typemax(Int))
+function _mate!(::RandomMating, st::SimState, no::Int, rng::AbstractRNG)
+    # Within the capacity reserved for the largest cohort: no allocation.
+    resize!(st.sex, st.n)
+    _random_mate!(st.pm, st.sex, st.sires, st.dams, no, rng, typemax(Int))
     return nothing
 end
 
 # One meiosis per parent for each of `no` offspring (threaded), written into
-# `st.off`, which then becomes the current cohort. Slot i draws its two
-# crossover lists and strands from `st.srng[i]`, sire first.
+# `st.off`, which then becomes the current cohort of `no` individuals. Slot i
+# draws its two crossover lists and strands from `st.srng[i]`, sire first.
 function _meiosis!(st::SimState, recomb_map::RecombinationMap, no::Int)
     prt, off, pm, cbuf, srng = st.prt, st.off, st.pm, st.cbuf, st.srng
     Threads.@threads for i = 1:no
@@ -178,14 +239,15 @@ function _meiosis!(st::SimState, recomb_map::RecombinationMap, no::Int)
         recombine(prt[2d-1], prt[2d], off[2i], cobp!(co, recomb_map; rng=r); rng=r)
     end
     st.prt, st.off = off, prt
+    st.n = no
     return nothing
 end
 
-# New mutations on each of the 2no haplotypes of the current cohort
-# (threaded). Haplotype i draws from `st.srng[i]`.
-function _mutation!(st::SimState, p_mut::Poisson{Float64}, span::UnitRange{UInt32}, no::Int)
+# New mutations on each haplotype of the current cohort (threaded).
+# Haplotype i draws from `st.srng[i]`.
+function _mutation!(st::SimState, p_mut::Poisson{Float64}, span::UnitRange{UInt32})
     prt, mbuf, nbuf, srng, subs = st.prt, st.mbuf, st.nbuf, st.srng, st.substitutions
-    Threads.@threads for i = 1:2no
+    Threads.@threads for i = 1:2*st.n
         r = srng[i]
         nm = rand(r, p_mut)
         if nm > 0
@@ -214,7 +276,8 @@ end
     _simulate!(st, demog, mating, fitness, nt, recomb_map, p_mut, span; kwargs...) -> SimState
 
 Advance `st` by `nt` generations and return it. Each generation evaluates
-fitness on the adult cohort, mates, runs meiosis and then mutation; with
+fitness on the adult cohort, mates, runs meiosis for the `_popsize(demog, g)`
+offspring and then mutation; with
 `track`, fixed sites are moved to `st.substitutions` every
 `fixation_interval` generations and after the last one.
 
@@ -241,14 +304,14 @@ function _simulate!(
     for g = 1:nt
         no = _popsize(demog, g)
         _fitness!(fitness, st)
-        _mate!(mating, st, rng)
+        _mate!(mating, st, no, rng)
         _meiosis!(st, recomb_map, no)
-        mutate && _mutation!(st, p_mut, span, no)
+        mutate && _mutation!(st, p_mut, span)
         if track && (g % fixation_interval == 0 || g == nt)
-            st.substitutions = _fixation_step!(st.prt, st.substitutions)
+            st.substitutions = _fixation_step!(_cohort(st), st.substitutions)
         end
         if verbose && (g % progress_interval == 0 || g == nt)
-            _report_progress(stderr, g, nt, t0, st.prt, length(st.substitutions), track)
+            _report_progress(stderr, g, nt, t0, _cohort(st), length(st.substitutions), track)
         end
     end
     return st
