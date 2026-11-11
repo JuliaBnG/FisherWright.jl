@@ -5,8 +5,8 @@
 ```julia
 fisher_wright(ne, nt, chr, mr; M=1e8, mut_base=1e8,
               result=false, fixation_interval=1, mutate=true,
-              init=nothing, popsize=nothing, verbose=false,
-              progress_interval=100)
+              init=nothing, popsize=nothing, mating=RandomMating(),
+              verbose=false, progress_interval=100)
 ```
 
 Simulate `ne` diploid individuals for `nt` generations. `chr` is a vector of
@@ -22,6 +22,7 @@ new mutations per `mut_base` base pairs per haplotype per meiosis.
 | `mutate` | `true` | Generate new mutations; `false` leaves drift and recombination only. |
 | `init` | `nothing` | Starting population: `2ne` haplotypes or a `FisherWrightResult`; `nothing` starts monomorphic. |
 | `popsize` | `nothing` | Census size per generation: a vector of `nt` sizes or a function of the generation; `nothing` keeps `ne`. |
+| `mating` | `RandomMating()` | Mating scheme; `RandomMating(nmale=m)` or `RandomMating(sexratio=p)` fixes the number or the proportion of males. |
 | `verbose` | `false` | Report progress (mean mutations per haplotype, substitutions, elapsed time, ETA) to `stderr`. |
 | `progress_interval` | `100` | Generations between progress reports when `verbose=true`. |
 
@@ -150,6 +151,41 @@ size; combine `popsize` with `init` to burn in at constant size first.
 Buffers and random streams are allocated once for the largest size of
 the run, so the realization for a given seed depends on that maximum. A
 trajectory that stays at `ne` reproduces the run without `popsize`.
+
+## Sex ratio
+
+Sex is not inherited. It is assigned anew to each cohort when it
+reproduces, and every offspring then draws its sire uniformly from the
+males and its dam uniformly from the females, with replacement. The
+`mating` keyword takes a `RandomMating` scheme that sets how sex is
+assigned to the ``N`` parents of a generation:
+
+| Scheme | Males among ``N`` parents |
+|---|---|
+| `RandomMating()` | Binomial(``N``, ½), conditioned on both sexes being present (the default) |
+| `RandomMating(nmale=m)` | exactly `m`, a uniformly random subset |
+| `RandomMating(sexratio=p)` | exactly `round(Int, p * N)`, at least one of each sex |
+
+```@example simulation
+# 5 sires and 35 dams in every generation
+haplotypes, _ = fisher_wright(40, 20, [100_000, 100_000], 1.0;
+                              mating=RandomMating(nmale=5))
+length(haplotypes)
+```
+
+With ``N_m`` males and ``N_f`` females the effective size of a
+generation is ``N_e \approx 4N_mN_f/(N_m + N_f) + 1/2`` (the exact
+recursion is under [Effective size](@ref), with
+``a = 1/(4N_m) + 1/(4N_f)``): 18 in the example above, against a census
+size of 40. `RandomMating(sexratio=0.5)` removes the variation in the
+sex ratio of the default scheme, so that ``N_e \approx N + 1/2``
+instead of ``N - 1/2`` for even ``N``.
+
+`nmale` is a count and must be smaller than every parental cohort, which
+matters when it is combined with `popsize`; `sexratio` is a proportion
+of males and follows the census size. The fixed schemes draw sex
+differently from `rng`, so for the same seed they share no realization
+with the default scheme.
 
 ## Reproducibility
 

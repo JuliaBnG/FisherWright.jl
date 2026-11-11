@@ -43,6 +43,7 @@ end
         mutate::Bool = true,
         init = nothing,
         popsize = nothing,
+        mating = RandomMating(),
         verbose::Bool = false,
         progress_interval::Integer = 100,
         rng::AbstractRNG = Random.default_rng(),
@@ -71,6 +72,7 @@ total genome lengths up to ``2^{32} \\approx 4.29 \\times 10^9`` base pairs (bp)
 - `mutate::Bool = true`: If `false`, no new mutations are generated: the population evolves by drift and recombination only, and `mr` and `mut_base` are not used (`mr` must still lie in its valid range). Mating is drawn from `rng` exactly as with `mutate = true`, but meiosis shares the per-slot streams with the skipped mutation draws, so for the same seed the two settings give different realizations. Intended for validation runs that start from a polymorphic population given by `init`, for example heterozygosity decay ``H_t/H_0 = (1 - 1/(2N_e))^t``; without `init`, a run with `mutate = false` stays monomorphic.
 - `init = nothing`: Starting population; `nothing` starts monomorphic. Either a `Vector{Vector{UInt32}}` of `2 * ne` haplotypes (each sorted, unique, with positions in `1:sum(chr)`), or a [`FisherWrightResult`](@ref) whose `chromosome_ends` equal `cumsum(chr)`. Haplotypes `2i - 1` and `2i` form individual `i`, the convention of the output, and these individuals are the parents of generation 1. `init` is copied and left unmodified. The substitutions of a `FisherWrightResult` are carried over when `result = true` and merged back into every haplotype when `result = false`; given as plain haplotypes, sites carried by all of them are extracted at the first fixation scan when `result = true`. See *Continuing a run* below.
 - `popsize = nothing`: Census size per generation; `nothing` keeps it at `ne`. Either a vector of `nt` integers or a function `g -> N_g` of the generation `g = 1, …, nt`, which is called once per generation before the run; every size must exceed 1. Generation `g` draws the parents of its `N_g` offspring from the `N_{g-1}` individuals of the previous generation (`N_0 = ne`), so the run returns `2 * N_nt` haplotypes. See *Changing population size* below.
+- `mating = RandomMating()`: Mating scheme. The default redraws sex as Bernoulli(½) per individual in every generation; [`RandomMating`](@ref)`(nmale = m)` or `RandomMating(sexratio = p)` fixes the number or the proportion of males instead. See *Sex ratio* below.
 - `verbose::Bool = false`: If `true`, writes a start banner and a progress line to `stderr` every `progress_interval` generations and at the last generation, reporting mean mutations per haplotype, accumulated substitutions (when `result = true`), elapsed wall time, and a linear ETA. On a terminal the line is updated in place; when `stderr` is redirected each report is a separate line.
 - `progress_interval::Integer = 100`: Generations between progress reports when `verbose = true` (must be positive).
 - `rng::AbstractRNG = Random.default_rng()`: Random number generator; see *Reproducibility* below.
@@ -89,6 +91,7 @@ total genome lengths up to ``2^{32} \\approx 4.29 \\times 10^9`` base pairs (bp)
   This holds for a fixed Julia version and package environment. The realization also depends on the variate algorithms of Julia's `Random` and of Distributions.jl, which can change between versions: `randn` differs between Julia 1.10 and 1.13, so Poisson draws with mean ≥ 6 (Distributions' `PoissonADSampler`; in practice the per-haplotype mutation count of most genome-scale runs) can differ, and the same seed then gives a different population. Record the Julia version and `Manifest.toml` with simulated data.
 - **Continuing a run**: With `init`, the population evolves for `nt` further generations from the given state, for example to burn in once and then start several replicates, or to follow a set of standing variants with `mutate = false`. The per-slot streams are seeded anew from `rng` on every call, so two calls of `nt₁` and `nt₂` generations are a valid realization of `nt₁ + nt₂` generations but not the one a single call would give for the same seed.
 - **Changing population size**: With `popsize`, the census size follows the given trajectory, for example a bottleneck or an expansion; mating, meiosis and mutation are otherwise as described above, and sex is redrawn in every generation, so the effective size of generation `g` follows the `N_{g-1}` parents. Working buffers and the per-slot streams are allocated once for the largest size of the run, so the realization for a given seed depends on that maximum: a trajectory that stays at `ne` reproduces the run without `popsize`, while two trajectories with different maxima share no random numbers.
+- **Sex ratio**: Sex is not inherited: it is assigned anew to each cohort when it reproduces, and every offspring draws a sire and a dam with replacement. By default the number of males among `N` parents is Binomial(`N`, ½) conditioned on both sexes being present, which gives ``N_e \\approx N - 1``. With `mating = RandomMating(nmale = m)` exactly `m` individuals, a uniformly random subset, are males in every generation, and with `RandomMating(sexratio = p)` exactly `round(Int, p * N)` (at least one of each sex); the effective size is then ``4 N_m N_f / (N_m + N_f)``, so `sexratio = 0.5` gives ``N_e \\approx N`` for even `N`. The fixed-sex schemes draw sex differently from `rng`, so they share no realization with the default for the same seed.
 - **Allocation Efficiency**: Working buffers (mutations, crossovers, mating assignments) are allocated once at start and reused, achieving zero steady-state per-generation allocations.
 
 # Examples
@@ -111,6 +114,9 @@ sizes = [fill(10, 5); fill(50, 15)]
 haps, _ = fisher_wright(50, 20, [100_000, 100_000], 1.0; popsize=sizes)
 length(haps) # 100 haplotypes
 
+# 5 sires and 45 dams in every generation: Ne ≈ 4 * 5 * 45 / 50 = 18
+haps, _ = fisher_wright(50, 20, [100_000, 100_000], 1.0; mating=RandomMating(nmale=5))
+
 # Exponential growth from 50, as a function of the generation
 haps, _ = fisher_wright(50, 20, [100_000, 100_000], 1.0; popsize=g -> round(Int, 50 * 1.05^g))
 ```
@@ -127,6 +133,7 @@ function fisher_wright(
     mutate::Bool=true,
     init::Union{Nothing,Vector{Vector{UInt32}},FisherWrightResult}=nothing,
     popsize=nothing,
+    mating::AbstractMating=RandomMating(),
     verbose::Bool=false,
     progress_interval::Integer=100,
     rng::AbstractRNG=Random.default_rng(),
@@ -148,6 +155,7 @@ function fisher_wright(
     span = UInt32(1):UInt32(tbp)
 
     demog = _demography(Int(ne), Int(nt), popsize)
+    _check_mating(mating, demog, Int(ne), Int(nt))
     prt, substitutions = _initial_state(init, 2 * Int(ne), cbp, result)
     st = SimState(prt, substitutions, _maxsize(demog, nt), rng)
 
@@ -156,7 +164,7 @@ function fisher_wright(
             Threads.nthreads() progress_interval
 
     _simulate!(
-        st, demog, RandomMating(), Neutral(), Int(nt), recomb_map, p_mut, span;
+        st, demog, mating, Neutral(), Int(nt), recomb_map, p_mut, span;
         mutate=mutate,
         track=result,
         fixation_interval=fixation_interval,
@@ -181,6 +189,7 @@ end
         mutate::Bool = true,
         init = nothing,
         popsize = nothing,
+        mating = RandomMating(),
         verbose::Bool = false,
         progress_interval::Integer = 100,
         rng::AbstractRNG = Random.default_rng(),
@@ -208,6 +217,7 @@ are automatically extracted from `sp`:
 - `mutate::Bool = true`: If `false`, no new mutations are generated; see the method above.
 - `init = nothing`: Starting population of `2 * sp.nid` haplotypes, or a [`FisherWrightResult`](@ref); see the method above.
 - `popsize = nothing`: Census size per generation, as a vector of `nt` integers or a function of the generation; see the method above.
+- `mating = RandomMating()`: Mating scheme, for example `RandomMating(nmale = 10)`; see the method above.
 - `verbose::Bool = false`: If `true`, reports progress to `stderr`; see the method above.
 - `progress_interval::Integer = 100`: Generations between progress reports when `verbose = true`.
 - `rng::AbstractRNG = Random.default_rng()`: Random number generator; see the method above.
@@ -232,6 +242,7 @@ function fisher_wright(
     mutate::Bool = true,
     init::Union{Nothing,Vector{Vector{UInt32}},FisherWrightResult} = nothing,
     popsize = nothing,
+    mating::AbstractMating = RandomMating(),
     verbose::Bool = false,
     progress_interval::Integer = 100,
     rng::AbstractRNG = Random.default_rng(),
@@ -248,6 +259,7 @@ function fisher_wright(
         mutate = mutate,
         init = init,
         popsize = popsize,
+        mating = mating,
         verbose = verbose,
         progress_interval = progress_interval,
         rng = rng,
