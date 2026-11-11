@@ -22,8 +22,9 @@ abstract type AbstractDemography end
     AbstractMating
 
 Assignment of a sire and a dam to each offspring. A subtype implements
-`_mate!(m, st, no, rng)`, which assigns sex to the `st.n` parents and writes
-the sire and dam of each of `no` offspring to rows `1:no` of `st.pm`.
+`_mate!(m, f, st, no, rng)`, which assigns sex to the `st.n` parents and
+writes the sire and dam of each of `no` offspring to rows `1:no` of `st.pm`,
+drawn according to the fitness model `f`.
 """
 abstract type AbstractMating end
 
@@ -31,7 +32,11 @@ abstract type AbstractMating end
     AbstractFitness
 
 Fitness of the adult cohort. A subtype implements `_fitness!(f, st)`, called
-on the parents before mating.
+on the parents before mating, which writes the relative fitness of parent
+`i` to `st.w[i]` for `i = 1:st.n`: finite, non-negative, and positive for at
+least one parent of each sex. Parents are then drawn with probability
+proportional to fitness within each sex (soft selection: the census size is
+not affected). [`Neutral`](@ref) writes nothing and keeps the uniform draw.
 """
 abstract type AbstractFitness end
 
@@ -258,6 +263,9 @@ current cohort occupies the leading entries.
 - `cbuf`: per-offspring crossover buffer.
 - `pm`, `sex`, `sires`, `dams`: mating table (sire and dam of each
   offspring) and its scratch.
+- `w`: relative fitness of each parent, written by `_fitness!`; unused under
+  `Neutral`.
+- `tm`, `tf`: alias tables for the weighted draw of sires and dams.
 - `srng`: one stream per meiosis/haplotype slot, seeded serially from the
   caller's rng, so a run does not depend on the thread count or scheduling.
 - `census`, `males`: record of the run. `census` starts with the size of the
@@ -276,6 +284,9 @@ mutable struct SimState
     const sex::Vector{Bool}
     const sires::Vector{Int}
     const dams::Vector{Int}
+    const w::Vector{Float64}
+    const tm::AliasTable
+    const tf::AliasTable
     const srng::Vector{Xoshiro}
     const census::Vector{Int}
     const males::Vector{Int}
@@ -300,6 +311,7 @@ function SimState(
     return SimState(
         n, prt, bufs(nh), substitutions, bufs(nh), bufs(nh), bufs(nmax),
         Matrix{Int}(undef, nmax, 2), sizehint!(Vector{Bool}(undef, n), nmax), Int[], Int[],
+        ones(nmax), AliasTable(nmax), AliasTable(nmax),
         [Xoshiro(rand(rng, UInt64)) for _ = 1:nh], [n], Int[],
     )
 end
@@ -364,19 +376,28 @@ _record(init::FisherWrightResult, st::SimState) =
 
 _fitness!(::Neutral, ::SimState) = nothing
 
+# Sex of the parents, then sire and dam of each of `no` offspring.
 # Conditioning on both sexes being present is exact rejection sampling;
 # P(one sex only) = 2^(1-n), so a fixed retry cap fails for small n.
-function _mate!(m::RandomMating, st::SimState, no::Int, rng::AbstractRNG)
+function _mate!(m::RandomMating, f::AbstractFitness, st::SimState, no::Int, rng::AbstractRNG)
     # Within the capacity reserved for the largest cohort: no allocation.
     resize!(st.sex, st.n)
     nm = _nmale(m, st.n)
     if nm == 0
-        _random_mate!(st.pm, st.sex, st.sires, st.dams, no, rng, typemax(Int))
+        _draw_sex!(st.sex, st.sires, st.dams, rng, typemax(Int))
     else
-        _fixed_sex_mate!(st.pm, st.sex, st.sires, st.dams, nm, no, rng)
+        _draw_fixed_sex!(st.sex, st.sires, st.dams, nm, rng)
     end
+    _parents!(f, st, no, rng)
     return nothing
 end
+
+# Uniform parents under neutrality; otherwise proportional to fitness within
+# each sex.
+_parents!(::Neutral, st::SimState, no::Int, rng::AbstractRNG) =
+    _draw_parents!(st.pm, st.sires, st.dams, no, rng)
+_parents!(::AbstractFitness, st::SimState, no::Int, rng::AbstractRNG) =
+    _draw_parents!(st.pm, st.sires, st.dams, no, rng, st.w, st.tm, st.tf)
 
 # One meiosis per parent for each of `no` offspring (threaded), written into
 # `st.off`, which then becomes the current cohort of `no` individuals. Slot i
@@ -431,7 +452,8 @@ end
     _simulate!(st, demog, mating, fitness, nt, recomb_map, p_mut, span; kwargs...) -> SimState
 
 Advance `st` by `nt` generations and return it. Each generation evaluates
-fitness on the adult cohort, mates, runs meiosis for the `_popsize(demog, g)`
+fitness on the adult cohort, mates (parents drawn in proportion to fitness
+within each sex unless `fitness` is `Neutral`), runs meiosis for the `_popsize(demog, g)`
 offspring and then mutation; with
 `track`, fixed sites are moved to `st.substitutions` every
 `fixation_interval` generations and after the last one.
@@ -460,7 +482,7 @@ function _simulate!(
     for g = 1:nt
         no = _popsize(demog, g)
         _fitness!(fitness, st)
-        _mate!(mating, st, no, rng)
+        _mate!(mating, fitness, st, no, rng)
         push!(st.males, length(st.sires))
         _meiosis!(st, recomb_map, no)
         push!(st.census, no)
