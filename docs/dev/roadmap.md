@@ -6,8 +6,9 @@ so the staging is renumbered from 0.5.0. Implemented so far, all from
 the 0.5.0 row: the golden-output regression test and the `_recombine!`
 kernel (v0.4.2); the `mutate` and `init` keywords, the internal
 refactor, and exogenous `popsize` (2026-11-10); the `mating` keyword
-with a fixed number or proportion of males (2026-11-11). None of the
-2026-11 work is released yet.
+with a fixed number or proportion of males, and the census record in
+results with `effective_size` (2026-11-11). None of the 2026-11 work is
+released yet.
 
 The refactor (`src/simulate.jl`): a `SimState` struct holds the
 haplotypes, buffers and per-slot streams; `fisher_wright` builds it and
@@ -20,9 +21,12 @@ vector or a function evaluated before the run). Mating is
 default, or exactly `nmale` males, or a proportion `sexratio` of males,
 drawn as a uniformly random subset of each parental cohort. Fitness has
 only its default (`Neutral`); the demography and fitness types are not
-exported. Still to do in 0.5.0: census and Ne metadata in results, the
-trajectory helpers (`bottleneck`, `growth`), and validation 3 against
-msprime.
+exported. `FisherWrightResult` carries the census record of the run
+(`census`, N_0 to N_nt, and `males`, the male parents of each
+generation), appended to that of an `init` result; `effective_size`
+returns 4N_mN_f/(N_m+N_f) per generation
+or its harmonic mean. Still to do in 0.5.0: the trajectory helpers
+(`bottleneck`, `growth`) and validation 3 against msprime.
 
 ## Current model (v0.4.0)
 
@@ -216,7 +220,11 @@ later extensions.
 - `FisherWrightResult` gains optional fields: census trajectory,
   realised N_m and N_f, per-generation V_k for each sex, and a pedigree
   of the last *k* generations when `record = :pedigree`. Changing a
-  public struct before 1.0 calls for a minor-version bump.
+  public struct before 1.0 calls for a minor-version bump. The census
+  trajectory and realised N_m are in (`census`, `males`), always
+  recorded; the three-argument constructor is kept. V_k and the
+  pedigree wait for the `record` keyword and the schemes that need
+  them.
 - Under selection it also carries the `FitnessLoci` table, the active
   `sel` haplotypes, selected substitutions, `fixed_offset`, and a
   per-generation trajectory of mean and variance of log w (and of G, P

@@ -1,7 +1,7 @@
 using Test
 using Random
 using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_sorted, merge_sorted!, recombine, _recombine!, _insert_sorted!, _isearchfirst,
-    cobp, cobp!, FisherWrightResult, to_haplotype, RecombinationMap,
+    cobp, cobp!, FisherWrightResult, effective_size, to_haplotype, RecombinationMap,
     uniform_recombination_map, random_mate, random_mate!, _fixed_sex_mate!, _nmale, _fixed_mutations,
     _drop_mutations, _drop_mutations!, _fixation_step, _fixation_step!, _extract_fixed,
     _intersect_sorted!, _remove_sorted!, _with_fixed, _simulate!, _initial_state,
@@ -536,6 +536,7 @@ end
     @test rand(rng, UInt64) == rand(ref, UInt64)
     @test length(st.prt) == length(st.off) == length(st.mbuf) == length(st.nbuf) == 2ne
     @test length(st.cbuf) == length(st.sex) == size(st.pm, 1) == ne
+    @test st.census == [ne] && isempty(st.males)
 
     # fisher_wright is the engine behind validation: same seed, same output.
     rng = Xoshiro(9)
@@ -740,6 +741,81 @@ end
     m = RandomMating(nmale=4)
     @test fisher_wright(sp, 60, 5.0; mut_base=1e5, mating=m, rng=Xoshiro(4)) ==
           fisher_wright(20, 60, chr, 5.0; kw..., mating=m, rng=Xoshiro(4))
+end
+
+@testset "Census record and effective size" begin
+    chr, kw = [100_000, 200_000], (M=5e4, mut_base=1e5, result=true)
+
+    # Constant size, default mating: N_0, …, N_nt and one sex count per
+    # generation, with both sexes present.
+    res = fisher_wright(20, 60, chr, 5.0; kw..., rng=Xoshiro(3))
+    @test res.census == fill(20, 61) && length(res.males) == 60
+    @test all(m -> 1 <= m <= 19, res.males) && length(unique(res.males)) > 1
+    # The record does not change the realization or depend on the scan.
+    @test _with_fixed(res) == fisher_wright(20, 60, chr, 5.0; M=5e4, mut_base=1e5, rng=Xoshiro(3))[1]
+    scan = fisher_wright(20, 60, chr, 5.0; kw..., fixation_interval=7, rng=Xoshiro(3))
+    @test (scan.census, scan.males) == (res.census, res.males)
+
+    # Binomial sex: the male count of N = 50 parents has mean 25 and variance
+    # 12.5 (truncation at 0 and 50 is below 1e-14). z-test of the mean over
+    # 4,000 independent generations, and the variance within 10%.
+    long = fisher_wright(50, 4000, [1_000], 1.0; result=true, mutate=false, rng=Xoshiro(12))
+    @test abs(mean(long.males) - 25) / sqrt(12.5 / 4000) < 3.5
+    @test 0.9 < var(long.males) / 12.5 < 1.1
+    # Ne from the record: Jensen's inequality puts it below 4·25·25/50 = 50,
+    # at E[1/4Nm + 1/4Nf]⁻¹ = 48.96 for N = 50.
+    @test 48.7 < effective_size(long) < 49.3
+
+    # Fixed sexes and a changing size: the record is the request.
+    sizes = [fill(10, 5); fill(40, 4); 7]
+    fix = fisher_wright(20, 10, chr, 5.0; kw..., popsize=sizes, mating=RandomMating(nmale=3), rng=Xoshiro(4))
+    @test fix.census == [20; sizes] && fix.males == fill(3, 10)
+    @test length(fix.active_haplotypes) == 2fix.census[end]
+    rat = fisher_wright(20, 10, chr, 5.0; kw..., popsize=sizes, mating=RandomMating(sexratio=0.2), rng=Xoshiro(4))
+    @test rat.males == [4; fill(2, 5); fill(8, 4)]   # parents: 20, 10 × 5, 40 × 4
+
+    # effective_size: Wright's formula per generation, harmonic mean over
+    # several, parents only (the last cohort of 7 does not enter).
+    ne(m, n) = 4m * (n - m) / n
+    @test effective_size(fix, 1) ≈ ne(3, 20) ≈ 10.2
+    @test effective_size(fix, 2) ≈ ne(3, 10)
+    @test effective_size(fix, 7:10) ≈ ne(3, 40)
+    @test effective_size(fix) ≈ 10 / (1 / ne(3, 20) + 5 / ne(3, 10) + 4 / ne(3, 40))
+    @test effective_size(fix, [1, 10]) ≈ 2 / (1 / ne(3, 20) + 1 / ne(3, 40))
+    @test effective_size(rat, 2:6) ≈ ne(2, 10) && effective_size(rat, 10) ≈ ne(8, 40)
+    @test effective_size(fisher_wright(20, 5, chr, 5.0; kw..., mating=RandomMating(sexratio=0.5))) ≈ 20
+    @test (@inferred effective_size(fix)) isa Float64
+    @test_throws BoundsError effective_size(fix, 11)
+    @test_throws BoundsError effective_size(fix, 0)
+    @test_throws ArgumentError effective_size(fix, 1:0)
+
+    # A run continued from a result appends to its record; from plain
+    # haplotypes, or in a result built by hand, the record starts anew.
+    cont = fisher_wright(7, 3, chr, 5.0; kw..., init=fix, popsize=[9, 9, 12], rng=Xoshiro(5))
+    @test cont.census == [20; sizes; 9; 9; 12] && cont.males[1:10] == fix.males
+    @test length(cont.males) == 13 && all(m -> 1 <= m <= 8, cont.males[12:13])
+    @test effective_size(cont, 1:10) == effective_size(fix)
+    @test fix.census == [20; sizes] && fix.males == fill(3, 10)   # init left untouched
+    plain = fisher_wright(7, 3, chr, 5.0; kw..., init=_with_fixed(fix), rng=Xoshiro(5))
+    @test plain.census == fill(7, 4) && length(plain.males) == 3
+    bare = FisherWrightResult(fix.active_haplotypes, fix.chromosome_ends, fix.substitutions)
+    @test fisher_wright(7, 3, chr, 5.0; kw..., init=bare, rng=Xoshiro(5)).census == fill(7, 4)
+    # A record that does not end at the individuals of init is rejected.
+    bad(c, m) = FisherWrightResult(fix.active_haplotypes, fix.chromosome_ends, fix.substitutions, c, m)
+    @test_throws ArgumentError fisher_wright(7, 3, chr, 5.0; init=bad([20, 8], [3]))
+    @test_throws ArgumentError fisher_wright(7, 3, chr, 5.0; init=bad([20, 7], [3, 3]))
+
+    # A hand-built result has no record.
+    manual = FisherWrightResult([UInt32[1, 3], UInt32[2], UInt32[], UInt32[1, 2, 3]], UInt32[5], UInt32[5])
+    @test manual.census == [2] && isempty(manual.males)
+    @test_throws ArgumentError effective_size(manual)
+    kept = _extract_fixed(FisherWrightResult(copy.(fix.active_haplotypes), fix.chromosome_ends,
+        fix.substitutions, fix.census, fix.males))
+    @test (kept.census, kept.males) == (fix.census, fix.males)
+
+    # Species method.
+    sp = GenericSpecies("Census", Int32(20), UInt32.(chr), UInt32(50_000))
+    @test fisher_wright(sp, 10, 5.0; mut_base=1e5, result=true, popsize=sizes).census == [20; sizes]
 end
 
 @testset "Simulation invariants at scale" begin

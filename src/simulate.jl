@@ -168,6 +168,9 @@ current cohort occupies the leading entries.
   offspring) and its scratch.
 - `srng`: one stream per meiosis/haplotype slot, seeded serially from the
   caller's rng, so a run does not depend on the thread count or scheduling.
+- `census`, `males`: record of the run. `census` starts with the size of the
+  starting cohort and gains the number of offspring of every generation;
+  `males` gains the number of males among its parents.
 """
 mutable struct SimState
     n::Int
@@ -182,6 +185,8 @@ mutable struct SimState
     const sires::Vector{Int}
     const dams::Vector{Int}
     const srng::Vector{Xoshiro}
+    const census::Vector{Int}
+    const males::Vector{Int}
 end
 
 # State for the starting cohort `prt` (two haplotypes per individual), with
@@ -203,7 +208,7 @@ function SimState(
     return SimState(
         n, prt, bufs(nh), substitutions, bufs(nh), bufs(nh), bufs(nmax),
         Matrix{Int}(undef, nmax, 2), sizehint!(Vector{Bool}(undef, n), nmax), Int[], Int[],
-        [Xoshiro(rand(rng, UInt64)) for _ = 1:nh],
+        [Xoshiro(rand(rng, UInt64)) for _ = 1:nh], [n], Int[],
     )
 end
 
@@ -251,11 +256,19 @@ function _initial_state(init::FisherWrightResult, nh::Int, cbp::Vector{UInt32}, 
     haps, subs = init.active_haplotypes, init.substitutions
     _check_haplotypes(haps, nh, cbp[end])
     _check_positions(subs, cbp[end], "init.substitutions")
+    (length(init.census) == length(init.males) + 1 && init.census[end] == nh ÷ 2) ||
+        throw(ArgumentError("init.census and init.males do not describe the $(nh ÷ 2) individuals of init"))
     # A substitution is carried by every haplotype: kept apart when the run
     # tracks substitutions, merged back into the haplotypes when it does not.
     return result ? ([_remove_sorted!(copy(h), subs) for h in haps], copy(subs)) :
            ([merge_sorted(h, subs) for h in haps], UInt32[])
 end
+
+# Census record of the result: that of this call, appended to the record of
+# a FisherWrightResult the run was continued from.
+_record(::Any, st::SimState) = (st.census, st.males)
+_record(init::FisherWrightResult, st::SimState) =
+    (vcat(init.census, view(st.census, 2:length(st.census))), vcat(init.males, st.males))
 
 _fitness!(::Neutral, ::SimState) = nothing
 
@@ -332,7 +345,8 @@ offspring and then mutation; with
 `fixation_interval` generations and after the last one.
 
 Mating is drawn serially from `rng`; meiosis and mutation use the per-slot
-streams in `st.srng`.
+streams in `st.srng`. The census size and the number of male parents of
+every generation are appended to `st.census` and `st.males`.
 """
 function _simulate!(
     st::SimState,
@@ -355,7 +369,9 @@ function _simulate!(
         no = _popsize(demog, g)
         _fitness!(fitness, st)
         _mate!(mating, st, no, rng)
+        push!(st.males, length(st.sires))
         _meiosis!(st, recomb_map, no)
+        push!(st.census, no)
         mutate && _mutation!(st, p_mut, span)
         if track && (g % fixation_interval == 0 || g == nt)
             st.substitutions = _fixation_step!(_cohort(st), st.substitutions)

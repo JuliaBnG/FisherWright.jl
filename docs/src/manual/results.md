@@ -58,6 +58,8 @@ simulations. The result fields are:
 | `active_haplotypes` | Polymorphic mutation positions after fixed loci are removed. |
 | `chromosome_ends` | Cumulative chromosome endpoints. |
 | `substitutions` | Sorted fixed mutation positions. |
+| `census` | Census sizes ``N_0, N_1, …, N_{nt}`` of the run. |
+| `males` | Number of males among the parents of each generation. |
 
 Convert a structured result to `BnGStructs.Haplotype` and a linkage map:
 
@@ -69,6 +71,43 @@ haplotype, loci = to_haplotype(result)
 Use `to_haplotype(result; include_fixed=true)` when fixed substitutions should
 also appear in the dense output. If no polymorphic loci are available,
 `to_haplotype` raises an error rather than returning an empty `Haplotype`.
+
+## Census record and effective size
+
+A result returned by `fisher_wright` records the census size of every
+generation and the realized number of males among its parents.
+`census[1]` is the starting population and `census[g + 1]` the number of
+individuals born in generation `g`; `males[g]` of the `census[g]`
+parents of generation `g` were males. A run continued from a
+`FisherWrightResult` through `init` appends its generations to the
+record of that result, so a burn-in and its continuation are numbered as
+one run; started from plain haplotypes, the record begins anew. A result
+built by hand, as above, has `census` holding the number of individuals
+only and `males` empty.
+
+```@example results
+sizes = [fill(10, 5); fill(40, 15)]
+run = fisher_wright(40, 20, [100_000], 1.0; popsize=sizes, result=true)
+(run.census[1:8], run.males[1:8])
+```
+
+`effective_size` turns the record into the effective size realized by
+those sex numbers. Each offspring draws its sire and its dam uniformly
+with replacement, so generation ``g`` has
+``N_{e,g} = 4N_mN_f/(N_m + N_f)`` (Wright 1931), and several generations
+combine as the harmonic mean:
+
+```@example results
+(effective_size(run), effective_size(run, 2:6), effective_size(run, 7:20))
+```
+
+The value follows from the census record, not from the genetic data, and
+depends on the parents only: generation 6 above has 40 offspring but the
+effective size of its 10 parents. It is conditional on the realized sex
+numbers; under the default binomial sex its expectation is close to
+``N - 1``. At constant sex numbers the asymptotic rate of loss of
+heterozygosity, ``1/(2N_e)``, corresponds to this value plus ½ (see
+[Effective size](@ref)).
 
 ## Chip extraction
 
