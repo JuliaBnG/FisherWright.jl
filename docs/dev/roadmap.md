@@ -1,8 +1,8 @@
 # Roadmap: variable population size, non-random mating, and selection
 
-Status: 0.5.0 complete, release prepared 2026-11-11; 0.6.0 onwards not
-started (drafted 2026-10-07 against v0.3.8; selection added 2026-11-02
-against v0.4.0).
+Status: 0.5.0 released and registered 2026-11-11; 0.6.0 in progress
+(drafted 2026-10-07 against v0.3.8; selection added 2026-11-02 against
+v0.4.0).
 v0.4.0 shipped without the refactor below, so the staging is renumbered
 from 0.5.0. The 0.5.0 row is complete: the golden-output regression
 test and the `_recombine!` kernel (v0.4.2); the `mutate` and `init`
@@ -13,12 +13,18 @@ and `growth`, and validation 3 against msprime (v0.5.0). The release
 benchmark (validation 8, default path only) gave 57.15 s for v0.4.2
 and 57.11 s for v0.5.0 on the 1 Gb run.
 
-0.6.0 in progress (2026-11-11): the alias sampler (`src/alias.jl`) and
-the draw of parents in proportion to fitness within each sex are in
-place and tested, with no public keyword yet; `_fitness!(f, st)` writes
-relative fitness to `st.w`, and `Neutral()` keeps the uniform draw and
-the v0.4.0 realizations. Next: `FitnessLoci`, the `sel` stream, and
-`SiteFitness`.
+0.6.0 in progress. Done 2026-11-11: the alias sampler (`src/alias.jl`)
+and the draw of parents in proportion to fitness within each sex; and
+selection at explicit sites (`src/fitness.jl`): `FitnessLoci`,
+`fitness_loci`, `SiteFitness` and the public `fitness` keyword, the
+selected stream `sel` carried through meiosis with the same crossovers
+and strand, mutation at the fitness loci, selected substitutions, and
+`selected_haplotypes` and `selected_substitutions` in the result.
+`Neutral()` keeps the uniform draw and the v0.4.0 realizations. Still
+to do in 0.6.0: export of the selected stream with its true effects
+(`to_haplotype`, `muts2bitarray`), the per-generation trajectory of
+mean and variance of log fitness, and the rest of validation 6
+(mutation–selection balance, substitution rate, SFS at selected sites).
 
 The refactor (`src/simulate.jl`): a `SimState` struct holds the
 haplotypes, buffers and per-slot streams; `fisher_wright` builds it and
@@ -297,12 +303,23 @@ replicates and seeds; logs go under `docs/src/validation/`.
    parents"), and for drift under non-heritable fitness against the
    exact recursion with a = E[Σpᵢ²]/4 ("Heterozygosity decay under
    weighted parents": N = 12, weights 1 to 12, Ne ≈ 9.41).
+   Also done: fitness from the merge-walk against the dense product
+   ("Fitness loci"), and the joint meiosis of both streams against the
+   recombinant of their union ("Selected stream").
 6. **Selection against single-locus theory:**
    - Fixation probability of one introduced copy (via `init`) against
      Kimura's diffusion result: closed form at h = ½, numerical integral
      for general h; 4Ns ∈ {−2, 0, 2, 10}, about 10⁵ replicates, binomial
      confidence intervals. Use the dioecious Ne (≈ N − 1 under binomial
      sex), not N.
+     Done, with a different reference: the two-sex model with selection
+     within each sex is below the ideal Wright–Fisher value by terms of
+     order 1/N (about 5% at N = 50, more than Ne/N alone), so the engine
+     is compared with an independent naive simulation of the same model
+     (`fixation-reference.jl`, `validate-selection.jl`; manual page
+     "Validation of selection"), and a CI test uses its values. Kimura
+     and the exact chain are shown for comparison and are approached as
+     N grows.
    - Mutation–selection balance: w̄ ≈ e^{−U} (Haldane–Muller, h > 0,
      loosely linked sites) and per-site q ≈ μ/(hs).
    - Substitution-rate ratio K_sel/K_neu = 2N·u(1/2N).
@@ -343,8 +360,8 @@ replicates and seeds; logs go under `docs/src/validation/`.
    0.5.0 shipped with binomial sex as the default and
    `RandomMating(sexratio = 0.5)` as the explicit alternative; a switch
    would now be a breaking change of seeded output.
-3. JOSS paper: mention this roadmap as future work, or keep it scoped to
-   v0.4.x?
+3. JOSS paper: resolved 2026-11-11. The paper is under review and stays
+   as submitted, scoped to v0.4.x; it does not mention this roadmap.
 4. Selected-site semantics: resolved 2026-11-11 in favour of a fixed s
    per site (this design), not s per mutation as in SLiM.
 5. Order: resolved 2026-11-11, selection (0.6.0) precedes the remaining

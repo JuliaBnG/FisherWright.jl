@@ -1,6 +1,8 @@
 """
-    FisherWrightResult(active_haplotypes, chromosome_ends, substitutions, census, males)
-    FisherWrightResult(active_haplotypes, chromosome_ends, substitutions)
+    FisherWrightResult(active_haplotypes, chromosome_ends, substitutions, census, males,
+                       selected_haplotypes, selected_substitutions)
+    FisherWrightResult(active_haplotypes, chromosome_ends, substitutions;
+                       selected_haplotypes, selected_substitutions)
 
 Structured container holding the output of a Fisher-Wright simulation, keeping
 active haplotypes, chromosome breakpoints, and fixed substitutions together
@@ -17,10 +19,17 @@ with the census record of the run.
 - `males::Vector{Int}`: `males[g]` is the realized number of males among the `census[g]` parents of generation `g`;
   the remaining `census[g] - males[g]` parents are females.
 
+- `selected_haplotypes::Vector{Vector{UInt32}}`: for each haplotype, the sorted positions of the derived alleles
+  it carries at the fitness loci of a run with selection ([`SiteFitness`](@ref)); empty vectors in a neutral run.
+  These alleles are kept apart from the neutral mutations in `active_haplotypes`.
+- `selected_substitutions::Vector{UInt32}`: sorted positions of fitness loci whose derived allele reached fixation
+  and was removed from `selected_haplotypes`.
+
 A run continued from a `FisherWrightResult` through the `init` keyword of [`fisher_wright`](@ref) appends its
 generations to the record of that result, so generations are numbered from the first call; started from plain
 haplotypes, the record begins anew. The three-argument constructor builds a result without a record, with `census`
-holding the number of individuals only and `males` empty.
+holding the number of individuals only and `males` empty; its keywords give the selected alleles of a starting
+population, for example one copy of a new allele.
 
 # See also
 [`fisher_wright`](@ref), [`effective_size`](@ref), [`to_haplotype`](@ref)
@@ -31,10 +40,21 @@ struct FisherWrightResult
     substitutions::Vector{UInt32}
     census::Vector{Int}
     males::Vector{Int}
+    selected_haplotypes::Vector{Vector{UInt32}}
+    selected_substitutions::Vector{UInt32}
 end
 
-FisherWrightResult(active_haplotypes, chromosome_ends, substitutions) = FisherWrightResult(
-    active_haplotypes, chromosome_ends, substitutions, [length(active_haplotypes) ÷ 2], Int[])
+FisherWrightResult(active_haplotypes, chromosome_ends, substitutions, census, males) =
+    FisherWrightResult(active_haplotypes, chromosome_ends, substitutions, census, males,
+        [UInt32[] for _ in active_haplotypes], UInt32[])
+
+FisherWrightResult(
+    active_haplotypes, chromosome_ends, substitutions;
+    selected_haplotypes=[UInt32[] for _ in active_haplotypes],
+    selected_substitutions=UInt32[],
+) = FisherWrightResult(
+    active_haplotypes, chromosome_ends, substitutions, [length(active_haplotypes) ÷ 2], Int[],
+    selected_haplotypes, selected_substitutions)
 
 """
     effective_size(result::FisherWrightResult, generations = eachindex(result.males)) -> Float64
@@ -275,7 +295,8 @@ and return a new `FisherWrightResult` with updated haplotypes and accumulated su
 """
 function _extract_fixed(result::FisherWrightResult)
     cleaned, substitutions = _fixation_step(result.active_haplotypes, result.substitutions)
-    return FisherWrightResult(cleaned, result.chromosome_ends, substitutions, result.census, result.males)
+    return FisherWrightResult(cleaned, result.chromosome_ends, substitutions, result.census, result.males,
+        result.selected_haplotypes, result.selected_substitutions)
 end
 
 

@@ -1,0 +1,22 @@
+# Date: 2026-11-11T16:14Z  Script: docs/src/validation/scripts/fixation-reference.jl at 9258478 + uncommitted (independent of the package)
+# CPU: AMD Ryzen 9 5950X 16-Core Processor; julia version 1.13.3; Distributions v0.25.134
+# $ julia -t 16 fixation-reference.jl 2000000 2026   (run alongside validate-selection.jl; timing not meaningful)
+
+==============================================================================
+ Fixation probability of one new copy: naive two-sex reference
+ reps = 2000000 per case, seed = 2026, threads = 16
+==============================================================================
+
+[1/2] Reference values for the CI test (binomial sex)
+     N       s     h            u         SE     ideal WF
+    30   0.200  0.50     0.160166   0.000259     0.174194
+    30   0.200  0.00     0.055675   0.000162     0.064011
+    30   0.200  1.00     0.278524   0.000317     0.295523
+    30   0.000  0.50     0.016693   0.000091     0.016667
+    30  -0.100  0.50     0.000309   0.000012     0.000205
+
+[2/2] The two-sex model against the ideal Wright-Fisher population, 2Ns = 10, h = 1/2
+      N       s     Kimura   ideal WF    two sexes, binomial   two sexes, N/2 males
+     50   0.100    0.09517    0.09309      0.08842 ± 0.00020      0.09082 ± 0.00020
+    500   0.010    0.00995    0.00993      0.00969 ± 0.00022      0.00979 ± 0.00022
+==============================================================================

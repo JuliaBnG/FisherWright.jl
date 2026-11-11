@@ -7,7 +7,9 @@ using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_s
     _intersect_sorted!, _remove_sorted!, _with_fixed, _simulate!, _initial_state,
     SimState, ConstantSize, SizeTrajectory, RandomMating, Neutral, bottleneck, growth,
     AbstractFitness, AliasTable, _alias_build!, _alias_draw, _alias_probabilities,
-    _draw_parents!, _mate!
+    _draw_parents!, _mate!, FitnessLoci, fitness_loci, SiteFitness, _log_fitness, _selected,
+    _meiosis!, _meiosis_selected!, _sel_mutation!
+using Distributions: Gamma, Exponential
 import FisherWright: _fitness!
 using BnGStructs
 using Distributions: Poisson
@@ -876,6 +878,14 @@ struct IndexFitness <: AbstractFitness
 end
 _fitness!(f::IndexFitness, st::SimState) = (copyto!(st.w, 1, f.w, 1, st.n); nothing)
 
+# (s, h, u, SE) from docs/src/validation/fixation-reference.txt, N = 30.
+const FIXATION_REFERENCE = [
+    (0.2, 0.5, 0.160166, 0.000259),
+    (0.2, 0.0, 0.055675, 0.000162),
+    (0.2, 1.0, 0.278524, 0.000317),
+    (0.0, 0.5, 0.016693, 0.000091),
+]
+
 const χ²crit(df) = df * (1 - 2 / 9df + 3.5 * sqrt(2 / 9df))^3   # 3.5σ-equivalent, Wilson–Hilferty
 
 @testset "Alias sampler" begin
@@ -973,6 +983,197 @@ end
     flat = IndexFitness(ones(10))
     _mate!(RandomMating(), flat, st, 10, rng)
     @test all(st.sex[st.pm[1:10, 1]]) && !any(st.sex[st.pm[1:10, 2]])
+end
+
+@testset "Fitness loci" begin
+    # Explicit table: scalars are expanded, vectors kept.
+    l = FitnessLoci([10, 20, 30], 0.1)
+    @test l.pos == UInt32[10, 20, 30] && l.s == fill(0.1, 3) && l.h == fill(0.5, 3) && l.μ == 0.0
+    @test length(l) == 3
+    l = FitnessLoci(UInt32[5, 9], [-1.0, 0.3]; h=[0.0, 2.0], μ=1e-4)
+    @test l.s == [-1.0, 0.3] && l.h == [0.0, 2.0] && l.μ == 1e-4
+    @test length(FitnessLoci(Int[], 0.1)) == 0
+    for bad in (
+        () -> FitnessLoci([20, 10], 0.1),            # not sorted
+        () -> FitnessLoci([10, 10], 0.1),            # not unique
+        () -> FitnessLoci([0, 10], 0.1),             # not 1-based
+        () -> FitnessLoci([10, 20], [0.1]),          # lengths
+        () -> FitnessLoci([10], -1.5),               # s < -1
+        () -> FitnessLoci([10], NaN),
+        () -> FitnessLoci([10], -0.5; h=3.0),        # 1 + hs < 0
+        () -> FitnessLoci([10], 0.1; μ=-1e-3),
+    )
+        @test_throws ArgumentError bad()
+    end
+
+    # Drawn table: distinct sites within the genome, effects from the DFE,
+    # reproducible from the rng.
+    chr = [1_000, 2_000]
+    l = fitness_loci(chr, 200; s=-Gamma(0.5, 0.1) + 0.0, h=x -> 0.25, μ=1e-3, rng=Xoshiro(1))
+    @test length(l) == 200 && issorted(l.pos) && allunique(l.pos) && all(p -> 1 <= p <= 3_000, l.pos)
+    @test all(<(0), l.s) && all(==(0.25), l.h) && l.μ == 1e-3
+    l2 = fitness_loci(chr, 200; s=-Gamma(0.5, 0.1) + 0.0, h=x -> 0.25, μ=1e-3, rng=Xoshiro(1))
+    @test (l2.pos, l2.s) == (l.pos, l.s)
+    @test fitness_loci(chr, 3_000; s=0.01).pos == 1:3_000        # every site
+    @test length(fitness_loci(chr, 2_500; s=0.01).pos) == 2_500   # the dense branch
+    @test length(fitness_loci(chr, 0; s=0.01)) == 0
+    @test_throws ArgumentError fitness_loci(chr, 3_001; s=0.01)
+    @test_throws ArgumentError fitness_loci(chr, 10; s="strong")
+    @test_throws ArgumentError fitness_loci([0], 1; s=0.1)
+
+    # Fitness of an individual from the merge-walk equals the product over
+    # sites of the dense genotype: random tables and haplotypes.
+    rng = Xoshiro(2)
+    for _ = 1:300
+        K = rand(rng, 1:40)
+        pos = sort!(unique(rand(rng, UInt32(1):UInt32(500), K)))
+        K = length(pos)
+        l = FitnessLoci(pos, rand(rng, K) .* 1.5 .- 0.5; h=rand(rng, K) .* 1.2)
+        f = SiteFitness(l)
+        a, b = pos[rand(rng, Bool, K)], pos[rand(rng, Bool, K)]
+        dense = prod(1:K; init=1.0) do k
+            d = (pos[k] in a) + (pos[k] in b)
+            d == 0 ? 1.0 : d == 1 ? 1 + l.h[k] * l.s[k] : 1 + l.s[k]
+        end
+        @test exp(_log_fitness(f, a, b)) ≈ dense
+        @test _log_fitness(f, a, b) == _log_fitness(f, b, a)
+    end
+    f = SiteFitness(FitnessLoci([7, 9], [-1.0, 0.5]; h=[0.5, 0.5]))
+    @test _log_fitness(f, UInt32[], UInt32[]) == 0.0
+    @test _log_fitness(f, UInt32[7], UInt32[7]) == -Inf        # lethal homozygote
+    @test exp(_log_fitness(f, UInt32[7, 9], UInt32[9])) ≈ 0.5 * 1.5
+    alloc(f, a, b) = @allocated _log_fitness(f, a, b)
+    alloc(f, UInt32[7], UInt32[9])
+    @test alloc(f, UInt32[7], UInt32[9]) == 0
+    @test _selected(f) && !_selected(Neutral()) && !_selected(IndexFitness([1.0]))
+end
+
+@testset "Selected stream" begin
+    chr, cbp = [5_000, 5_000], UInt32[5_000, 10_000]
+    rmap = uniform_recombination_map(chr; M=2_000)
+    N = 20
+    loci = FitnessLoci(collect(50:50:10_000), 0.05; μ=2e-3)
+    f = SiteFitness(loci)
+    rng = Xoshiro(3)
+    rand_sel() = loci.pos[rand(rng, length(loci)) .< 0.2]
+    rand_neu() = UInt32.(filter(p -> p % 50 != 0, sort!(unique(rand(rng, 1:10_000, 60)))))
+
+    # Meiosis on both streams: the neutral stream is what `_meiosis!` gives
+    # for the same matings and streams, and the two streams together are the
+    # recombinant of their union under the same crossovers and strand.
+    function state(seed)
+        st = SimState([rand_neu() for _ = 1:2N], UInt32[], N, Xoshiro(seed), [rand_sel() for _ = 1:2N], UInt32[])
+        st.pm[:, 1] .= rand(Xoshiro(seed + 1), 1:N, N)
+        st.pm[:, 2] .= rand(Xoshiro(seed + 2), 1:N, N)
+        return st
+    end
+    rng = Xoshiro(3); a = state(5)
+    rng = Xoshiro(3); b = state(5)
+    parents = [merge_sorted(a.prt[k], a.sel[k]) for k = 1:2N]
+    streams = copy.(b.srng)
+    _meiosis!(a, rmap, N)
+    _meiosis_selected!(b, rmap, N)
+    @test a.prt[1:2N] == b.prt[1:2N]
+    @test a.srng == b.srng                        # same draws from every stream
+    co, out = UInt32[], UInt32[]
+    for i = 1:N, (p, k) in ((b.pm[i, 1], 2i - 1), (b.pm[i, 2], 2i))
+        r = streams[i]
+        cobp!(co, rmap; rng=r)
+        _recombine!(parents[2p-1], parents[2p], out, co, rand(r, Bool))
+        @test merge_sorted(b.prt[k], b.sel[k]) == out
+        @test issubset(b.sel[k], loci.pos) && isdisjoint(b.prt[k], loci.pos)
+    end
+
+    # Mutation at the fitness loci: only sites of the table, sorted and
+    # unique, about K·μ = 0.4 new alleles per haplotype per generation (fewer
+    # by the hits on sites already carried), and none at substituted sites.
+    st = SimState([UInt32[] for _ = 1:2N], UInt32[], N, Xoshiro(8))
+    p_sel = Poisson(length(loci) * loci.μ)
+    gained = 0
+    for _ = 1:200
+        before = sum(length, st.sel)
+        _sel_mutation!(f, st, p_sel)
+        gained += sum(length, st.sel) - before
+        foreach(empty!, st.sel)
+    end
+    @test abs(gained / (200 * 2N) - 0.4) < 3.5 * sqrt(0.4 / (200 * 2N))
+    st.ssubs = loci.pos[1:100]
+    for _ = 1:50
+        _sel_mutation!(f, st, p_sel)
+    end
+    @test all(h -> issorted(h) && allunique(h) && issubset(h, loci.pos[101:end]), st.sel[1:2N])
+    @test sum(length, st.sel) > 100
+
+    # Through fisher_wright: both streams valid, kept apart, reproducible,
+    # and independent of the fixation interval.
+    kw = (M=2_000, mut_base=1e4, result=true, fitness=f)
+    res = fisher_wright(N, 300, chr, 2.0; kw..., rng=Xoshiro(4))
+    @test length(res.selected_haplotypes) == length(res.active_haplotypes) == 2N
+    @test all(h -> issorted(h) && allunique(h) && issubset(h, loci.pos), res.selected_haplotypes)
+    @test issorted(res.selected_substitutions) && issubset(res.selected_substitutions, loci.pos)
+    @test !isempty(res.selected_substitutions) && any(!isempty, res.selected_haplotypes)
+    @test all(h -> isdisjoint(h, res.selected_substitutions), res.selected_haplotypes)
+    @test isempty(_fixed_mutations(res.selected_haplotypes))
+    again = fisher_wright(N, 300, chr, 2.0; kw..., fixation_interval=13, rng=Xoshiro(4))
+    @test again.selected_haplotypes == res.selected_haplotypes
+    @test again.selected_substitutions == res.selected_substitutions
+    @test again.active_haplotypes == res.active_haplotypes && again.substitutions == res.substitutions
+    # Advantageous alleles accumulate: more selected substitutions than
+    # under s = 0 at the same sites and mutation rate (110 against 72 here;
+    # over 20 seeds 117 ± 7 against 74 ± 7, mean ± SD).
+    flat = SiteFitness(FitnessLoci(loci.pos, 0.0; μ=loci.μ))
+    neu = fisher_wright(N, 300, chr, 2.0; kw..., fitness=flat, rng=Xoshiro(4))
+    @test length(res.selected_substitutions) > length(neu.selected_substitutions) + 20
+
+    # A neutral run has an empty selected stream and is the run without the
+    # keyword.
+    plain = fisher_wright(N, 50, chr, 2.0; M=2_000, mut_base=1e4, result=true, rng=Xoshiro(6))
+    @test all(isempty, plain.selected_haplotypes) && isempty(plain.selected_substitutions)
+    @test length(plain.selected_haplotypes) == 2N
+    same = fisher_wright(N, 50, chr, 2.0; M=2_000, mut_base=1e4, result=true, fitness=Neutral(), rng=Xoshiro(6))
+    @test same.active_haplotypes == plain.active_haplotypes
+
+    # Continuing: the selected alleles of init are carried on, with their
+    # substitutions; mutate = false adds none; init is left untouched.
+    keep = deepcopy(res)
+    cont = fisher_wright(N, 40, chr, 2.0; kw..., init=res, mutate=false, rng=Xoshiro(7))
+    @test issubset(res.selected_substitutions, cont.selected_substitutions)
+    @test issubset(reduce(union, cont.selected_haplotypes), reduce(union, res.selected_haplotypes))
+    @test res.selected_haplotypes == keep.selected_haplotypes
+    @test length(cont.census) == 341
+    # A starting population with one copy of a selected allele.
+    sel = [UInt32[] for _ = 1:2N]
+    push!(sel[3], loci.pos[7])
+    start = FisherWrightResult([UInt32[] for _ = 1:2N], cbp, UInt32[]; selected_haplotypes=sel)
+    one = fisher_wright(N, 1, chr, 2.0; kw..., init=start, mutate=false, rng=Xoshiro(9))
+    @test all(h -> h == UInt32[] || h == [loci.pos[7]], one.selected_haplotypes)
+    @test isempty(sel[1]) && sel[3] == [loci.pos[7]]
+
+    # Errors.
+    @test_throws ArgumentError fisher_wright(N, 5, chr, 2.0; fitness=f)                 # result = false
+    @test_throws ArgumentError fisher_wright(N, 5, chr, 2.0; init=res, result=true)     # selected alleles, no model
+    @test_throws ArgumentError fisher_wright(N, 5, [5_000], 2.0; fitness=f, result=true) # loci beyond the genome
+    other = SiteFitness(FitnessLoci([1, 2, 3], 0.1))
+    @test_throws ArgumentError fisher_wright(N, 5, chr, 2.0; fitness=other, init=res, result=true)
+    short = FisherWrightResult([UInt32[] for _ = 1:2N], cbp, UInt32[]; selected_haplotypes=sel[1:4])
+    @test_throws ArgumentError fisher_wright(N, 5, chr, 2.0; kw..., init=short)
+    unsorted = FisherWrightResult([UInt32[] for _ = 1:2N], cbp, UInt32[];
+        selected_haplotypes=[[[loci.pos[2], loci.pos[1]]]; sel[2:end]])
+    @test_throws ArgumentError fisher_wright(N, 5, chr, 2.0; kw..., init=unsorted)
+
+    # Species method, and a lethal recessive never becomes homozygous... in
+    # an adult that reproduces: no selected substitution can occur.
+    sp = GenericSpecies("Sel", Int32(N), UInt32.(chr), UInt32(2_000))
+    @test fisher_wright(sp, 300, 2.0; mut_base=1e4, result=true, fitness=f, rng=Xoshiro(4)).selected_haplotypes ==
+          res.selected_haplotypes
+    lethal = SiteFitness(FitnessLoci(collect(50:50:10_000), -1.0; h=0.0, μ=1e-4))
+    dead = fisher_wright(N, 200, chr, 2.0; kw..., fitness=lethal, mating=RandomMating(sexratio=0.5),
+        rng=Xoshiro(10))
+    @test isempty(dead.selected_substitutions) && any(!isempty, dead.selected_haplotypes)
+    # A sex in which nobody has positive fitness ends the run with an error.
+    doomed = FisherWrightResult([UInt32[] for _ = 1:2N], cbp, UInt32[];
+        selected_haplotypes=[UInt32[50] for _ = 1:2N])
+    @test_throws "cannot reproduce" fisher_wright(N, 5, chr, 2.0; kw..., fitness=lethal, init=doomed)
 end
 
 @testset "Simulation invariants at scale" begin
@@ -1437,6 +1638,47 @@ end
 end
 
 # END population genetics validation
+
+# Fixation of one new copy of a selected allele in the engine: `reps`
+# replicates of N individuals, each run to loss or fixation.
+function engine_fixation(N, s, h, reps, rng)
+    rmap = uniform_recombination_map([100]; M=1e8)
+    f = SiteFitness(FitnessLoci([50], s; h=h))
+    st = SimState([UInt32[] for _ = 1:2N], UInt32[], N, rng)
+    fixed = 0
+    for _ = 1:reps
+        foreach(empty!, st.sel)
+        push!(st.sel[rand(rng, 1:2N)], UInt32(50))
+        while true
+            _simulate!(st, ConstantSize(N), RandomMating(), f, 1, rmap, Poisson(1.0), UInt32(1):UInt32(100);
+                mutate=false, track=false, fixation_interval=1, verbose=false, progress_interval=100, rng=rng)
+            c = count(!isempty, view(st.sel, 1:2N))
+            c == 0 && break
+            c == 2N && (fixed += 1; break)
+        end
+        resize!(st.census, 1)
+        empty!(st.males)
+    end
+    return fixed / reps
+end
+
+@testset "Fixation probability under selection" begin
+    # One copy of a selected allele in N = 30, followed to loss or fixation,
+    # 4,000 replicates per case. The reference is an independent, naive
+    # simulation of the same two-sex model with 2,000,000 replicates
+    # (docs/src/validation/scripts/fixation-reference.jl); selection within
+    # each sex and the binomial sex ratio put it 6 to 13% below the ideal
+    # Wright-Fisher value at this N. z-scores of the difference of two
+    # proportions. The three cases with s = 0.2 differ only in dominance and
+    # are at least 12 standard errors apart, so an error in the fitness of
+    # the heterozygote is caught; s = 0 checks that equal fitness is drift.
+    reps = 4_000
+    rng = Xoshiro(20261114)
+    for (s, h, ref, se_ref) in FIXATION_REFERENCE
+        u = engine_fixation(30, s, h, reps, rng)
+        @test abs(u - ref) / sqrt(ref * (1 - ref) / reps + se_ref^2) < 3.5
+    end
+end
 
 @testset "Heterozygosity decay under weighted parents" begin
     # Fitness that is not heritable (it goes with the position in the
