@@ -10,6 +10,18 @@ S, H: segregating sites and Σ2pq in the whole population; w: whole-population
 SFS groups; s: SFS groups in a random sample of `nsub` haplotypes; num/den:
 ΣD² and Σp₁q₁p₂q₂ per LD distance bin (MAF filter as in the Julia script).
 
+With --epochs the population size changes in the past, to match a FisherWright
+run with `popsize`. Each epoch is `time:size`: from `time` generations ago
+backwards the population has `size` individuals, up to the next epoch; the
+first epoch must start at time 0. msprime's DTWF draws the parents of the
+individuals living at time t - 1 from the size given for time t (checked with
+a population reduced to one individual), so `time` counts the generations
+back to the first cohort of that size that reproduced. A size may be
+fractional: it is the effective size of FisherWright's two-sex cohort, and
+each chromosome draws floor(size) or ceil(size) with probabilities that make
+the mean equal to it. --samples sets the number of sampled diploids when it
+differs from --ne.
+
 With --summary it prints instead the pooled σ²_d ± SE per LD bin, which is how
 the reference values in test/runtests.jl were made:
 
@@ -62,9 +74,18 @@ def main():
     ap.add_argument("--maf", type=float, default=0.1)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--summary", action="store_true", help="print pooled LD per bin instead of replicate rows")
+    ap.add_argument("--samples", type=int, default=None, help="sampled diploids (default: ne)")
+    ap.add_argument("--epochs", nargs="+", default=None, metavar="TIME:SIZE",
+                    help="population sizes backwards in time; overrides --ne for the ancestry")
     a = ap.parse_args()
-    n = 2 * a.ne
+    nsam = a.ne if a.samples is None else a.samples
+    n = 2 * nsam
     rng = np.random.default_rng(a.seed)
+    epochs = None
+    if a.epochs is not None:
+        epochs = [(float(t), float(x)) for t, x in (e.split(":") for e in a.epochs)]
+        assert epochs[0][0] == 0 and all(u[0] < v[0] for u, v in zip(epochs, epochs[1:]))
+        size_rng = np.random.default_rng([a.seed, 1])  # leaves the draws of `rng` unchanged
     ratios, NUM, DEN = [], np.zeros(len(BINS)), np.zeros(len(BINS))
     for rep in range(a.reps):
         S = H = 0.0
@@ -75,9 +96,16 @@ def main():
         sub = rng.choice(n, a.nsub, replace=False)
         for c in range(a.nchr):
             seed = a.seed * 1_000_003 + rep * a.nchr + c + 1
+            if epochs is None:
+                demography = msprime.Demography.isolated_model([a.ne])
+            else:
+                sizes = [int(np.floor(x)) + (size_rng.random() < x - np.floor(x)) for _, x in epochs]
+                demography = msprime.Demography.isolated_model([sizes[0]])
+                for (t, _), x in zip(epochs[1:], sizes[1:]):
+                    demography.add_population_parameters_change(time=t, initial_size=x)
             ts = msprime.sim_ancestry(
-                samples=a.ne,
-                population_size=a.ne,
+                samples=nsam,
+                demography=demography,
                 sequence_length=a.chr_len,
                 recombination_rate=a.r,
                 model=msprime.DiscreteTimeWrightFisher(),

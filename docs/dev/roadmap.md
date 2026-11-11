@@ -8,7 +8,9 @@ kernel (v0.4.2); the `mutate` and `init` keywords, the internal
 refactor, and exogenous `popsize` (2026-11-10); the `mating` keyword
 with a fixed number or proportion of males, the census record in
 results with `effective_size`, and the trajectory helpers `bottleneck`
-and `growth` (2026-11-11). None of the 2026-11 work is released yet.
+and `growth`, and validation 3 against msprime (2026-11-11). None of
+the 2026-11 work is released yet; the 0.5.0 row is complete apart from
+the release itself (version, changelog, benchmark rerun).
 
 The refactor (`src/simulate.jl`): a `SimState` struct holds the
 haplotypes, buffers and per-slot streams; `fisher_wright` builds it and
@@ -27,7 +29,7 @@ generation), appended to that of an `init` result; `effective_size`
 returns 4N_mN_f/(N_m+N_f) per generation
 or its harmonic mean. `bottleneck(n, nb, start, duration)` and
 `growth(n0, r; start, limit)` return functions of the generation for
-`popsize`. Still to do in 0.5.0: validation 3 against msprime.
+`popsize`.
 
 ## Current model (v0.4.0)
 
@@ -262,15 +264,18 @@ replicates and seeds; logs go under `docs/src/validation/`.
      recursion ("Heterozygosity decay under a fixed sex ratio": 3♂/17♀,
      10♂/10♀, and a proportion of 0.2 males through a change in size);
      its equilibrium π and S check is still open.
-3. **Variable N.** Done as a CI test: heterozygosity through a
-   bottleneck and an expansion against the exact two-sex recursion
-   (30 → 6 for 8 generations → 60 for 12), which also shows that the
-   drift of generation g follows its N_{g−1} parents. Still to do,
-   **against msprime DTWF with the same demography:** SFS, π
-   and σ²_d per distance bin after a bottleneck and after an expansion,
-   reusing the existing msprime harness. msprime DTWF is monoecious and
-   Poisson-like, so this matches only `RandomMating`; the O(1/N) dioecy
-   bias must be quantified or Ne mapped explicitly.
+3. **Variable N.** Done in two parts. A CI test: heterozygosity
+   through a bottleneck and an expansion against the exact two-sex
+   recursion (30 → 6 for 8 generations → 60 for 12), which also shows
+   that the drift of generation g follows its N_{g−1} parents. And
+   **against msprime DTWF with the same demography**
+   (`docs/src/validation/scripts/validate-demography.jl`, results in
+   the manual): S, Σ2pq, SFS and σ²_d per distance bin after a
+   bottleneck (100 → 20 for 20 generations → 100 for 20) and after an
+   expansion (100 → 400 for 100), plus Σ2pq against the exact recursion
+   with mutation; 36 checks pass for two seeds at 200 replicates.
+   msprime DTWF is monoecious, so each two-sex cohort is mapped to
+   N' = Ne(N), drawn as ⌊Ne⌋ or ⌈Ne⌉ per chromosome.
 4. **Non-random schemes, against SLiM:** SLiM WF models with
    `mateChoice()` and `modifyChild()` callbacks express hierarchical
    designs, weighted parents and relative avoidance. Build matched
