@@ -111,6 +111,15 @@ function _random_mate!(
 )
     n1 = length(sex)
     (n1 > 1 && 0 < n2 <= size(pm, 1)) || error("n1 must >1 and n2 >0")
+    _draw_sex!(sex, sires, dams, rng, max_tries)
+    _draw_parents!(pm, sires, dams, n2, rng)
+    return pm, sex
+end
+
+# Sex of each parent as Bernoulli(½), redrawn until both sexes are present;
+# `sires` and `dams` receive the sorted indices of the males and females.
+function _draw_sex!(sex::Vector{Bool}, sires::Vector{Int}, dams::Vector{Int}, rng, max_tries::Int)
+    n1 = length(sex)
     tries = 0
     while true
         rand!(rng, sex)
@@ -131,17 +140,42 @@ function _random_mate!(
             push!(dams, i)
         end
     end
+    return sex
+end
+
+# Sire and dam of each of `n2` offspring, uniform with replacement.
+function _draw_parents!(pm::Matrix{Int}, sires::Vector{Int}, dams::Vector{Int}, n2::Int, rng)
     @inbounds for i = 1:n2
         pm[i, 1] = rand(rng, sires)
         pm[i, 2] = rand(rng, dams)
     end
-    return pm, sex
+    return pm
+end
+
+# Sire and dam of each of `n2` offspring, with replacement and with
+# probability proportional to the weight `w[i]` of parent `i` within its sex.
+# `tm` and `tf` are rebuilt for the current sires and dams. Per offspring the
+# draws from `rng` are two for the sire, then two for the dam.
+function _draw_parents!(
+    pm::Matrix{Int},
+    sires::Vector{Int},
+    dams::Vector{Int},
+    n2::Int,
+    rng,
+    w::AbstractVector{Float64},
+    tm::AliasTable,
+    tf::AliasTable,
+)
+    _alias_build!(tm, w, sires)
+    _alias_build!(tf, w, dams)
+    @inbounds for i = 1:n2
+        pm[i, 1] = sires[_alias_draw(tm, rng)]
+        pm[i, 2] = dams[_alias_draw(tf, rng)]
+    end
+    return pm
 end
 
 # As `_random_mate!`, with exactly `nm` males among the `length(sex)` parents.
-# The males are a uniformly random subset, drawn by selection sampling (Knuth,
-# TAOCP 2, Algorithm S): one uniform draw per parent that is still undecided,
-# then sire and dam of each offspring in turn.
 function _fixed_sex_mate!(
     pm::Matrix{Int},
     sex::Vector{Bool},
@@ -154,6 +188,16 @@ function _fixed_sex_mate!(
     n1 = length(sex)
     (0 < nm < n1 && 0 < n2 <= size(pm, 1)) ||
         error("need 0 < nm < n1 and n2 > 0")
+    _draw_fixed_sex!(sex, sires, dams, nm, rng)
+    _draw_parents!(pm, sires, dams, n2, rng)
+    return pm, sex
+end
+
+# Exactly `nm` males among the `length(sex)` parents, a uniformly random
+# subset drawn by selection sampling (Knuth, TAOCP 2, Algorithm S): one
+# uniform draw per parent that is still undecided.
+function _draw_fixed_sex!(sex::Vector{Bool}, sires::Vector{Int}, dams::Vector{Int}, nm::Int, rng)
+    n1 = length(sex)
     empty!(sires)
     empty!(dams)
     need = nm
@@ -169,11 +213,7 @@ function _fixed_sex_mate!(
             push!(dams, i)
         end
     end
-    @inbounds for i = 1:n2
-        pm[i, 1] = rand(rng, sires)
-        pm[i, 2] = rand(rng, dams)
-    end
-    return pm, sex
+    return sex
 end
 
 """

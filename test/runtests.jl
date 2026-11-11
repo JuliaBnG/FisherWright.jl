@@ -5,7 +5,10 @@ using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_s
     uniform_recombination_map, random_mate, random_mate!, _fixed_sex_mate!, _nmale, _fixed_mutations,
     _drop_mutations, _drop_mutations!, _fixation_step, _fixation_step!, _extract_fixed,
     _intersect_sorted!, _remove_sorted!, _with_fixed, _simulate!, _initial_state,
-    SimState, ConstantSize, SizeTrajectory, RandomMating, Neutral, bottleneck, growth
+    SimState, ConstantSize, SizeTrajectory, RandomMating, Neutral, bottleneck, growth,
+    AbstractFitness, AliasTable, _alias_build!, _alias_draw, _alias_probabilities,
+    _draw_parents!, _mate!
+import FisherWright: _fitness!
 using BnGStructs
 using Distributions: Poisson
 using Statistics: mean, var, cor
@@ -866,6 +869,112 @@ end
     @test fisher_wright(sp, 10, 5.0; mut_base=1e5, result=true, popsize=sizes).census == [20; sizes]
 end
 
+# Fitness by position in the cohort, for tests of weighted mating: not
+# heritable, so it changes the variance of family size and nothing else.
+struct IndexFitness <: AbstractFitness
+    w::Vector{Float64}
+end
+_fitness!(f::IndexFitness, st::SimState) = (copyto!(st.w, 1, f.w, 1, st.n); nothing)
+
+const χ²crit(df) = df * (1 - 2 / 9df + 3.5 * sqrt(2 / 9df))^3   # 3.5σ-equivalent, Wilson–Hilferty
+
+@testset "Alias sampler" begin
+    rng = Xoshiro(41)
+    t = AliasTable(8)
+    # The table is exact: the probabilities it implies are the normalised
+    # weights, for weights of very different size, zeros and a subset.
+    for (w, idx) in (
+        ([1.0, 2.0, 3.0, 4.0], [1, 2, 3, 4]),
+        ([5.0], [1]),
+        ([1e-9, 1.0, 1e9, 0.0, 3.0], [1, 2, 3, 4, 5]),
+        ([0.0, 0.0, 7.0], [1, 2, 3]),
+        (fill(0.3, 7), collect(1:7)),
+        (rand(rng, 200) .^ 8, collect(1:200)),
+        ([9.0, 1.0, 9.0, 2.0, 9.0, 5.0], [2, 4, 6]),     # outcomes 1:3 ↔ individuals 2, 4, 6
+    )
+        _alias_build!(t, w, idx)
+        @test length(t) == length(idx)
+        @test _alias_probabilities(t) ≈ w[idx] ./ sum(w[idx]) rtol = 1e-12
+        @test all(p -> 0 <= p <= 1, t.prob) && all(in(1:length(idx)), t.alias)
+        @test all(_alias_draw(t, rng) in 1:length(idx) for _ = 1:100)
+    end
+    # Draws follow the weights (Pearson χ²), and a zero weight is never drawn.
+    w = [4.0, 0.0, 1.0, 2.5, 0.5, 2.0]
+    _alias_build!(t, w, collect(1:6))
+    R = 200_000
+    c = zeros(Int, 6)
+    for _ = 1:R
+        c[_alias_draw(t, rng)] += 1
+    end
+    @test c[2] == 0
+    keep = w .> 0
+    @test sum((c[keep] .- R .* w[keep] ./ 10) .^ 2 ./ (R .* w[keep] ./ 10)) < χ²crit(4)
+    # Rebuilding within the reserved size does not allocate, nor does a draw.
+    idx = collect(1:6)
+    rebuild(t, w, idx) = @allocated _alias_build!(t, w, idx)
+    draw(t, rng) = @allocated _alias_draw(t, rng)
+    rebuild(t, w, idx); draw(t, rng)
+    @test rebuild(t, w, idx) == 0 && draw(t, rng) == 0
+    # Invalid weights.
+    for bad in ([1.0, -0.1], [1.0, NaN], [Inf, 1.0], [0.0, 0.0])
+        @test_throws ArgumentError _alias_build!(t, bad, [1, 2])
+    end
+    @test_throws ArgumentError _alias_build!(t, [1.0], Int[])
+end
+
+@testset "Weighted parents" begin
+    rng = Xoshiro(42)
+    # Parents are used in proportion to their weight within each sex.
+    w = [1.0, 5.0, 2.0, 0.0, 3.0, 1.0, 4.0, 2.0, 0.5, 1.5]
+    sires, dams = [2, 3, 4, 9], [1, 5, 6, 7, 8, 10]
+    pm, tm, tf = zeros(Int, 60, 2), AliasTable(), AliasTable()
+    R = 5_000
+    use = zeros(Int, 10, 2)
+    for _ = 1:R
+        _draw_parents!(pm, sires, dams, 50, rng, w, tm, tf)
+        for i = 1:50, s = 1:2
+            use[pm[i, s], s] += 1
+        end
+    end
+    @test all(==(0), pm[51:60, :])                       # rows beyond n2 untouched
+    @test sum(use[dams, 1]) == sum(use[sires, 2]) == 0   # sires are males, dams females
+    @test use[4, 1] == 0                                 # zero fitness: never a parent
+    χ²(obs, p) = sum((obs .- 50R .* p) .^ 2 ./ (50R .* p))
+    ps, pd = w[[2, 3, 9]] ./ sum(w[sires]), w[dams] ./ sum(w[dams])
+    @test χ²(use[[2, 3, 9], 1], ps) < χ²crit(2)
+    @test χ²(use[dams, 2], pd) < χ²crit(5)
+    # A sex whose members all have zero fitness cannot reproduce.
+    @test_throws ArgumentError _draw_parents!(pm, [4], dams, 50, rng, w, tm, tf)
+
+    # Through the engine: the state holds one weight per individual of the
+    # largest cohort, Neutral leaves it alone, and a fitness model fills it.
+    chr, cbp = [1_000, 1_000], UInt32[1_000, 2_000]
+    rmap = uniform_recombination_map(chr; M=1e3)
+    run!(st, f, nt, r; demog=ConstantSize(st.n)) = _simulate!(
+        st, demog, RandomMating(nmale=4), f, nt, rmap, Poisson(1.0), UInt32(1):UInt32(2_000);
+        mutate=true, track=false, fixation_interval=1, verbose=false, progress_interval=100, rng=r)
+    st = SimState(_initial_state(nothing, 20, cbp, false)..., 10, rng)
+    @test st.w == ones(10)
+    run!(st, Neutral(), 5, rng)
+    @test st.w == ones(10)
+    f = IndexFitness(w)
+    run!(st, f, 5, rng)
+    @test st.w == w && length(st.tm) == 4 && length(st.tf) == 6
+    @test (@inferred run!(st, f, 1, rng)) === st
+    run!(st, f, 50, rng)
+    @test @allocated(run!(st, f, 50, rng)) / 50 < 2^16
+    # Individual 4 has no offspring: with four males of which it may be one,
+    # the weighted draw must still never pick it.
+    for _ = 1:200
+        _mate!(RandomMating(nmale=4), f, st, 10, rng)
+        @test !(4 in view(st.pm, 1:10, :))
+    end
+    # Equal fitness is random mating in distribution (not the same draws).
+    flat = IndexFitness(ones(10))
+    _mate!(RandomMating(), flat, st, 10, rng)
+    @test all(st.sex[st.pm[1:10, 1]]) && !any(st.sex[st.pm[1:10, 2]])
+end
+
 @testset "Simulation invariants at scale" begin
     Random.seed!(31)
     res = fisher_wright(60, 80, [5_000_000, 5_000_000, 5_000_000], 4.0;
@@ -1328,6 +1437,55 @@ end
 end
 
 # END population genetics validation
+
+@testset "Heterozygosity decay under weighted parents" begin
+    # Fitness that is not heritable (it goes with the position in the
+    # cohort) only raises the variance of family size. Two genes in
+    # different offspring then derive from the same sire with probability
+    # Σpᵢ² over the males, pᵢ = wᵢ/Σw, instead of 1/N_m, so the recursion
+    # holds with a = E[Σ_sires pᵢ² + Σ_dams pᵢ²]/4, the expectation being
+    # over which individuals are male. N = 12 with exactly 6 males and
+    # weights 1, …, 12: a is enumerated over the 924 subsets and gives
+    # Ne ≈ 1/a = 9.41, against 12 for equal weights. 400 replicates of 1,000
+    # sites on 20 chromosomes of 1 Morgan, 20 generations, no mutation.
+    N, nm, chr, reps, t = 12, 6, fill(50, 20), 400, 20
+    L = sum(chr)
+    w = collect(1.0:N)
+    a = let acc = 0.0, k = 0
+        for mask = 0:2^N-1
+            count_ones(mask) == nm || continue
+            male = [(mask >> (i - 1)) & 1 == 1 for i = 1:N]
+            pm, pf = w[male] ./ sum(w[male]), w[.!male] ./ sum(w[.!male])
+            acc += (sum(abs2, pm) + sum(abs2, pf)) / 4
+            k += 1
+        end
+        acc / k
+    end
+    @test 1 / a ≈ 9.4147 atol = 1e-3
+    function expected(a)
+        hB = hW = 0.5
+        for _ = 1:t
+            hB, hW = (1 - a) * hB + a / 2 * hW, hB
+        end
+        return hW / 2N + (1 - 1 / N) * hB
+    end
+    rng = Xoshiro(20261113)
+    cbp = UInt32.(cumsum(chr))
+    rmap = uniform_recombination_map(chr; M=50)
+    H = zeros(reps)
+    for r = 1:reps
+        start = [UInt32.(findall(rand(rng, Bool, L))) for _ = 1:2N]
+        st = SimState(_initial_state(start, 2N, cbp, false)..., N, rng)
+        _simulate!(st, ConstantSize(N), RandomMating(nmale=nm), IndexFitness(w), t, rmap,
+            Poisson(1.0), UInt32(1):UInt32(L); mutate=false, track=false, fixation_interval=1,
+            verbose=false, progress_interval=100, rng=rng)
+        H[r] = site_heterozygosity(st.prt[1:2N], L)
+    end
+    se = sqrt(var(H) / reps)
+    @test abs(mean(H) - expected(a)) / se < 3.5
+    # The test separates weighted from uniform parents, a = 1/(4·6) + 1/(4·6).
+    @test (expected(1 / 12) - mean(H)) / se > 3.5
+end
 
 include("properties.jl")
 include("golden.jl")

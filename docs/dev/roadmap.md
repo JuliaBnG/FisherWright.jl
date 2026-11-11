@@ -13,6 +13,13 @@ and `growth`, and validation 3 against msprime (v0.5.0). The release
 benchmark (validation 8, default path only) gave 57.15 s for v0.4.2
 and 57.11 s for v0.5.0 on the 1 Gb run.
 
+0.6.0 in progress (2026-11-11): the alias sampler (`src/alias.jl`) and
+the draw of parents in proportion to fitness within each sex are in
+place and tested, with no public keyword yet; `_fitness!(f, st)` writes
+relative fitness to `st.w`, and `Neutral()` keeps the uniform draw and
+the v0.4.0 realizations. Next: `FitnessLoci`, the `sel` stream, and
+`SiteFitness`.
+
 The refactor (`src/simulate.jl`): a `SimState` struct holds the
 haplotypes, buffers and per-slot streams; `fisher_wright` builds it and
 calls `_simulate!(st, demog, mating, fitness, …)` once, specialised on
@@ -120,7 +127,8 @@ fitnesses (all ones, and ignored, under `Neutral()`).
 | `CustomMating(f)` | User callback `(g, sex, pedigree, rng) -> pm` | User's responsibility |
 
 `WeightedParents` and selection share one sampler: a preallocated Vose
-alias table, rebuilt per sex per generation in O(N), with O(1) draws.
+alias table (`AliasTable`, done), rebuilt per sex per generation in
+O(N), with O(1) draws.
 `Distributions.sampler(Categorical(p))` allocates on every call and is
 not used in the loop.
 
@@ -285,6 +293,10 @@ replicates and seeds; logs go under `docs/src/validation/`.
    fitness from the merge-walk equals a brute-force calculation on dense
    genotypes; realised parent usage matches w/Σw (χ²); `_recombine!` on
    both streams equals `recombine` on their union, split afterwards.
+   Done for the sampler and parent usage ("Alias sampler", "Weighted
+   parents"), and for drift under non-heritable fitness against the
+   exact recursion with a = E[Σpᵢ²]/4 ("Heterozygosity decay under
+   weighted parents": N = 12, weights 1 to 12, Ne ≈ 9.41).
 6. **Selection against single-locus theory:**
    - Fixation probability of one introduced copy (via `init`) against
      Kimura's diffusion result: closed form at h = ½, numerical integral
@@ -327,13 +339,13 @@ replicates and seeds; logs go under `docs/src/validation/`.
    `mutate = false` keyword; the `mr` bounds are unchanged and still
    checked when mutation is off.
 2. Default sex model: keep binomial sex for compatibility, or switch to
-   exactly N/2 males in 0.5.0 (documented breaking change; makes Ne ≈ N
-   exact)?
+   exactly N/2 males (documented breaking change; makes Ne ≈ N exact)?
+   0.5.0 shipped with binomial sex as the default and
+   `RandomMating(sexratio = 0.5)` as the explicit alternative; a switch
+   would now be a breaking change of seeded output.
 3. JOSS paper: mention this roadmap as future work, or keep it scoped to
    v0.4.x?
-4. Selected-site semantics: fixed s per site (this design) or s per
-   mutation as in SLiM? Per-site is reproducible and exportable;
-   per-mutation needs an effect table that grows and is pruned at loss.
-5. Should selection precede the remaining mating schemes (as staged), or
-   follow them? They share the alias sampler and the `mate!` signature,
-   so either order works once 0.5.0 lands.
+4. Selected-site semantics: resolved 2026-11-11 in favour of a fixed s
+   per site (this design), not s per mutation as in SLiM.
+5. Order: resolved 2026-11-11, selection (0.6.0) precedes the remaining
+   mating schemes, as staged.

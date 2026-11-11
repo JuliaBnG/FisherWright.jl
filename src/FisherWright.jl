@@ -31,6 +31,7 @@ using Distributions
 using Random
 using Statistics
 
+include("alias.jl")
 include("random-mate.jl")
 include("merge-sorted.jl")
 include("recombine.jl")
