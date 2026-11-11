@@ -1,8 +1,8 @@
 # Roadmap: variable population size, non-random mating, and selection
 
-Status: 0.5.0 released and registered 2026-11-11; 0.6.0 onwards not
-started (drafted 2026-10-07 against v0.3.8; selection added 2026-11-02
-against v0.4.0).
+Status: 0.5.0 released and registered 2026-11-11; 0.6.0 in progress
+(drafted 2026-10-07 against v0.3.8; selection added 2026-11-02 against
+v0.4.0).
 v0.4.0 shipped without the refactor below, so the staging is renumbered
 from 0.5.0. The 0.5.0 row is complete: the golden-output regression
 test and the `_recombine!` kernel (v0.4.2); the `mutate` and `init`
