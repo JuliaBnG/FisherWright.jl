@@ -89,6 +89,98 @@ function _demography(ne::Int, nt::Int, popsize)
 end
 
 """
+    bottleneck(n, nb, start, duration; recovery = n) -> Function
+
+Census trajectory `g -> N_g` for the `popsize` keyword of [`fisher_wright`](@ref):
+`nb` individuals are born in each of the `duration` generations
+`start, …, start + duration - 1`, `n` in every generation before them and
+`recovery` in every generation after them.
+
+Generation `g` draws its parents from the `N_{g-1}` individuals of the previous
+generation, so the `nb` individuals of a bottleneck generation are the parents
+of the next one: drift is increased in generations `start + 1, …, start + duration`.
+
+All sizes must exceed 1, and `start` and `duration` must be positive. The
+function can also be broadcast over generations to build or combine
+trajectories as vectors, for example `bottleneck(100, 10, 21, 5).(1:60)`.
+
+# Examples
+```julia
+using FisherWright
+
+# 100 individuals, reduced to 10 in generations 21 to 25, then 100 again
+res = fisher_wright(100, 60, [1_000_000], 1.0; popsize = bottleneck(100, 10, 21, 5), result = true)
+res.census[20:28]   # N_19, …, N_27: 100, 100, 10, 10, 10, 10, 10, 100, 100
+```
+
+# See also
+[`growth`](@ref)
+"""
+function bottleneck(n::Integer, nb::Integer, start::Integer, duration::Integer; recovery::Integer=n)
+    (n > 1 && nb > 1 && recovery > 1) ||
+        throw(ArgumentError("n, nb and recovery must exceed 1"))
+    (start > 0 && duration > 0) ||
+        throw(ArgumentError("start and duration must be positive"))
+    n, nb, recovery = Int(n), Int(nb), Int(recovery)
+    first, last = Int(start), Int(start) + Int(duration) - 1
+    return g -> g < first ? n : g <= last ? nb : recovery
+end
+
+"""
+    growth(n0, r; start = 0, limit = nothing) -> Function
+
+Census trajectory `g -> N_g` for the `popsize` keyword of [`fisher_wright`](@ref):
+geometric growth at rate `r` per generation from `n0` individuals,
+`N_g = round(Int, n0 * (1 + r)^(g - start))` for `g > start` and `n0` up to
+generation `start`. `r > -1`; a negative `r` is a decline.
+
+With `limit`, the size stops there: it is the ceiling of a growing population
+(`r > 0`) and the floor of a declining one (`r < 0`). Without it, a decline
+that reaches a size below 2 is rejected by `fisher_wright`, which names the
+generation, and growth is bounded only by memory: the run allocates for the
+largest size of the trajectory.
+
+`n0` should be the starting size `ne` of the run, so that the first generation
+continues from it. The function can be broadcast over generations to obtain
+the trajectory as a vector, `growth(50, 0.05).(1:40)`.
+
+# Examples
+```julia
+using FisherWright
+
+# 5% growth per generation from 50 individuals, up to 500
+res = fisher_wright(50, 60, [1_000_000], 1.0; popsize = growth(50, 0.05; limit = 500), result = true)
+res.census[[1, 2, 11, 61]]   # 50, 52, 81, 500
+
+# Constant for 20 generations, then a 10% decline per generation down to 10
+decline = growth(50, -0.1; start = 20, limit = 10)
+```
+
+# See also
+[`bottleneck`](@ref)
+"""
+function growth(n0::Integer, r::Real; start::Integer=0, limit::Union{Nothing,Integer}=nothing)
+    n0 > 1 || throw(ArgumentError("n0 must exceed 1"))
+    (isfinite(r) && r > -1) || throw(ArgumentError("the growth rate r must be finite and exceed -1"))
+    start >= 0 || throw(ArgumentError("start must not be negative"))
+    limit === nothing || limit > 1 || throw(ArgumentError("limit must exceed 1"))
+    if limit !== nothing && r != 0 && (r > 0) != (limit > n0)
+        throw(ArgumentError("limit = $limit is on the wrong side of n0 = $n0 for r = $r"))
+    end
+    n0, start, factor = Int(n0), Int(start), 1 + Float64(r)
+    bound = limit === nothing ? nothing : Float64(limit)
+    return function (g::Integer)
+        g <= start && return n0
+        x = n0 * factor^(g - start)
+        if bound !== nothing
+            x = factor > 1 ? min(x, bound) : max(x, bound)
+        end
+        x < 2.0^62 || throw(ArgumentError("growth gives a census size beyond Int in generation $g"))
+        return round(Int, x)
+    end
+end
+
+"""
     RandomMating(; nmale = nothing, sexratio = nothing)
 
 Random mating between the sexes: each offspring draws its sire uniformly from

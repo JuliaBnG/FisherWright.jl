@@ -5,7 +5,7 @@ using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_s
     uniform_recombination_map, random_mate, random_mate!, _fixed_sex_mate!, _nmale, _fixed_mutations,
     _drop_mutations, _drop_mutations!, _fixation_step, _fixation_step!, _extract_fixed,
     _intersect_sorted!, _remove_sorted!, _with_fixed, _simulate!, _initial_state,
-    SimState, ConstantSize, SizeTrajectory, RandomMating, Neutral
+    SimState, ConstantSize, SizeTrajectory, RandomMating, Neutral, bottleneck, growth
 using BnGStructs
 using Distributions: Poisson
 using Statistics: mean, var, cor
@@ -741,6 +741,54 @@ end
     m = RandomMating(nmale=4)
     @test fisher_wright(sp, 60, 5.0; mut_base=1e5, mating=m, rng=Xoshiro(4)) ==
           fisher_wright(20, 60, chr, 5.0; kw..., mating=m, rng=Xoshiro(4))
+end
+
+@testset "Trajectory helpers" begin
+    # bottleneck: nb in generations start to start + duration - 1.
+    b = bottleneck(100, 10, 21, 5)
+    @test b.(1:30) == [fill(100, 20); fill(10, 5); fill(100, 5)]
+    @test bottleneck(100, 10, 1, 1).(1:3) == [10, 100, 100]
+    @test bottleneck(100, 10, 3, 2; recovery=40).(1:6) == [100, 100, 10, 10, 40, 40]
+    @test bottleneck(Int32(8), 0x02, big(2), 1)(2) === 2
+    @test (@inferred b(3)) === 100
+    for bad in ((1, 10, 2, 2), (100, 1, 2, 2), (100, 10, 0, 2), (100, 10, 2, 0))
+        @test_throws ArgumentError bottleneck(bad...)
+    end
+    @test_throws ArgumentError bottleneck(100, 10, 2, 2; recovery=1)
+
+    # growth: geometric, rounded, optionally delayed and limited.
+    @test growth(50, 0.05).(1:20) == [round(Int, 50 * 1.05^g) for g = 1:20]
+    @test growth(50, 0.0).(1:5) == fill(50, 5)
+    @test growth(50, 1; start=3).(1:6) == [50, 50, 50, 100, 200, 400]
+    @test growth(50, 0.5; limit=120).(1:4) == [75, 112, 120, 120]
+    @test growth(50, -0.5; limit=10).(1:4) == [25, 12, 10, 10]
+    @test growth(50, -0.1; start=20, limit=10).([20, 21, 60]) == [50, 45, 10]
+    @test (@inferred growth(50, 0.05; limit=500)(7)) isa Int
+    @test_throws ArgumentError growth(50, 1)(100)          # 50·2^100 does not fit
+    @test_throws ArgumentError growth(1, 0.1)
+    @test_throws ArgumentError growth(50, -1)
+    @test_throws ArgumentError growth(50, Inf)
+    @test_throws ArgumentError growth(50, 0.1; start=-1)
+    @test_throws ArgumentError growth(50, 0.1; limit=1)
+    @test_throws ArgumentError growth(50, 0.1; limit=40)   # ceiling below the start
+    @test_throws ArgumentError growth(50, -0.1; limit=60)  # floor above the start
+
+    # As popsize: the census record is the trajectory, and the run is the
+    # one given by the same sizes as a vector.
+    chr, kw = [100_000, 200_000], (M=5e4, mut_base=1e5, result=true)
+    for (ne, f) in ((30, bottleneck(30, 4, 6, 5)), (10, growth(10, 0.1; limit=40)),
+        (30, growth(30, -0.15; start=5, limit=6)))
+        res = fisher_wright(ne, 25, chr, 5.0; kw..., popsize=f, rng=Xoshiro(2))
+        vec = fisher_wright(ne, 25, chr, 5.0; kw..., popsize=f.(1:25), rng=Xoshiro(2))
+        @test res.census == [ne; f.(1:25)]
+        @test res.active_haplotypes == vec.active_haplotypes && res.males == vec.males
+    end
+    # The bottleneck cohorts are the parents of the following generations.
+    res = fisher_wright(30, 25, chr, 5.0; kw..., popsize=bottleneck(30, 4, 6, 5), rng=Xoshiro(2))
+    @test all(<(4), res.males[7:11]) && effective_size(res, 7:11) < 4 < effective_size(res, 1:6)
+    # A decline without a floor is stopped by fisher_wright at the first
+    # generation whose size is below 2: 20·0.5^4 = 1.25.
+    @test_throws "generation 4" fisher_wright(20, 10, chr, 5.0; popsize=growth(20, -0.5))
 end
 
 @testset "Census record and effective size" begin

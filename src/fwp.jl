@@ -71,7 +71,7 @@ total genome lengths up to ``2^{32} \\approx 4.29 \\times 10^9`` base pairs (bp)
 - `fixation_interval::Int = 1`: Frequency (in generations) to scan for and extract fixed substitutions when `result = true`.
 - `mutate::Bool = true`: If `false`, no new mutations are generated: the population evolves by drift and recombination only, and `mr` and `mut_base` are not used (`mr` must still lie in its valid range). Mating is drawn from `rng` exactly as with `mutate = true`, but meiosis shares the per-slot streams with the skipped mutation draws, so for the same seed the two settings give different realizations. Intended for validation runs that start from a polymorphic population given by `init`, for example heterozygosity decay ``H_t/H_0 = (1 - 1/(2N_e))^t``; without `init`, a run with `mutate = false` stays monomorphic.
 - `init = nothing`: Starting population; `nothing` starts monomorphic. Either a `Vector{Vector{UInt32}}` of `2 * ne` haplotypes (each sorted, unique, with positions in `1:sum(chr)`), or a [`FisherWrightResult`](@ref) whose `chromosome_ends` equal `cumsum(chr)`. Haplotypes `2i - 1` and `2i` form individual `i`, the convention of the output, and these individuals are the parents of generation 1. `init` is copied and left unmodified. The substitutions of a `FisherWrightResult` are carried over when `result = true` and merged back into every haplotype when `result = false`; given as plain haplotypes, sites carried by all of them are extracted at the first fixation scan when `result = true`. See *Continuing a run* below.
-- `popsize = nothing`: Census size per generation; `nothing` keeps it at `ne`. Either a vector of `nt` integers or a function `g -> N_g` of the generation `g = 1, …, nt`, which is called once per generation before the run; every size must exceed 1. Generation `g` draws the parents of its `N_g` offspring from the `N_{g-1}` individuals of the previous generation (`N_0 = ne`), so the run returns `2 * N_nt` haplotypes. See *Changing population size* below.
+- `popsize = nothing`: Census size per generation; `nothing` keeps it at `ne`. Either a vector of `nt` integers or a function `g -> N_g` of the generation `g = 1, …, nt`, which is called once per generation before the run; every size must exceed 1. Generation `g` draws the parents of its `N_g` offspring from the `N_{g-1}` individuals of the previous generation (`N_0 = ne`), so the run returns `2 * N_nt` haplotypes. [`bottleneck`](@ref) and [`growth`](@ref) build common trajectories. See *Changing population size* below.
 - `mating = RandomMating()`: Mating scheme. The default redraws sex as Bernoulli(½) per individual in every generation; [`RandomMating`](@ref)`(nmale = m)` or `RandomMating(sexratio = p)` fixes the number or the proportion of males instead. See *Sex ratio* below.
 - `verbose::Bool = false`: If `true`, writes a start banner and a progress line to `stderr` every `progress_interval` generations and at the last generation, reporting mean mutations per haplotype, accumulated substitutions (when `result = true`), elapsed wall time, and a linear ETA. On a terminal the line is updated in place; when `stderr` is redirected each report is a separate line.
 - `progress_interval::Integer = 100`: Generations between progress reports when `verbose = true` (must be positive).
@@ -119,6 +119,10 @@ haps, _ = fisher_wright(50, 20, [100_000, 100_000], 1.0; mating=RandomMating(nma
 
 # Exponential growth from 50, as a function of the generation
 haps, _ = fisher_wright(50, 20, [100_000, 100_000], 1.0; popsize=g -> round(Int, 50 * 1.05^g))
+
+# The same two trajectories from the helpers
+haps, _ = fisher_wright(50, 20, [100_000, 100_000], 1.0; popsize=bottleneck(50, 10, 1, 5))
+haps, _ = fisher_wright(50, 20, [100_000, 100_000], 1.0; popsize=growth(50, 0.05))
 ```
 """
 function fisher_wright(

@@ -131,11 +131,34 @@ length(haplotypes)
 ```
 
 ```@example simulation
-growth = g -> round(Int, 20 * 1.05^g)   # 5% growth per generation
+sizes = g -> round(Int, 20 * 1.05^g)   # 5% growth per generation
 haplotypes, _ = fisher_wright(20, 20, [100_000, 100_000], 1.0;
-                              popsize=growth)
-length(haplotypes) == 2growth(20)
+                              popsize=sizes)
+length(haplotypes) == 2sizes(20)
 ```
+
+`bottleneck` and `growth` build the two common trajectories as
+functions of the generation. `bottleneck(n, nb, start, duration)` gives
+`nb` individuals in generations `start` to `start + duration - 1` and
+`n` otherwise (`recovery` sets a different size afterwards).
+`growth(n0, r)` gives ``N_g = n_0(1 + r)^g``, rounded; `start` delays
+it, `limit` is the ceiling of a growing and the floor of a declining
+population, and a negative `r` is a decline.
+
+```@example simulation
+run = fisher_wright(40, 20, [100_000, 100_000], 1.0;
+                    popsize=bottleneck(40, 10, 6, 5), result=true)
+run.census[5:12]   # N_4, …, N_11
+```
+
+```@example simulation
+run = fisher_wright(20, 40, [100_000, 100_000], 1.0;
+                    popsize=growth(20, 0.05; limit=60), result=true)
+run.census[[1, 2, 11, 41]]   # N_0, N_1, N_10, N_40
+```
+
+Both return plain functions, so a trajectory can also be built as a
+vector and combined with others: `growth(20, 0.05).(1:40)`.
 
 Generation ``g`` draws the sire and dam of each of its ``N_g`` offspring
 from the ``N_{g-1}`` individuals of the previous generation, whose sexes
