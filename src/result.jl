@@ -1,23 +1,80 @@
 """
+    FisherWrightResult(active_haplotypes, chromosome_ends, substitutions, census, males)
     FisherWrightResult(active_haplotypes, chromosome_ends, substitutions)
 
 Structured container holding the output of a Fisher-Wright simulation, keeping
-active haplotypes, chromosome breakpoints, and fixed substitutions together.
+active haplotypes, chromosome breakpoints, and fixed substitutions together
+with the census record of the run.
 
 # Fields
-- `active_haplotypes::Vector{Vector{UInt32}}`: Active haplotype mutation positions (`2 * ne` vectors).
-  Each inner vector contains sorted, unique 1-based base pair coordinates of segregating mutations.
+- `active_haplotypes::Vector{Vector{UInt32}}`: Active haplotype mutation positions (two per individual of the
+  last generation). Each inner vector contains sorted, unique 1-based base pair coordinates of segregating mutations.
 - `chromosome_ends::Vector{UInt32}`: Cumulative chromosome end positions in base pairs (1-based, strictly increasing).
 - `substitutions::Vector{UInt32}`: Sorted, unique positions of mutations that reached fixation across all
   haplotypes and were removed from `active_haplotypes` during simulation.
+- `census::Vector{Int}`: Census sizes ``N_0, N_1, …, N_{nt}`` of the recorded generations: `census[1]` is
+  the starting population and `census[g + 1]` the number of individuals born in generation `g`.
+- `males::Vector{Int}`: `males[g]` is the realized number of males among the `census[g]` parents of generation `g`;
+  the remaining `census[g] - males[g]` parents are females.
+
+A run continued from a `FisherWrightResult` through the `init` keyword of [`fisher_wright`](@ref) appends its
+generations to the record of that result, so generations are numbered from the first call; started from plain
+haplotypes, the record begins anew. The three-argument constructor builds a result without a record, with `census`
+holding the number of individuals only and `males` empty.
 
 # See also
-[`fisher_wright`](@ref), [`to_haplotype`](@ref)
+[`fisher_wright`](@ref), [`effective_size`](@ref), [`to_haplotype`](@ref)
 """
 struct FisherWrightResult
     active_haplotypes::Vector{Vector{UInt32}}
     chromosome_ends::Vector{UInt32}
     substitutions::Vector{UInt32}
+    census::Vector{Int}
+    males::Vector{Int}
+end
+
+FisherWrightResult(active_haplotypes, chromosome_ends, substitutions) = FisherWrightResult(
+    active_haplotypes, chromosome_ends, substitutions, [length(active_haplotypes) ÷ 2], Int[])
+
+"""
+    effective_size(result::FisherWrightResult, generations = eachindex(result.males)) -> Float64
+
+Effective population size realized by the sex numbers recorded in `result`, over the given `generations`
+(one generation or a collection of them; all generations of the run by default).
+
+Generation `g` has ``N_m`` = `result.males[g]` male and ``N_f`` = `result.census[g] - result.males[g]` female
+parents, and each offspring draws its sire and its dam uniformly with replacement, so two genes in different
+offspring derive from the same parent with probability ``a_g = 1/(4N_m) + 1/(4N_f)``. The effective size of that
+generation is ``1/a_g = 4N_mN_f/(N_m + N_f)`` (Wright 1931), and over several generations it is the harmonic mean,
+``1/\\bar{a}``.
+
+This is the value determined by the realized census record, not an estimate from the genetic data. It depends
+on the parents only, not on the number of offspring. At constant sex numbers the asymptotic rate of loss of
+heterozygosity, ``1/(2N_e)``, corresponds to ``N_e \\approx 1/a + 1/2``, because the two genes of one individual
+come from different parents.
+
+# Errors
+- Throws an `ArgumentError` if `generations` is empty, as for a result built without a census record, and a
+  `BoundsError` for a generation outside the run.
+
+# Examples
+```julia
+using FisherWright
+
+res = fisher_wright(50, 20, [100_000], 1.0; mating = RandomMating(nmale = 5), result = true)
+effective_size(res)        # 4 * 5 * 45 / 50 = 18.0
+effective_size(res, 1:10)  # the first ten generations
+```
+"""
+function effective_size(result::FisherWrightResult, generations=eachindex(result.males))
+    isempty(generations) && throw(ArgumentError("no generation to average over"))
+    a = 0.0
+    for g in generations
+        m = result.males[g]
+        f = result.census[g] - m
+        a += 1 / 4m + 1 / 4f
+    end
+    return length(generations) / a
 end
 """
     _intersect_sorted!(dest::Vector{UInt32}, cand::AbstractVector{UInt32}, hap::AbstractVector{UInt32}) -> Vector{UInt32}
@@ -218,7 +275,7 @@ and return a new `FisherWrightResult` with updated haplotypes and accumulated su
 """
 function _extract_fixed(result::FisherWrightResult)
     cleaned, substitutions = _fixation_step(result.active_haplotypes, result.substitutions)
-    return FisherWrightResult(cleaned, result.chromosome_ends, substitutions)
+    return FisherWrightResult(cleaned, result.chromosome_ends, substitutions, result.census, result.males)
 end
 
 

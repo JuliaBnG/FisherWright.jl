@@ -12,6 +12,7 @@ FisherWright.FisherWright
 fisher_wright
 RandomMating
 FisherWrightResult
+effective_size
 to_haplotype
 ```
 
