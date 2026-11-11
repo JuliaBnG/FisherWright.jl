@@ -1,7 +1,8 @@
 # FisherWright.jl
 
 `FisherWright.jl` simulates diploid Fisher-Wright populations under mutation,
-recombination, and random mating. It is designed for generating population
+recombination, and random mating, at constant size or along a given
+trajectory of census sizes, with a binomial or fixed sex ratio. It is designed for generating population
 genetic data while keeping each haplotype as a sorted, unique vector of
 `UInt32` mutation positions.
 
@@ -39,8 +40,10 @@ Rows of `alleles` are loci and columns are haplotypes. `loci` is a
 `DataFrame` containing chromosome, base-pair position, reference allele,
 alternate allele, and allele frequency.
 
-See [Simulation](@ref) for rate parameters and reproducibility, and [Results
-and export](@ref) for fixed substitutions and `BnGStructs.Haplotype` export.
+See [Simulation](@ref) for rate parameters, reproducibility, continuing
+a run, changing population size and the sex ratio, and [Results and
+export](@ref) for fixed substitutions, the census record and
+`BnGStructs.Haplotype` export.
 
 ## Contents
 
@@ -50,6 +53,7 @@ Pages = [
     "manual/results.md",
     "manual/utilities.md",
     "manual/validation.md",
+    "manual/validation-demography.md",
     "api.md",
 ]
 Depth = 2

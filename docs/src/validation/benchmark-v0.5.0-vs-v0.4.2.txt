@@ -1,0 +1,139 @@
+# Date: 2026-11-11T09:26Z  Commits: v0.4.2 (0a83dce) and 9961c3f (main before the 0.5.0 version bump; package source identical to v0.5.0), both from git archive
+# CPU: AMD Ryzen 9 5950X 16-Core Processor, otherwise idle; julia version 1.13.3; deps: BnGStructs v0.2.7 DataFrames v1.8.3 Distributions v0.25.134
+# Three interleaved runs of each version:
+# $ julia --startup-file=no -t 8 --project=<dir> <dir>/bench/simulate-fisher-wright.jl 2000 2000 10 100000000 1.0 42
+# fw-042 = v0.4.2, fw-main = v0.5.0 code. Simulation runtime, mean of three: 57.150 s and 57.106 s.
+
+### fw-042 run 1
+=================================================================
+ FisherWright.jl Simulation
+=================================================================
+Diploid Individuals (ne): 2000 (haplotypes: 4000)
+Generations (nt)        : 2000
+Autosomes (nchr)        : 10 autosomes × 100.0 Mb = 1000.0 Mb total
+Mutation rate           : 1.0e-8 / bp / generation
+Recombination rate      : 1e-8 / bp / generation (1 cM/Mb)
+Independent assortment  : Yes (0.5 crossover probability at autosome ends)
+Threads                 : 8
+Random seed             : 42
+-----------------------------------------------------------------
+Simulation runtime      : 57.162 s
+BitMatrix conversion    : 5.835 s
+Total runtime           : 62.998 s
+Polymorphic SNPs found  : 571686
+Fixed substitutions     : 4
+BitMatrix dimension     : 571686 loci × 4000 haplotypes
+BitMatrix memory size   : 272.60 MiB (1.00 bits/element)
+Process peak RSS        : 2457.44 MiB
+=================================================================
+### fw-main run 1
+=================================================================
+ FisherWright.jl Simulation
+=================================================================
+Diploid Individuals (ne): 2000 (haplotypes: 4000)
+Generations (nt)        : 2000
+Autosomes (nchr)        : 10 autosomes × 100.0 Mb = 1000.0 Mb total
+Mutation rate           : 1.0e-8 / bp / generation
+Recombination rate      : 1e-8 / bp / generation (1 cM/Mb)
+Independent assortment  : Yes (0.5 crossover probability at autosome ends)
+Threads                 : 8
+Random seed             : 42
+-----------------------------------------------------------------
+Simulation runtime      : 57.330 s
+BitMatrix conversion    : 5.818 s
+Total runtime           : 63.148 s
+Polymorphic SNPs found  : 571686
+Fixed substitutions     : 4
+BitMatrix dimension     : 571686 loci × 4000 haplotypes
+BitMatrix memory size   : 272.60 MiB (1.00 bits/element)
+Process peak RSS        : 2342.86 MiB
+=================================================================
+### fw-042 run 2
+=================================================================
+ FisherWright.jl Simulation
+=================================================================
+Diploid Individuals (ne): 2000 (haplotypes: 4000)
+Generations (nt)        : 2000
+Autosomes (nchr)        : 10 autosomes × 100.0 Mb = 1000.0 Mb total
+Mutation rate           : 1.0e-8 / bp / generation
+Recombination rate      : 1e-8 / bp / generation (1 cM/Mb)
+Independent assortment  : Yes (0.5 crossover probability at autosome ends)
+Threads                 : 8
+Random seed             : 42
+-----------------------------------------------------------------
+Simulation runtime      : 57.188 s
+BitMatrix conversion    : 5.871 s
+Total runtime           : 63.059 s
+Polymorphic SNPs found  : 571686
+Fixed substitutions     : 4
+BitMatrix dimension     : 571686 loci × 4000 haplotypes
+BitMatrix memory size   : 272.60 MiB (1.00 bits/element)
+Process peak RSS        : 2473.41 MiB
+=================================================================
+### fw-main run 2
+=================================================================
+ FisherWright.jl Simulation
+=================================================================
+Diploid Individuals (ne): 2000 (haplotypes: 4000)
+Generations (nt)        : 2000
+Autosomes (nchr)        : 10 autosomes × 100.0 Mb = 1000.0 Mb total
+Mutation rate           : 1.0e-8 / bp / generation
+Recombination rate      : 1e-8 / bp / generation (1 cM/Mb)
+Independent assortment  : Yes (0.5 crossover probability at autosome ends)
+Threads                 : 8
+Random seed             : 42
+-----------------------------------------------------------------
+Simulation runtime      : 57.056 s
+BitMatrix conversion    : 5.773 s
+Total runtime           : 62.830 s
+Polymorphic SNPs found  : 571686
+Fixed substitutions     : 4
+BitMatrix dimension     : 571686 loci × 4000 haplotypes
+BitMatrix memory size   : 272.60 MiB (1.00 bits/element)
+Process peak RSS        : 2344.89 MiB
+=================================================================
+### fw-042 run 3
+=================================================================
+ FisherWright.jl Simulation
+=================================================================
+Diploid Individuals (ne): 2000 (haplotypes: 4000)
+Generations (nt)        : 2000
+Autosomes (nchr)        : 10 autosomes × 100.0 Mb = 1000.0 Mb total
+Mutation rate           : 1.0e-8 / bp / generation
+Recombination rate      : 1e-8 / bp / generation (1 cM/Mb)
+Independent assortment  : Yes (0.5 crossover probability at autosome ends)
+Threads                 : 8
+Random seed             : 42
+-----------------------------------------------------------------
+Simulation runtime      : 57.101 s
+BitMatrix conversion    : 5.893 s
+Total runtime           : 62.994 s
+Polymorphic SNPs found  : 571686
+Fixed substitutions     : 4
+BitMatrix dimension     : 571686 loci × 4000 haplotypes
+BitMatrix memory size   : 272.60 MiB (1.00 bits/element)
+Process peak RSS        : 2521.48 MiB
+=================================================================
+### fw-main run 3
+=================================================================
+ FisherWright.jl Simulation
+=================================================================
+Diploid Individuals (ne): 2000 (haplotypes: 4000)
+Generations (nt)        : 2000
+Autosomes (nchr)        : 10 autosomes × 100.0 Mb = 1000.0 Mb total
+Mutation rate           : 1.0e-8 / bp / generation
+Recombination rate      : 1e-8 / bp / generation (1 cM/Mb)
+Independent assortment  : Yes (0.5 crossover probability at autosome ends)
+Threads                 : 8
+Random seed             : 42
+-----------------------------------------------------------------
+Simulation runtime      : 56.932 s
+BitMatrix conversion    : 5.929 s
+Total runtime           : 62.861 s
+Polymorphic SNPs found  : 571686
+Fixed substitutions     : 4
+BitMatrix dimension     : 571686 loci × 4000 haplotypes
+BitMatrix memory size   : 272.60 MiB (1.00 bits/element)
+Process peak RSS        : 2296.18 MiB
+=================================================================
+### DONE

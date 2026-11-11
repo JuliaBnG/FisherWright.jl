@@ -1,9 +1,11 @@
-# Date: 2026-09-30T13:01Z  Commit: 4a24282 (+ uncommitted test/bench changes)
-# julia version 1.13.1, msprime 1.4.4, CPU: AMD Ryzen 9 3900X 12-Core Processor
-# $ julia --project=. -e 'using Pkg; Pkg.test()'   (summary lines)
+# Date: 2026-11-11T09:22Z  Commit: 9961c3f (v0.5.0 release candidate; version and documentation changes uncommitted)
+# julia version 1.13.3, CPU: AMD Ryzen 9 3900X 12-Core Processor, 8 threads
+# $ julia -t 8 --project=. -e 'using Pkg; Pkg.test()'   (summary lines)
 
+Test Summary:                                          | Pass  Total  Time
+Zero heap allocations in meiosis inner loop operations |    5      5  1.0s
 Test Summary:      | Pass  Total  Time
-FisherWright basic |    7      7  2.2s
+FisherWright basic |    7      7  1.6s
 Test Summary:              | Pass  Total  Time
 Structured result boundary |   13     13  0.3s
 Test Summary:             | Pass  Total  Time
@@ -12,28 +14,70 @@ Test Summary:         | Pass  Total  Time
 Sorted set operations | 1010   1010  0.1s
 Test Summary: | Pass  Total  Time
 merge_sorted  |  507    507  0.2s
-Test Summary:         |  Pass  Total  Time
-recombine correctness | 80104  80104  0.7s
+Test Summary:                           |  Pass  Total  Time
+_isearchfirst matches searchsortedfirst | 45006  45006  0.3s
+Test Summary:                         | Pass  Total  Time
+_insert_sorted! matches merge_sorted! | 2005   2005  0.0s
+Test Summary:         |   Pass   Total  Time
+recombine correctness | 100104  100104  0.8s
 Test Summary:          | Pass  Total  Time
 Flat-vector invariants |    5      5  0.2s
 Test Summary:     | Pass  Total  Time
-Recombination map | 2014   2014  0.3s
+Recombination map | 2014   2014  0.2s
 Test Summary: | Pass  Total  Time
 random_mate   |    8      8  0.1s
 Test Summary:                   | Pass  Total  Time
 Rate parameters are independent |    3      3  0.1s
+Test Summary:   | Pass  Total  Time
+Mutation switch |    8      8  0.8s
+Test Summary:              | Pass  Total  Time
+Starting population (init) |   32     32  1.4s
+Test Summary:     | Pass  Total  Time
+Simulation engine |   16     16  0.4s
+Test Summary:            | Pass  Total  Time
+Changing population size |   27     27  1.5s
+Test Summary:                 | Pass  Total  Time
+Mating with fixed sex numbers |   41     41  2.6s
+Test Summary:      | Pass  Total  Time
+Trajectory helpers |   33     33  0.4s
+Test Summary:                    | Pass  Total  Time
+Census record and effective size |   33     33  0.6s
 Test Summary:                  | Pass  Total  Time
 Simulation invariants at scale |    6      6  0.0s
 Test Summary:     | Pass  Total  Time
-Silent by default |    2      2  0.3s
+Silent by default |    8      8  0.4s
 Test Summary:         | Pass  Total  Time
 Dense export boundary |    5      5  0.0s
 Test Summary:            | Pass  Total  Time
-Species-based simulation |   10     10  0.4s
+Species-based simulation |   10     10  0.2s
 Test Summary:                         | Pass  Total  Time
-Direct chip extraction and subsetting |   13     13  0.3s
+Direct chip extraction and subsetting |   13     13  0.2s
+Test Summary:                                         | Pass  Total  Time
+Thread safety and BitMatrix chunk alignment in export | 2100   2100  0.3s
 Test Summary:                | Pass  Total  Time
-Neutral Wright-Fisher theory |    9      9  9.5s
+Neutral Wright-Fisher theory |    9      9  9.4s
+Test Summary:                         | Pass  Total  Time
+Heterozygosity decay without mutation |    3      3  1.5s
+Test Summary:                                        | Pass  Total  Time
+Heterozygosity through a bottleneck and an expansion |    4      4  1.2s
+Test Summary:                                | Pass  Total  Time
+Heterozygosity decay under a fixed sex ratio |    6      6  1.5s
 Test Summary:                                         | Pass  Total  Time
 Crossovers per meiosis matches Poisson and assortment |    5      5  0.1s
-     Testing FisherWright tests passed
+Test Summary:                                           | Pass  Total  Time
+Chromosome boundary assortment segregates terminal loci |  101    101  0.0s
+Test Summary:                  | Pass  Total  Time
+Properties: sorted-set kernels |    3      3  1.2s
+Test Summary:                    | Pass  Total  Time
+Properties: fixation bookkeeping |    1      1  0.4s
+Test Summary:            | Pass  Total  Time
+Properties: dense export |    7      7  0.8s
+Test Summary:                  | Pass  Total  Time
+Properties: crossover sampling |    9      9  0.5s
+Test Summary:             | Pass  Total  Time
+Properties: random mating |    2      2  0.7s
+Test Summary:                            | Pass  Total  Time
+Properties: simulation output invariants |   10     10  3.3s
+Test Summary:                       | Pass  Total  Time
+Golden output (v0.4.0 realizations) |    6      6  0.5s
+     Testing FisherWright tests passed 

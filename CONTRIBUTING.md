@@ -17,8 +17,8 @@ quantitative-genetics simulation in Julia.
   manual's "Population genetics validation" page describes the references and
   statistics already used.
 - **Feature requests:** open an issue describing the use case. The package
-  deliberately covers neutral, constant-size, randomly mating populations
-  (see "Scope" below).
+  deliberately covers neutral, randomly mating populations (see "Scope"
+  below).
 
 ## Contributing code or documentation
 
@@ -48,8 +48,9 @@ quantitative-genetics simulation in Julia.
 
 ## Scope
 
-FisherWright.jl generates neutral founder populations. Selection, changes in
-population size, population structure and spatial models are out of scope.
+FisherWright.jl generates neutral founder populations, at constant size
+or along a given trajectory of census sizes (since v0.5.0). Selection,
+population structure and spatial models are out of scope.
 SLiM, fwdpy11 and msprime cover these well. Proposals that extend the model
 are welcome for discussion, but each addition must come with validation
 against theory or an independent simulator.

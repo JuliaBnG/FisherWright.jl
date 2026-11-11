@@ -39,7 +39,7 @@ source checkout as shown in [When to rerun](@ref).
 | SFS, whole population | msprime DTWF | All 5 frequency classes match |
 | SFS, sample of 20 haplotypes | coalescent θ/k | All 5 frequency classes match |
 | LD decay σ²_d, 10 kb–3 Mb | msprime DTWF | All 5 distance bins match |
-| Bottleneck and expansion (`popsize`) | exact recursion for Σ2pq; msprime DTWF with the same demography | All 36 checks match for two seeds, 200 replicates (unreleased 0.5.0 code) |
+| Bottleneck and expansion (`popsize`) | exact recursion for Σ2pq; msprime DTWF with the same demography | All 36 checks match for two seeds, 200 replicates (v0.5.0) |
 
 All 24 checks of the full validation pass for two independent seeds. The CI
 tests pass for five seeds and fail for each of three deliberately introduced
