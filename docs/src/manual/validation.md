@@ -39,6 +39,7 @@ source checkout as shown in [When to rerun](@ref).
 | SFS, whole population | msprime DTWF | All 5 frequency classes match |
 | SFS, sample of 20 haplotypes | coalescent θ/k | All 5 frequency classes match |
 | LD decay σ²_d, 10 kb–3 Mb | msprime DTWF | All 5 distance bins match |
+| Bottleneck and expansion (`popsize`) | exact recursion for Σ2pq; msprime DTWF with the same demography | All 36 checks match for two seeds, 200 replicates (unreleased 0.5.0 code) |
 
 All 24 checks of the full validation pass for two independent seeds. The CI
 tests pass for five seeds and fail for each of three deliberately introduced
@@ -244,6 +245,13 @@ using Markdown, FisherWright
 Markdown.MD(Markdown.Code("python", read(joinpath(pkgdir(FisherWright), "docs", "src", "validation", "scripts", "validate-popgen-msprime.py"), String)))
 ```
 
+## Changing population size
+
+The checks of `popsize` against an exact expectation and against msprime
+DTWF with the same demography, after a bottleneck and after an
+expansion, are on their own page:
+[Validation under a changing population size](@ref).
+
 ## LD reference values
 
 The CI LD test compares with fixed msprime values, since CI can't run msprime.
@@ -372,8 +380,10 @@ Markdown.MD(Markdown.Code("bash", read(joinpath(pkgdir(FisherWright), "docs", "s
   `recombine` is covered indirectly: doubling the recombination rate fails
   the LD test. `recombine` itself is checked against a reference
   implementation in the testset "recombine correctness".
-- Only a constant-size, neutral, panmictic population is checked; the package
-  doesn't model demography, selection or subdivision.
+- Only neutral, panmictic populations are checked, at constant size and
+  through one bottleneck and one expansion; the package doesn't model
+  selection or subdivision. Fixed sex ratios are checked for
+  heterozygosity decay only, in the CI tests.
 - Benchmark-scale runs (N = 2,000, 1 Gb) are checked only through their SNP
   count against msprime.
 
@@ -387,11 +397,16 @@ of these change:
   recombination map, `random_mate!`, or `muts2bitarray`;
 - the validation block in `test/runtests.jl` (bounds, settings or seeds);
 - the model settings or statistics in
-  `docs/src/validation/scripts/validate-popgen-theory.jl`.
+  `docs/src/validation/scripts/validate-popgen-theory.jl` or
+  `validate-demography.jl`;
+- for the demography validation, also the handling of `popsize` or
+  `init` in `src/simulate.jl`.
 
 ```bash
 D=docs/src/validation
 julia -t 4 --project=. docs/src/validation/scripts/check-test-power.jl > $D/test-power.txt
 julia -t 8 --project=. docs/src/validation/scripts/validate-popgen-theory.jl 50 100 2026 > $D/validate-popgen-seed2026.txt
 julia -t 8 --project=. docs/src/validation/scripts/validate-popgen-theory.jl 50 100 7 > $D/validate-popgen-seed7.txt
+julia -t 8 --project=. docs/src/validation/scripts/validate-demography.jl 200 2026 > $D/validate-demography-seed2026.txt
+julia -t 8 --project=. docs/src/validation/scripts/validate-demography.jl 200 7 > $D/validate-demography-seed7.txt
 ```

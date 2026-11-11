@@ -1,0 +1,88 @@
+# Date: 2026-11-11T08:59Z  Commit: a21d619 (v0.4.2 + unreleased 0.5.0 work); tree: dirty (validation scripts only; package source unchanged)
+# CPU: AMD Ryzen 9 3900X 12-Core Processor; julia version 1.13.3; msprime 1.4.5; deps: BnGStructs v0.2.5 Distributions v0.25.130 DataFrames v1.8.2 Random v1.11.0 Statistics v1.11.1
+# $ julia -t 8 --project=. docs/src/validation/scripts/validate-demography.jl 200 7
+
+==============================================================================
+ FisherWright.jl validation under a changing population size
+ N = 100 for 2000 generations, then
+   bottleneck: 20 for 20 generations, 100 for 20 generations
+   expansion:  400 for 100 generations
+ 10 × 10 Mb, μ = r = 1.0e-8, reps = 200, threads = 8
+ A check fails when |z| > 3.5
+==============================================================================
+
+Simulating 200 FisherWright replicates (one burn-in, two scenarios) ...
+  done in 81.7 s
+
+Effective size of a two-sex cohort (msprime N'): Ne(20) = 19.38, Ne(100) = 99.48, Ne(400) = 399.50
+Simulating 200 msprime DTWF replicates per scenario ...
+  done in 43.9 s
+
+[1/2] Bottleneck: 100 → 20 (20 generations) → 100 (20 generations)
+
+  Diversity
+  Σ2pq vs. recursion         276.3 ± 1.9                 277.9    -0.81  pass
+  statistic                    FisherWright       msprime DTWF        z
+  Σ2pq vs. msprime           276.3 ± 1.9        281.6 ± 2.1       -1.89  pass
+  S vs. msprime             1774.8 ± 5.5       1791.0 ± 5.9       -2.01  pass
+  SFS, whole population (200 haplotypes)
+  statistic                    FisherWright       msprime DTWF        z
+  k = 1                      427.0 ± 1.7        426.4 ± 1.7        0.24  pass
+  k = 2                      167.2 ± 1.2        168.7 ± 1.1       -0.92  pass
+  k = 3-5                    248.6 ± 1.5        250.6 ± 1.4       -1.00  pass
+  k = 6-20                   305.0 ± 2.0        307.0 ± 1.9       -0.74  pass
+  k = 21-199                 627.2 ± 4.5        638.4 ± 4.9       -1.67  pass
+  SFS, random sample of 20 haplotypes
+  statistic                    FisherWright       msprime DTWF        z
+  k = 1                      278.5 ± 2.2        278.1 ± 1.7        0.14  pass
+  k = 2                      110.6 ± 1.3        109.8 ± 1.3        0.45  pass
+  k = 3-4                    124.3 ± 1.4        126.0 ± 1.7       -0.79  pass
+  k = 5-9                    198.5 ± 2.4        203.1 ± 2.4       -1.35  pass
+  k = 10-19                  253.9 ± 2.1        258.6 ± 2.3       -1.52  pass
+  LD decay, pooled σ²_d (MAF ≥ 0.1)
+  distance                     FisherWright       msprime DTWF        z
+  0.01-0.03 Mb              0.7450 ± 0.0040    0.7418 ± 0.0037     0.59  pass
+  0.03-0.1 Mb               0.7073 ± 0.0032    0.7084 ± 0.0032    -0.24  pass
+  0.1-0.3 Mb                0.6276 ± 0.0034    0.6253 ± 0.0030     0.52  pass
+  0.3-1 Mb                  0.4615 ± 0.0032    0.4589 ± 0.0028     0.61  pass
+  1-3 Mb                    0.2422 ± 0.0024    0.2408 ± 0.0022     0.44  pass
+
+[2/2] Expansion: 100 → 400 (100 generations)
+
+  Diversity
+  Σ2pq vs. recursion         534.2 ± 1.7                 537.2    -1.72  pass
+  statistic                    FisherWright       msprime DTWF        z
+  Σ2pq vs. msprime           534.2 ± 1.7        535.7 ± 1.9       -0.58  pass
+  S vs. msprime             7795.0 ± 8.5       7791.8 ± 8.5        0.26  pass
+  SFS, whole population (800 haplotypes)
+  statistic                    FisherWright       msprime DTWF        z
+  k = 1                     1773.1 ± 3.9       1773.0 ± 3.3        0.02  pass
+  k = 2                      748.3 ± 2.8        738.8 ± 2.7        2.45  pass
+  k = 3-5                   1198.4 ± 3.5       1192.1 ± 3.2        1.32  pass
+  k = 6-20                  1793.1 ± 3.9       1801.4 ± 4.5       -1.39  pass
+  k = 21-799                2282.0 ± 6.0       2286.6 ± 5.9       -0.55  pass
+  SFS, random sample of 20 haplotypes
+  statistic                    FisherWright       msprime DTWF        z
+  k = 1                     1078.5 ± 4.5       1080.0 ± 4.2       -0.25  pass
+  k = 2                      390.3 ± 2.3        386.4 ± 2.1        1.22  pass
+  k = 3-4                    327.6 ± 1.9        330.6 ± 1.9       -1.09  pass
+  k = 5-9                    311.9 ± 1.9        313.9 ± 2.1       -0.70  pass
+  k = 10-19                  283.7 ± 2.0        285.3 ± 2.0       -0.56  pass
+  LD decay, pooled σ²_d (MAF ≥ 0.1)
+  distance                     FisherWright       msprime DTWF        z
+  0.01-0.03 Mb              0.5316 ± 0.0028    0.5324 ± 0.0030    -0.19  pass
+  0.03-0.1 Mb               0.4669 ± 0.0022    0.4674 ± 0.0021    -0.16  pass
+  0.1-0.3 Mb                0.3303 ± 0.0016    0.3345 ± 0.0015    -1.92  pass
+  0.3-1 Mb                  0.1471 ± 0.0008    0.1495 ± 0.0008    -2.14  pass
+  1-3 Mb                    0.0435 ± 0.0003    0.0438 ± 0.0002    -0.79  pass
+
+  Resolution of Σ2pq vs. recursion (change in E[Σ2pq] / SE)
+  bottleneck of 21 instead of 20 generations      -4.4  ( -2.3 SE)
+  bottleneck of 21 instead of 20 individuals       6.0  (  3.1 SE)
+  expansion of 110 instead of 100 generations     13.2  (  7.6 SE)
+  E[Σ2pq] at the end of the burn-in              395.9
+
+==============================================================================
+ All checks passed.
+==============================================================================
+exit status: 0
