@@ -268,6 +268,10 @@ current cohort occupies the leading entries.
 - `tm`, `tf`: alias tables for the weighted draw of sires and dams.
 - `srng`: one stream per meiosis/haplotype slot, seeded serially from the
   caller's rng, so a run does not depend on the thread count or scheduling.
+- `sel`, `soff`, `ssubs`, `smbuf`, `snbuf`: the selected stream, laid out as
+  `prt`, `off`, `substitutions`, `mbuf` and `nbuf`: the derived alleles each
+  haplotype carries at the fitness loci. Empty unless the fitness model
+  keeps selected alleles.
 - `census`, `males`: record of the run. `census` starts with the size of the
   starting cohort and gains the number of offspring of every generation;
   `males` gains the number of males among its parents.
@@ -290,29 +294,41 @@ mutable struct SimState
     const srng::Vector{Xoshiro}
     const census::Vector{Int}
     const males::Vector{Int}
+    sel::Vector{Vector{UInt32}}
+    soff::Vector{Vector{UInt32}}
+    ssubs::Vector{UInt32}
+    const smbuf::Vector{Vector{UInt32}}
+    const snbuf::Vector{Vector{UInt32}}
 end
 
 # State for the starting cohort `prt` (two haplotypes per individual), with
 # buffers for up to `nmax` individuals; `prt` is extended in place with spare
-# buffers. The only draws from `rng` are the 2nmax stream seeds, taken in
+# buffers, as is `sel`, the selected stream of the same cohort (none by
+# default). The only draws from `rng` are the 2nmax stream seeds, taken in
 # slot order.
 function SimState(
     prt::Vector{Vector{UInt32}},
     substitutions::Vector{UInt32},
     nmax::Int,
     rng::AbstractRNG,
+    sel::Vector{Vector{UInt32}}=[Vector{UInt32}() for _ in prt],
+    ssubs::Vector{UInt32}=UInt32[],
 )
     n = length(prt) ÷ 2
     (iseven(length(prt)) && 1 < n <= nmax) ||
         throw(ArgumentError("starting cohort of $(length(prt)) haplotypes does not fit nmax = $nmax"))
+    length(sel) == length(prt) ||
+        throw(ArgumentError("the selected stream must have one entry per haplotype"))
     nh = 2nmax
     bufs(k) = [Vector{UInt32}() for _ = 1:k]
     append!(prt, bufs(nh - 2n))
+    append!(sel, bufs(nh - 2n))
     return SimState(
         n, prt, bufs(nh), substitutions, bufs(nh), bufs(nh), bufs(nmax),
         Matrix{Int}(undef, nmax, 2), sizehint!(Vector{Bool}(undef, n), nmax), Int[], Int[],
         ones(nmax), AliasTable(nmax), AliasTable(nmax),
         [Xoshiro(rand(rng, UInt64)) for _ = 1:nh], [n], Int[],
+        sel, bufs(nh), ssubs, bufs(nh), bufs(nh),
     )
 end
 
@@ -396,8 +412,13 @@ end
 # each sex.
 _parents!(::Neutral, st::SimState, no::Int, rng::AbstractRNG) =
     _draw_parents!(st.pm, st.sires, st.dams, no, rng)
-_parents!(::AbstractFitness, st::SimState, no::Int, rng::AbstractRNG) =
-    _draw_parents!(st.pm, st.sires, st.dams, no, rng, st.w, st.tm, st.tf)
+function _parents!(::AbstractFitness, st::SimState, no::Int, rng::AbstractRNG)
+    w = st.w
+    # Soft selection cannot rescue a sex without any fit member.
+    (any(i -> w[i] > 0, st.sires) && any(i -> w[i] > 0, st.dams)) || error(
+        "no parent with positive fitness in one sex: the population cannot reproduce")
+    return _draw_parents!(st.pm, st.sires, st.dams, no, rng, w, st.tm, st.tf)
+end
 
 # One meiosis per parent for each of `no` offspring (threaded), written into
 # `st.off`, which then becomes the current cohort of `no` individuals. Slot i
@@ -415,6 +436,29 @@ function _meiosis!(st::SimState, recomb_map::RecombinationMap, no::Int)
         recombine(prt[2d-1], prt[2d], off[2i], cobp!(co, recomb_map; rng=r); rng=r)
     end
     st.prt, st.off = off, prt
+    st.n = no
+    return nothing
+end
+
+# As `_meiosis!`, for a fitness model with selected alleles: each meiosis
+# applies one crossover list and one starting strand to the neutral and the
+# selected haplotypes of the parent. The draws from `st.srng[i]` are those
+# of `_meiosis!`, in the same order.
+function _meiosis_selected!(st::SimState, recomb_map::RecombinationMap, no::Int)
+    prt, off, sel, soff = st.prt, st.off, st.sel, st.soff
+    pm, cbuf, srng = st.pm, st.cbuf, st.srng
+    Threads.@threads for i = 1:no
+        co = cbuf[i]
+        r = srng[i]
+        for (p, k) in ((pm[i, 1], 2i - 1), (pm[i, 2], 2i))
+            cobp!(co, recomb_map; rng=r)
+            o = rand(r, Bool)
+            _recombine!(prt[2p-1], prt[2p], off[k], co, o)
+            _recombine!(sel[2p-1], sel[2p], soff[k], co, o)
+        end
+    end
+    st.prt, st.off = off, prt
+    st.sel, st.soff = soff, sel
     st.n = no
     return nothing
 end
@@ -461,6 +505,10 @@ offspring and then mutation; with
 Mating is drawn serially from `rng`; meiosis and mutation use the per-slot
 streams in `st.srng`. The census size and the number of male parents of
 every generation are appended to `st.census` and `st.males`.
+
+With a fitness model that keeps selected alleles (`_selected(fitness)`),
+meiosis carries the selected stream `st.sel` along, mutation also hits the
+fitness loci, and fixed selected sites are moved to `st.ssubs`.
 """
 function _simulate!(
     st::SimState,
@@ -479,16 +527,22 @@ function _simulate!(
     rng::AbstractRNG,
 )
     t0 = time()
+    selected = _selected(fitness)
+    p_sel = _sel_poisson(fitness)
     for g = 1:nt
         no = _popsize(demog, g)
         _fitness!(fitness, st)
         _mate!(mating, fitness, st, no, rng)
         push!(st.males, length(st.sires))
-        _meiosis!(st, recomb_map, no)
+        selected ? _meiosis_selected!(st, recomb_map, no) : _meiosis!(st, recomb_map, no)
         push!(st.census, no)
         mutate && _mutation!(st, p_mut, span)
+        mutate && p_sel !== nothing && _sel_mutation!(fitness, st, p_sel)
         if track && (g % fixation_interval == 0 || g == nt)
             st.substitutions = _fixation_step!(_cohort(st), st.substitutions)
+            # A site fixed in the selected stream multiplies every fitness
+            # by the same factor, so removing it leaves selection unchanged.
+            selected && (st.ssubs = _fixation_step!(view(st.sel, 1:2*st.n), st.ssubs))
         end
         if verbose && (g % progress_interval == 0 || g == nt)
             _report_progress(stderr, g, nt, t0, _cohort(st), length(st.substitutions), track)

@@ -1,0 +1,22 @@
+# Date: 2026-11-11T17:40Z  Commit: 9258478 (v0.5.0) + uncommitted selection code (src/fitness.jl and the changes of this pull request)
+# CPU: AMD Ryzen 9 5950X 16-Core Processor; julia version 1.13.3; deps: BnGStructs v0.2.7 DataFrames v1.8.3 Distributions v0.25.134
+# $ julia -t 8 --project=. docs/src/validation/scripts/validate-selection.jl 200000 2000000 2026
+
+======================================================================================
+ FisherWright.jl validation of selection: fixation probability of one new copy
+ engine reps = 200000, naive reference reps = 2000000, seed = 2026, threads = 8
+ A check fails when |z| > 3.5
+======================================================================================
+     N      s     h sexes                    engine       naive reference       z         ideal WF
+    30   0.20  0.50 binomial     0.15929 ± 0.00082     0.15998 ± 0.00026    -0.80  pass    0.17419
+    30   0.20  0.00 binomial     0.05552 ± 0.00051     0.05536 ± 0.00016     0.29  pass    0.06401
+    30   0.20  1.00 binomial     0.27847 ± 0.00100     0.27876 ± 0.00032    -0.27  pass    0.29552
+    30   0.00  0.50 binomial     0.01615 ± 0.00029     0.01665 ± 0.00009    -1.64  pass    0.01667
+    30  -0.10  0.50 binomial     0.00034 ± 0.00004     0.00034 ± 0.00001    -0.09  pass    0.00021
+    50   0.10  0.50 binomial     0.08830 ± 0.00063     0.08839 ± 0.00020    -0.13  pass    0.09309
+    50   0.10  0.50 N/2 males    0.09091 ± 0.00064     0.09058 ± 0.00020     0.49  pass    0.09309
+    50   0.02  0.50 binomial     0.02194 ± 0.00033     0.02194 ± 0.00010     0.01  pass    0.02279
+======================================================================================
+ All checks passed.
+======================================================================================
+exit status: 0

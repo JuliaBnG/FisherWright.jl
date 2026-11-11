@@ -380,10 +380,12 @@ Markdown.MD(Markdown.Code("bash", read(joinpath(pkgdir(FisherWright), "docs", "s
   `recombine` is covered indirectly: doubling the recombination rate fails
   the LD test. `recombine` itself is checked against a reference
   implementation in the testset "recombine correctness".
-- Only neutral, panmictic populations are checked, at constant size and
-  through one bottleneck and one expansion; the package doesn't model
-  selection or subdivision. Fixed sex ratios are checked for
-  heterozygosity decay only, in the CI tests.
+- This page covers neutral, panmictic populations at constant size.
+  A bottleneck and an expansion are on
+  [Validation under a changing population size](@ref), and selection on
+  [Validation of selection](@ref). Fixed sex ratios are checked for
+  heterozygosity decay only, in the CI tests. The package doesn't model
+  subdivision.
 - Benchmark-scale runs (N = 2,000, 1 Gb) are checked only through their SNP
   count against msprime.
 

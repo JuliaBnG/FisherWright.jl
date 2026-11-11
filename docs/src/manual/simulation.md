@@ -6,7 +6,7 @@
 fisher_wright(ne, nt, chr, mr; M=1e8, mut_base=1e8,
               result=false, fixation_interval=1, mutate=true,
               init=nothing, popsize=nothing, mating=RandomMating(),
-              verbose=false, progress_interval=100)
+              fitness=Neutral(), verbose=false, progress_interval=100)
 ```
 
 Simulate `ne` diploid individuals for `nt` generations. `chr` is a vector of
@@ -23,6 +23,7 @@ new mutations per `mut_base` base pairs per haplotype per meiosis.
 | `init` | `nothing` | Starting population: `2ne` haplotypes or a `FisherWrightResult`; `nothing` starts monomorphic. |
 | `popsize` | `nothing` | Census size per generation: a vector of `nt` sizes or a function of the generation; `nothing` keeps `ne`. |
 | `mating` | `RandomMating()` | Mating scheme; `RandomMating(nmale=m)` or `RandomMating(sexratio=p)` fixes the number or the proportion of males. |
+| `fitness` | `Neutral()` | Fitness model; `SiteFitness(loci)` selects on the sites of a `FitnessLoci` table (needs `result=true`). |
 | `verbose` | `false` | Report progress (mean mutations per haplotype, substitutions, elapsed time, ETA) to `stderr`. |
 | `progress_interval` | `100` | Generations between progress reports when `verbose=true`. |
 
@@ -209,6 +210,84 @@ matters when it is combined with `popsize`; `sexratio` is a proportion
 of males and follows the census size. The fixed schemes draw sex
 differently from `rng`, so for the same seed they share no realization
 with the default scheme.
+
+## Selection
+
+By default the model is neutral. `fitness = SiteFitness(loci)` puts the
+sites of a `FitnessLoci` table under selection. The table is fixed for
+the run: each site has a position, a selection coefficient ``s`` of its
+derived allele and a dominance ``h``, and the table has one mutation
+rate ``\mu`` per site per haplotype per generation.
+
+```@example simulation
+loci = FitnessLoci([20_000, 60_000, 150_000], [0.05, -0.02, 0.1];
+                   h=[0.5, 0.5, 0.0], μ=1e-4)
+(loci.pos, loci.s, loci.h)
+```
+
+`fitness_loci` draws the sites uniformly over the genome, and the
+coefficients from a distribution of fitness effects if `s` is a
+distribution from Distributions.jl; `h` may be a function of ``s``:
+
+```@example simulation
+using Distributions, Random
+
+dfe = fitness_loci([100_000, 100_000], 50; s=-Gamma(0.3, 0.1),
+                   h=s -> 0.25, μ=1e-4, rng=Xoshiro(1))
+(length(dfe), extrema(dfe.s))
+```
+
+**Model.** A genotype at one site has fitness ``1``, ``1 + hs`` or
+``1 + s`` with zero, one or two copies of the derived allele, and the
+fitness of an individual is the product over sites. Selection is soft
+and acts within each sex: fitness is evaluated on the adults, and every
+offspring draws its sire among the males and its dam among the females
+with probability proportional to fitness, with replacement. The census
+size does not change, and only fitness relative to the other parents of
+the same sex matters. Sites are biallelic without back-mutation.
+
+```@example simulation
+run = fisher_wright(50, 200, [100_000, 100_000], 1.0;
+                    fitness=SiteFitness(loci), result=true,
+                    rng=Xoshiro(3))
+(run.selected_substitutions, count(!isempty, run.selected_haplotypes))
+```
+
+The derived alleles at the fitness loci are kept apart from the neutral
+mutations. They are returned in `selected_haplotypes`, one sorted vector
+of positions per haplotype, and in `selected_substitutions` once fixed;
+`active_haplotypes` holds neutral mutations only, and a neutral mutation
+at the coordinate of a fitness locus has no effect on fitness. The two
+recombine as one haplotype. Removing a fixed site is exact, because it
+multiplies every fitness by the same factor. Selection therefore needs
+`result=true`.
+
+A selected allele that is present at the start is given through `init`,
+as a result with `selected_haplotypes`; this is how a single new copy is
+followed:
+
+```@example simulation
+chr = [100_000, 100_000]
+one = FitnessLoci([20_000], 0.1)
+sel = [UInt32[] for _ in 1:100]
+push!(sel[1], 20_000)                    # one copy, on haplotype 1
+start = FisherWrightResult([UInt32[] for _ in 1:100], UInt32.(cumsum(chr)),
+                           UInt32[]; selected_haplotypes=sel)
+later = fisher_wright(50, 20, chr, 1.0; init=start, mutate=false,
+                      fitness=SiteFitness(one), result=true)
+count(!isempty, later.selected_haplotypes)   # copies after 20 generations
+```
+
+**Relation to theory.** The fixation probability of a new allele is a
+few percent below that of an ideal Wright–Fisher population of the same
+size, by terms of order ``1/N``: the binomial sex ratio lowers the
+variance effective size, and a rare allele competes only within the sex
+of its carrier. See [Validation of selection](@ref).
+
+If no member of one sex has positive fitness (lethal genotypes), the
+population cannot reproduce and the run stops with an error. For the
+same seed, a run with selection shares no realization with a neutral
+run.
 
 ## Reproducibility
 

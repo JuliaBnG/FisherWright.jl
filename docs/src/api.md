@@ -13,6 +13,10 @@ fisher_wright
 RandomMating
 bottleneck
 growth
+SiteFitness
+FitnessLoci
+fitness_loci
+Neutral
 FisherWrightResult
 effective_size
 to_haplotype

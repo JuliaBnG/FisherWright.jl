@@ -60,6 +60,8 @@ simulations. The result fields are:
 | `substitutions` | Sorted fixed mutation positions. |
 | `census` | Census sizes ``N_0, N_1, …, N_{nt}`` of the run. |
 | `males` | Number of males among the parents of each generation. |
+| `selected_haplotypes` | Derived alleles each haplotype carries at the fitness loci; empty in a neutral run. |
+| `selected_substitutions` | Fitness loci whose derived allele was fixed and removed. |
 
 Convert a structured result to `BnGStructs.Haplotype` and a linkage map:
 
