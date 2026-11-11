@@ -89,13 +89,58 @@ function _demography(ne::Int, nt::Int, popsize)
 end
 
 """
-    RandomMating()
+    RandomMating(; nmale = nothing, sexratio = nothing)
 
-Sex is redrawn each generation as Bernoulli(½) per individual, conditioned on
-both sexes being present; each offspring draws its sire uniformly from the
-males and its dam uniformly from the females, with replacement.
+Random mating between the sexes: each offspring draws its sire uniformly from
+the males and its dam uniformly from the females of the parental cohort, with
+replacement. Sex is assigned anew to every cohort when it reproduces, by one
+of three models:
+
+- `RandomMating()`: Bernoulli(½) per individual, conditioned on both sexes
+  being present, so the number of males among `N` parents is Binomial(`N`, ½)
+  truncated to `1:N-1`. This is the default of [`fisher_wright`](@ref).
+- `RandomMating(nmale = m)`: exactly `m` males and `N - m` females, the males
+  being a uniformly random subset of the cohort. Every parental cohort must
+  have more than `m` individuals.
+- `RandomMating(sexratio = p)`: exactly `round(Int, p * N)` males, limited to
+  `1:N-1`, for a proportion of males `0 < p < 1`; the number of males then
+  follows a changing census size.
+
+With `N_m` males and `N_f` females the effective size of that generation is
+approximately `4 N_m N_f / (N_m + N_f)` (Wright 1931).
 """
-struct RandomMating <: AbstractMating end
+struct RandomMating <: AbstractMating
+    nmale::Int          # fixed number of males; 0 if not fixed
+    sexratio::Float64   # fixed proportion of males; 0 if not fixed
+    function RandomMating(; nmale::Union{Nothing,Integer}=nothing, sexratio::Union{Nothing,Real}=nothing)
+        nmale === nothing || sexratio === nothing ||
+            throw(ArgumentError("give nmale or sexratio, not both"))
+        nmale === nothing || nmale > 0 || throw(ArgumentError("nmale must be positive"))
+        sexratio === nothing || 0 < sexratio < 1 ||
+            throw(ArgumentError("sexratio is the proportion of males and must lie strictly between 0 and 1"))
+        return new(something(nmale, 0), something(sexratio, 0.0))
+    end
+end
+
+# Number of males among `n` parents; 0 stands for binomial sex.
+function _nmale(m::RandomMating, n::Int)
+    m.nmale > 0 && return m.nmale
+    m.sexratio > 0 && return clamp(round(Int, m.sexratio * n), 1, n - 1)
+    return 0
+end
+
+# Every parental cohort (generations 0 to nt - 1) must be able to hold the
+# requested sexes; checked before the run so that it cannot fail midway.
+function _check_mating(m::RandomMating, demog::AbstractDemography, n0::Int, nt::Int)
+    m.nmale > 0 || return nothing
+    n = n0
+    for g = 1:nt
+        m.nmale < n || throw(ArgumentError(
+            "nmale = $(m.nmale) leaves no female among the $n parents of generation $g"))
+        n = _popsize(demog, g)
+    end
+    return nothing
+end
 
 """
     Neutral()
@@ -216,10 +261,15 @@ _fitness!(::Neutral, ::SimState) = nothing
 
 # Conditioning on both sexes being present is exact rejection sampling;
 # P(one sex only) = 2^(1-n), so a fixed retry cap fails for small n.
-function _mate!(::RandomMating, st::SimState, no::Int, rng::AbstractRNG)
+function _mate!(m::RandomMating, st::SimState, no::Int, rng::AbstractRNG)
     # Within the capacity reserved for the largest cohort: no allocation.
     resize!(st.sex, st.n)
-    _random_mate!(st.pm, st.sex, st.sires, st.dams, no, rng, typemax(Int))
+    nm = _nmale(m, st.n)
+    if nm == 0
+        _random_mate!(st.pm, st.sex, st.sires, st.dams, no, rng, typemax(Int))
+    else
+        _fixed_sex_mate!(st.pm, st.sex, st.sires, st.dams, nm, no, rng)
+    end
     return nothing
 end
 

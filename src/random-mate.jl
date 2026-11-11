@@ -138,6 +138,44 @@ function _random_mate!(
     return pm, sex
 end
 
+# As `_random_mate!`, with exactly `nm` males among the `length(sex)` parents.
+# The males are a uniformly random subset, drawn by selection sampling (Knuth,
+# TAOCP 2, Algorithm S): one uniform draw per parent that is still undecided,
+# then sire and dam of each offspring in turn.
+function _fixed_sex_mate!(
+    pm::Matrix{Int},
+    sex::Vector{Bool},
+    sires::Vector{Int},
+    dams::Vector{Int},
+    nm::Int,
+    n2::Int,
+    rng,
+)
+    n1 = length(sex)
+    (0 < nm < n1 && 0 < n2 <= size(pm, 1)) ||
+        error("need 0 < nm < n1 and n2 > 0")
+    empty!(sires)
+    empty!(dams)
+    need = nm
+    @inbounds for i = 1:n1
+        left = n1 - i + 1
+        # Male with probability need / left; no draw once it is 0 or 1.
+        male = need > 0 && (need == left || rand(rng) * left < need)
+        sex[i] = male
+        if male
+            need -= 1
+            push!(sires, i)
+        else
+            push!(dams, i)
+        end
+    end
+    @inbounds for i = 1:n2
+        pm[i, 1] = rand(rng, sires)
+        pm[i, 2] = rand(rng, dams)
+    end
+    return pm, sex
+end
+
 """
     random_mate(
         sex::Vector,

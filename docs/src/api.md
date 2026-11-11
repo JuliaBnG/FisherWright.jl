@@ -10,6 +10,7 @@ FisherWright.FisherWright
 
 ```@docs
 fisher_wright
+RandomMating
 FisherWrightResult
 to_haplotype
 ```

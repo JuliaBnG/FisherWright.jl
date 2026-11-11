@@ -5,7 +5,9 @@ Status: in progress (drafted 2026-10-07 against v0.3.8; selection added
 so the staging is renumbered from 0.5.0. Implemented so far, all from
 the 0.5.0 row: the golden-output regression test and the `_recombine!`
 kernel (v0.4.2); the `mutate` and `init` keywords, the internal
-refactor, and exogenous `popsize` (2026-11-10, not yet released).
+refactor, and exogenous `popsize` (2026-11-10); the `mating` keyword
+with a fixed number or proportion of males (2026-11-11). None of the
+2026-11 work is released yet.
 
 The refactor (`src/simulate.jl`): a `SimState` struct holds the
 haplotypes, buffers and per-slot streams; `fisher_wright` builds it and
@@ -13,11 +15,14 @@ calls `_simulate!(st, demog, mating, fitness, …)` once, specialised on
 the concrete types. Buffers are allocated for the largest census size
 of the run, and the current cohort occupies their leading entries.
 Demography is `ConstantSize` or `SizeTrajectory` (from `popsize`, a
-vector or a function evaluated before the run); mating and fitness have
-only their defaults (`RandomMating`, `Neutral`). None of these types is
-exported. Still to do in 0.5.0: the public `mating` keyword with a
-fixed sex ratio, census and Ne metadata in results, the trajectory
-helpers (`bottleneck`, `growth`), and validation 3 against msprime.
+vector or a function evaluated before the run). Mating is
+`RandomMating`, exported and passed as `mating`: binomial sex by
+default, or exactly `nmale` males, or a proportion `sexratio` of males,
+drawn as a uniformly random subset of each parental cohort. Fitness has
+only its default (`Neutral`); the demography and fitness types are not
+exported. Still to do in 0.5.0: census and Ne metadata in results, the
+trajectory helpers (`bottleneck`, `growth`), and validation 3 against
+msprime.
 
 ## Current model (v0.4.0)
 
@@ -230,7 +235,10 @@ replicates and seeds; logs go under `docs/src/validation/`.
 1. **Mating mechanics (unit tests in CI):** exact sex counts; realised
    family-size distribution matches the request (moment z-tests and χ²
    goodness of fit); realised selfing rate; zero relative-avoidance
-   violations; the bit-identical default-path regression test.
+   violations; the bit-identical default-path regression test. Done for
+   the fixed-sex schemes ("Mating with fixed sex numbers": exact counts,
+   and χ² tests that the males are a uniform random subset and that
+   sires and dams are used uniformly).
 2. **Ne under constant N, against theory:**
    - Start from a polymorphic population via `init`, run without new
      mutation (`mutate = false`), and fit H_t/H_0 = (1 − 1/(2Ne))^t.
@@ -240,7 +248,11 @@ replicates and seeds; logs go under `docs/src/validation/`.
    - Equilibrium π and S against θ = 4Neμ with Ne from the formulas
      above.
    - Cases: skewed sex ratio (10♂/90♀ → Ne = 36), NegBinomial family
-     sizes, equal families, selfing s ∈ {0.2, 0.5}.
+     sizes, equal families, selfing s ∈ {0.2, 0.5}. The sex-ratio case
+     is done as a CI test of heterozygosity decay against the exact
+     recursion ("Heterozygosity decay under a fixed sex ratio": 3♂/17♀,
+     10♂/10♀, and a proportion of 0.2 males through a change in size);
+     its equilibrium π and S check is still open.
 3. **Variable N.** Done as a CI test: heterozygosity through a
    bottleneck and an expansion against the exact two-sex recursion
    (30 → 6 for 8 generations → 60 for 12), which also shows that the

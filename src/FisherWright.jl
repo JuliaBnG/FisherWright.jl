@@ -40,6 +40,6 @@ include("simulate.jl")
 include("fwp.jl")
 include("quick-genotypes.jl")
 
-export fisher_wright, muts2bitarray, extract_chip_bitarray, quickGT, quickHap, FisherWrightResult, to_haplotype, RecombinationMap, uniform_recombination_map
+export fisher_wright, muts2bitarray, extract_chip_bitarray, quickGT, quickHap, FisherWrightResult, to_haplotype, RecombinationMap, uniform_recombination_map, RandomMating
 
 end # module FisherWright

@@ -2,7 +2,7 @@ using Test
 using Random
 using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_sorted, merge_sorted!, recombine, _recombine!, _insert_sorted!, _isearchfirst,
     cobp, cobp!, FisherWrightResult, to_haplotype, RecombinationMap,
-    uniform_recombination_map, random_mate, random_mate!, _fixed_mutations,
+    uniform_recombination_map, random_mate, random_mate!, _fixed_sex_mate!, _nmale, _fixed_mutations,
     _drop_mutations, _drop_mutations!, _fixation_step, _fixation_step!, _extract_fixed,
     _intersect_sorted!, _remove_sorted!, _with_fixed, _simulate!, _initial_state,
     SimState, ConstantSize, SizeTrajectory, RandomMating, Neutral
@@ -572,6 +572,15 @@ end
     cycle!(st, rng)
     @test st.n == 35 && length(st.prt) == 2ne
     @test @allocated(cycle!(st, rng)) / 100 < 2^16
+
+    # ... and with a fixed number of males.
+    fixed!(st, rng) = _simulate!(
+        st, demog, RandomMating(nmale=7), Neutral(), 100, rmap, Poisson(10.0), span;
+        mutate=false, track=false, fixation_interval=1, verbose=false,
+        progress_interval=100, rng=rng)
+    fixed!(st, rng)
+    @test sum(st.sex) == 7 && length(st.sex) == 50   # parents of the last generation
+    @test @allocated(fixed!(st, rng)) / 100 < 2^16
 end
 
 @testset "Changing population size" begin
@@ -634,6 +643,103 @@ end
     @test_throws ArgumentError run(g -> g == 4 ? 1 : 20)
     @test_throws ArgumentError run(20)
     @test_throws "generation 4" run(g -> g == 4 ? 1 : 20)
+end
+
+@testset "Mating with fixed sex numbers" begin
+    # Constructor.
+    @test RandomMating() == RandomMating(nmale=nothing, sexratio=nothing)
+    @test_throws ArgumentError RandomMating(nmale=3, sexratio=0.5)
+    @test_throws ArgumentError RandomMating(nmale=0)
+    @test_throws ArgumentError RandomMating(sexratio=0.0)
+    @test_throws ArgumentError RandomMating(sexratio=1.0)
+    @test _nmale(RandomMating(), 20) == 0                  # binomial sex
+    @test _nmale(RandomMating(nmale=3), 20) == 3
+    @test [_nmale(RandomMating(sexratio=0.5), n) for n in (2, 3, 20, 21)] == [1, 2, 10, 10]
+    @test [_nmale(RandomMating(sexratio=0.1), n) for n in (2, 14, 16, 100)] == [1, 1, 2, 10]
+    @test _nmale(RandomMating(sexratio=0.99), 5) == 4      # one female is kept
+
+    # Kernel: exactly nm males, sires are males and dams females, and rows
+    # beyond n2 are left alone.
+    rng = Xoshiro(1)
+    n, nm, n2 = 12, 3, 40
+    pm, sex, sires, dams = fill(-1, 50, 2), Vector{Bool}(undef, n), Int[], Int[]
+    _fixed_sex_mate!(pm, sex, sires, dams, nm, n2, rng)
+    @test sum(sex) == nm && sires == findall(sex) && dams == findall(!, sex)
+    @test all(sex[pm[1:n2, 1]]) && !any(sex[pm[1:n2, 2]])
+    @test all(==(-1), pm[n2+1:end, :])
+    for (n, nm) in ((2, 1), (5, 4), (5, 1))   # the extremes
+        s = Vector{Bool}(undef, n)
+        _fixed_sex_mate!(pm, s, sires, dams, nm, 10, rng)
+        @test sum(s) == nm
+    end
+    @test_throws ErrorException _fixed_sex_mate!(pm, sex, sires, dams, 0, n2, rng)
+    @test_throws ErrorException _fixed_sex_mate!(pm, sex, sires, dams, n, n2, rng)
+    @test_throws ErrorException _fixed_sex_mate!(pm, sex, sires, dams, nm, 51, rng)
+
+    # The males are a uniform random subset: over R draws each of the 12
+    # individuals is male with probability 1/4 and each pair with probability
+    # 3·2/(12·11) = 1/22, and within a draw the 3 sires and the 9 dams are
+    # used uniformly. Pearson χ² against the uniform expectation; the three
+    # statistics are checked at the 3.5σ-equivalent quantile of their
+    # (approximate) χ² laws, Wilson–Hilferty.
+    R = 20_000
+    male, pairs, siruse, damuse = zeros(Int, n), zeros(Int, n, n), zeros(Int, nm), zeros(Int, n - nm)
+    for _ = 1:R
+        _fixed_sex_mate!(pm, sex, sires, dams, nm, n2, rng)
+        male .+= sex
+        for a in sires, b in sires
+            a < b && (pairs[a, b] += 1)
+        end
+        for i = 1:n2
+            siruse[searchsortedfirst(sires, pm[i, 1])] += 1
+            damuse[searchsortedfirst(dams, pm[i, 2])] += 1
+        end
+    end
+    χ²(obs, e) = sum(o -> (o - e)^2 / e, obs)
+    crit(df) = df * (1 - 2 / 9df + 3.5 * sqrt(2 / 9df))^3
+    pr = [pairs[a, b] for a = 1:n for b = a+1:n]
+    @test χ²(pr, R / 22) < crit(length(pr) - 1)
+    # Marginal counts are negatively correlated beyond the multinomial case
+    # (each draw adds exactly 3), which only lowers the statistic.
+    @test χ²(male, R / 4) < crit(n - 1)
+    @test χ²(siruse, R * n2 / nm) < crit(nm - 1)
+    @test χ²(damuse, R * n2 / (n - nm)) < crit(n - nm - 1)
+
+    # Through fisher_wright: valid output, reproducible, both return modes
+    # agree, and the default scheme given explicitly is the default run.
+    chr, kw = [100_000, 200_000], (M=5e4, mut_base=1e5)
+    valid(h) = issorted(h) && allunique(h) && all(p -> 1 <= p <= 300_000, h)
+    a = fisher_wright(20, 60, chr, 5.0; kw..., rng=Xoshiro(3))
+    @test fisher_wright(20, 60, chr, 5.0; kw..., mating=RandomMating(), rng=Xoshiro(3)) == a
+    for m in (RandomMating(nmale=1), RandomMating(nmale=19), RandomMating(sexratio=0.5), RandomMating(sexratio=0.2))
+        res = fisher_wright(20, 60, chr, 5.0; kw..., mating=m, result=true, rng=Xoshiro(3))
+        haps, _ = fisher_wright(20, 60, chr, 5.0; kw..., mating=m, rng=Xoshiro(3))
+        @test length(haps) == 40 && all(valid, haps) && _with_fixed(res) == haps
+        @test haps != a[1]
+    end
+    # One sire: every paternal haplotype descends from one individual per
+    # generation, so fixation is much faster than under the default.
+    one = fisher_wright(20, 60, chr, 5.0; kw..., mating=RandomMating(nmale=1), result=true, rng=Xoshiro(3))
+    dft = fisher_wright(20, 60, chr, 5.0; kw..., result=true, rng=Xoshiro(3))
+    @test length(one.substitutions) > length(dft.substitutions)
+
+    # With a changing census size: nmale must fit every parental cohort, the
+    # last cohort is not a parent, and sexratio follows the size.
+    sizes = [fill(4, 5); fill(30, 4); 3]
+    run(m; ne=20, p=sizes) = fisher_wright(ne, 10, chr, 5.0; kw..., popsize=p, mating=m, rng=Xoshiro(8))
+    @test length(run(RandomMating(nmale=3))[1]) == 6
+    @test length(run(RandomMating(sexratio=0.9))[1]) == 6
+    @test_throws ArgumentError run(RandomMating(nmale=4))
+    @test_throws "parents of generation 2" run(RandomMating(nmale=4))
+    @test_throws "parents of generation 1" run(RandomMating(nmale=3); ne=3)
+    @test_throws ArgumentError fisher_wright(20, 10, chr, 5.0; mating=RandomMating(nmale=20))
+    @test_throws TypeError fisher_wright(20, 10, chr, 5.0; mating=:random)
+
+    # Species method.
+    sp = GenericSpecies("Sex", Int32(20), UInt32.(chr), UInt32(50_000))
+    m = RandomMating(nmale=4)
+    @test fisher_wright(sp, 60, 5.0; mut_base=1e5, mating=m, rng=Xoshiro(4)) ==
+          fisher_wright(20, 60, chr, 5.0; kw..., mating=m, rng=Xoshiro(4))
 end
 
 @testset "Simulation invariants at scale" begin
@@ -907,15 +1013,20 @@ end
 
 # Expected Σ2pq / L over all haplotypes of each generation, starting from
 # independent alleles at frequency ½ in `n0` individuals; `sizes[g]` is the
-# number of offspring of generation g. Exact for the model: the parents' sex
-# is Binomial(N, ½) conditioned on both sexes, and sire and dam are drawn
-# with replacement. hB and hW are the heterozygosities of two genes in
-# different individuals and in one individual (docs/src/manual/validation.md,
-# "Effective size"). The sex counts are independent of the genotypes and
-# across generations, so the expectation uses a = E[1/(4Nm) + 1/(4Nf)] over
-# the N parents of each generation, whatever the number of offspring.
-function expected_heterozygosity(n0, sizes)
+# number of offspring of generation g. Exact for the model: sire and dam are
+# drawn with replacement, and the parents' sex is Binomial(N, ½) conditioned
+# on both sexes or, with `nmale`, exactly `nmale(N)` males among N parents.
+# hB and hW are the heterozygosities of two genes in different individuals
+# and in one individual (docs/src/manual/validation.md, "Effective size").
+# The sex counts are independent of the genotypes and across generations, so
+# the expectation uses a = E[1/(4Nm) + 1/(4Nf)] over the N parents of each
+# generation, whatever the number of offspring.
+function expected_heterozygosity(n0, sizes; nmale=nothing)
     function coalescence(N)
+        if nmale !== nothing
+            m = nmale(N)
+            return 1 / 4m + 1 / 4(N - m)
+        end
         w = [binomial(big(N), m) for m = 1:N-1]
         return Float64(sum(w[m] * (1 // (4m) + 1 // (4(N - m))) for m = 1:N-1) / sum(w))
     end
@@ -1004,6 +1115,39 @@ end
     wrong = expected_heterozygosity(Nb, sizes)
     @test (mean(H₁) - wrong[t₁]) / se₁ > 3.5
     @test (mean(H₂) - wrong[end]) / se₂ > 3.5
+end
+
+@testset "Heterozygosity decay under a fixed sex ratio" begin
+    # Drift alone with fixed numbers of each sex, against the exact
+    # recursion with a = 1/(4Nm) + 1/(4Nf). Three schemes over the same 20
+    # generations, 400 replicates of 1,000 sites on 20 chromosomes of
+    # 1 Morgan each: 3 sires and 17 dams among N = 20 (Ne ≈ 4·3·17/20 = 10.2);
+    # equal sexes, 10 and 10 (Ne ≈ 20); and a proportion of 0.2 males through
+    # a change in size, 20 → 10 for 10 generations → 40 (4, 2 and 8 males).
+    # z-scores against the replicate standard error.
+    chr, reps, t = fill(50, 20), 400, 20
+    L = sum(chr)
+    rng = Xoshiro(20261112)
+    step = [fill(10, 10); fill(40, 10)]
+    cases = (
+        (RandomMating(nmale=3), nothing, N -> 3),
+        (RandomMating(sexratio=0.5), nothing, N -> N ÷ 2),
+        (RandomMating(sexratio=0.2), step, N -> N ÷ 5),
+    )
+    for (mating, popsize, nmale) in cases
+        H = zeros(reps)
+        for r = 1:reps
+            start = [UInt32.(findall(rand(rng, Bool, L))) for _ = 1:40]
+            haps, _ = fisher_wright(20, t, chr, 1.0; M=50, init=start, mutate=false,
+                popsize=popsize, mating=mating, rng=rng)
+            H[r] = site_heterozygosity(haps, L)
+        end
+        sizes = something(popsize, fill(20, t))
+        se = sqrt(var(H) / reps)
+        @test abs(mean(H) - expected_heterozygosity(20, sizes; nmale=nmale)[end]) / se < 3.5
+        # The test separates the fixed scheme from binomial sex.
+        @test abs(mean(H) - expected_heterozygosity(20, sizes)[end]) / se > 3.5
+    end
 end
 
 @testset "Crossovers per meiosis matches Poisson and assortment" begin
