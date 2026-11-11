@@ -6,9 +6,9 @@ so the staging is renumbered from 0.5.0. Implemented so far, all from
 the 0.5.0 row: the golden-output regression test and the `_recombine!`
 kernel (v0.4.2); the `mutate` and `init` keywords, the internal
 refactor, and exogenous `popsize` (2026-11-10); the `mating` keyword
-with a fixed number or proportion of males, and the census record in
-results with `effective_size` (2026-11-11). None of the 2026-11 work is
-released yet.
+with a fixed number or proportion of males, the census record in
+results with `effective_size`, and the trajectory helpers `bottleneck`
+and `growth` (2026-11-11). None of the 2026-11 work is released yet.
 
 The refactor (`src/simulate.jl`): a `SimState` struct holds the
 haplotypes, buffers and per-slot streams; `fisher_wright` builds it and
@@ -25,8 +25,9 @@ exported. `FisherWrightResult` carries the census record of the run
 (`census`, N_0 to N_nt, and `males`, the male parents of each
 generation), appended to that of an `init` result; `effective_size`
 returns 4N_mN_f/(N_m+N_f) per generation
-or its harmonic mean. Still to do in 0.5.0: the trajectory helpers
-(`bottleneck`, `growth`) and validation 3 against msprime.
+or its harmonic mean. `bottleneck(n, nb, start, duration)` and
+`growth(n0, r; start, limit)` return functions of the generation for
+`popsize`. Still to do in 0.5.0: validation 3 against msprime.
 
 ## Current model (v0.4.0)
 

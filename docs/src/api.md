@@ -11,6 +11,8 @@ FisherWright.FisherWright
 ```@docs
 fisher_wright
 RandomMating
+bottleneck
+growth
 FisherWrightResult
 effective_size
 to_haplotype
