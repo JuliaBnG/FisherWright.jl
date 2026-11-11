@@ -1,16 +1,17 @@
 # Roadmap: variable population size, non-random mating, and selection
 
-Status: in progress (drafted 2026-10-07 against v0.3.8; selection added
-2026-11-02 against v0.4.0). v0.4.0 shipped without the refactor below,
-so the staging is renumbered from 0.5.0. Implemented so far, all from
-the 0.5.0 row: the golden-output regression test and the `_recombine!`
-kernel (v0.4.2); the `mutate` and `init` keywords, the internal
-refactor, and exogenous `popsize` (2026-11-10); the `mating` keyword
-with a fixed number or proportion of males, the census record in
-results with `effective_size`, and the trajectory helpers `bottleneck`
-and `growth`, and validation 3 against msprime (2026-11-11). None of
-the 2026-11 work is released yet; the 0.5.0 row is complete apart from
-the release itself (version, changelog, benchmark rerun).
+Status: 0.5.0 complete, release prepared 2026-11-11; 0.6.0 onwards not
+started (drafted 2026-10-07 against v0.3.8; selection added 2026-11-02
+against v0.4.0).
+v0.4.0 shipped without the refactor below, so the staging is renumbered
+from 0.5.0. The 0.5.0 row is complete: the golden-output regression
+test and the `_recombine!` kernel (v0.4.2); the `mutate` and `init`
+keywords, the internal refactor, exogenous `popsize`, the `mating`
+keyword with a fixed number or proportion of males, the census record
+in results with `effective_size`, the trajectory helpers `bottleneck`
+and `growth`, and validation 3 against msprime (v0.5.0). The release
+benchmark (validation 8, default path only) gave 57.15 s for v0.4.2
+and 57.11 s for v0.5.0 on the 1 Gb run.
 
 The refactor (`src/simulate.jl`): a `SimState` struct holds the
 haplotypes, buffers and per-slot streams; `fisher_wright` builds it and

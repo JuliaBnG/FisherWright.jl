@@ -26,8 +26,13 @@ julia --project=docs --startup-file=no docs/make.jl
 The generated site is in `docs/build/`.
 
 ## Features
-- Forward simulation of a constant-size, randomly mating diploid population with
-  two sexes, any number of autosomes and genomes up to 2³² − 1 bp
+- Forward simulation of a randomly mating diploid population with two
+  sexes, any number of autosomes and genomes up to 2³² − 1 bp
+- Constant census size or a given trajectory (bottleneck, growth, any
+  vector or function of the generation), and a binomial or fixed sex
+  ratio
+- Runs can start from a given population and be continued, with or
+  without new mutations
 - Poisson crossovers (uniform rate, `M` bp per Morgan) with free assortment
   between chromosomes, and recurrent neutral mutation
 - Optional extraction of fixed mutations during the run, which keeps memory
@@ -36,8 +41,9 @@ The generated site is in `docs/build/`.
   targeted SNP-chip panel, or to `BnGStructs.Haplotype`
 - Validated against neutral theory and msprime (see the manual)
 
-Not modelled: selection, changes in population size, population structure or
-migration, and non-uniform recombination maps in `fisher_wright`.
+Not modelled: selection, overlapping generations, mating schemes other
+than random mating between the sexes, population structure or migration,
+and non-uniform recombination maps in `fisher_wright`.
 
 ## Main Functions
 
@@ -55,6 +61,10 @@ Keyword arguments:
 | `mut_base` | `1e8` | base pairs per unit of `mr` (mutation only) |
 | `result` | `false` | return a `FisherWrightResult` and extract fixed positions |
 | `fixation_interval` | `1` | generations between fixation scans, when `result = true` |
+| `mutate` | `true` | generate new mutations; `false` leaves drift and recombination only |
+| `init` | `nothing` | starting population: `2ne` haplotypes or a `FisherWrightResult` to continue from |
+| `popsize` | `nothing` | census size per generation: a vector of `nt` sizes or a function of the generation, for example `bottleneck(100, 10, 21, 5)` or `growth(50, 0.05)` |
+| `mating` | `RandomMating()` | `RandomMating(nmale = m)` or `RandomMating(sexratio = p)` fixes the number or proportion of males |
 | `verbose` | `false` | report progress (mean muts/hap, substitutions, elapsed, ETA) to `stderr` |
 | `progress_interval` | `100` | generations between progress reports, when `verbose = true` |
 | `rng` | `Random.default_rng()` | random number generator; the realization depends only on its state |
@@ -294,6 +304,58 @@ diversity and SFS counts are scaled by Ne/N. In 1,000-replicate runs,
 Σ2pq was 396.0 ± 0.6 against an expected 395.9. The validation and
 benchmark logs were rerun at v0.4.1, and the power check of the CI tests
 now also runs the chromosome-boundary test.
+
+## Changes in v0.5.0
+
+**Demography and mating.** The census size, the sex ratio and the
+starting population can now be set. The generation is still discrete and
+non-overlapping, mating is random between the sexes with sires and dams
+drawn with replacement, and the model is neutral.
+
+- `popsize`: census size per generation, as a vector of `nt` sizes or a
+  function of the generation. Generation `g` draws the parents of its
+  `N_g` offspring from the `N_{g-1}` individuals before it, so drift
+  follows the number of parents. `bottleneck(n, nb, start, duration)`
+  and `growth(n0, r; start, limit)` build common trajectories.
+- `mating = RandomMating(nmale = m)` or `RandomMating(sexratio = p)`:
+  exactly `m`, or `round(p * N)`, males in every parental cohort, drawn
+  as a uniformly random subset. The default, `RandomMating()`, keeps
+  binomial sex.
+- `init`: start from given haplotypes or from a `FisherWrightResult`,
+  for example to burn in once and continue in several scenarios.
+- `mutate = false`: drift and recombination only, for checks such as
+  the decay of heterozygosity from a population given by `init`.
+
+**Results.** `FisherWrightResult` has two new fields: `census`, the
+sizes N₀, …, N_nt, and `males`, the realized number of males among the
+parents of each generation. A run continued from a result appends to its
+record. `effective_size(result, generations)` returns Wright's
+4N_mN_f/(N_m + N_f) for one generation or its harmonic mean over
+several. The three-argument constructor still works; code that
+constructs or destructures the struct by all its fields needs the two
+new ones.
+
+**Seeded output is unchanged** for calls that use none of the new
+keywords: the golden-output digests of v0.4.0 pass. Internally the
+generation loop moved into a typed engine (`src/simulate.jl`) with
+buffers sized for the largest cohort of the run.
+
+**Validation.** New CI tests compare heterozygosity with the exact
+two-sex recursion: decay without mutation, through a bottleneck and an
+expansion, and under fixed sex ratios (3♂/17♀, 10♂/10♀, and a
+proportion of 0.2 males through a change in size). A new full
+validation compares S, Σ2pq, the SFS and LD with msprime's DTWF under
+the same demography, after a bottleneck and after an expansion: all 36
+checks pass for two seeds at 200 replicates (manual, "Validation:
+changing population size").
+
+**Performance.** The default path is within run-to-run noise of v0.4.2.
+On the 1 Gb benchmark (`ne = 2000`, `nt = 2000`, 10 × 100 Mbp, 8
+threads, AMD Ryzen 9 5950X), simulation time was 57.15 s for v0.4.2 and
+57.11 s for v0.5.0 (means of three interleaved runs; single runs ranged
+over 0.1 s and 0.4 s), with the same output for the same seed. Peak
+resident memory fell from 2,484 to 2,328 MiB. The log is
+`docs/src/validation/benchmark-v0.5.0-vs-v0.4.2.txt`.
 
 ## Contributing and support
 
