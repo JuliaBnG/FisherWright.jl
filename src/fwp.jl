@@ -45,6 +45,7 @@ end
         popsize = nothing,
         mating = RandomMating(),
         fitness = Neutral(),
+        pedigree = 0,
         verbose::Bool = false,
         progress_interval::Integer = 100,
         rng::AbstractRNG = Random.default_rng(),
@@ -76,6 +77,7 @@ total genome lengths up to ``2^{32} \\approx 4.29 \\times 10^9`` base pairs (bp)
 - `popsize = nothing`: Census size per generation; `nothing` keeps it at `ne`. Either a vector of `nt` integers or a function `g -> N_g` of the generation `g = 1, …, nt`, which is called once per generation before the run; every size must exceed 1. Generation `g` draws the parents of its `N_g` offspring from the `N_{g-1}` individuals of the previous generation (`N_0 = ne`), so the run returns `2 * N_nt` haplotypes. [`bottleneck`](@ref) and [`growth`](@ref) build common trajectories. See *Changing population size* below.
 - `mating = RandomMating()`: Mating scheme. The default redraws sex as Bernoulli(½) per individual in every generation; [`RandomMating`](@ref)`(nmale = m)` or `RandomMating(sexratio = p)` fixes the number or the proportion of males instead. See *Sex ratio* below. [`FamilySize`](@ref) controls the distribution of family sizes, with one sire per dam, and [`Hierarchical`](@ref) is the nested design of `s` sires each mated to `d` dams.
 - `fitness = Neutral()`: Fitness model. [`SiteFitness`](@ref)`(loci)` selects on the sites of a [`FitnessLoci`](@ref) table, and [`TraitFitness`](@ref)`(loci; σe, fitness)` on a quantitative trait with the loci of a [`TraitLoci`](@ref) table; each draws parents with probability proportional to fitness within each sex (with [`FamilySize`](@ref), multiplies the split weights by fitness), and requires `result = true`. See *Selection* below.
+- `pedigree::Integer = 0`: Number of generations of matings to record in the `pedigree` of the result (`typemax(Int)` for all); requires `result = true`. Individuals are numbered in birth order across the run, and `first_id` of the result is the ID of its individual 1. See [`FisherWrightResult`](@ref).
 - `verbose::Bool = false`: If `true`, writes a start banner and a progress line to `stderr` every `progress_interval` generations and at the last generation, reporting mean mutations per haplotype, accumulated substitutions (when `result = true`), elapsed wall time, and a linear ETA. On a terminal the line is updated in place; when `stderr` is redirected each report is a separate line.
 - `progress_interval::Integer = 100`: Generations between progress reports when `verbose = true` (must be positive).
 - `rng::AbstractRNG = Random.default_rng()`: Random number generator; see *Reproducibility* below.
@@ -148,6 +150,7 @@ function fisher_wright(
     popsize=nothing,
     mating::AbstractMating=RandomMating(),
     fitness::AbstractFitness=Neutral(),
+    pedigree::Integer=0,
     verbose::Bool=false,
     progress_interval::Integer=100,
     rng::AbstractRNG=Random.default_rng(),
@@ -172,6 +175,9 @@ function fisher_wright(
     _check_mating(mating, demog, Int(ne), Int(nt))
     _check_fitness(fitness, tbp)
     _check_selection(mating, fitness)
+    pedigree >= 0 || throw(ArgumentError("pedigree must be non-negative"))
+    pedigree == 0 || result ||
+        throw(ArgumentError("pedigree needs result = true: the pedigree is returned in a FisherWrightResult"))
     if _selected(fitness)
         result || throw(ArgumentError(
             "selection needs result = true: the selected alleles are returned in a FisherWrightResult"))
@@ -179,6 +185,10 @@ function fisher_wright(
     prt, substitutions = _initial_state(init, 2 * Int(ne), cbp, result)
     sel, ssubs = _initial_selected(init, fitness, 2 * Int(ne))
     st = SimState(prt, substitutions, _maxsize(demog, nt), rng, sel, ssubs)
+    # Generations and IDs continue those of a result given as init.
+    gen0 = init isa FisherWrightResult ? length(init.males) : 0
+    first0 = init isa FisherWrightResult ? init.first_id : 1
+    _pedigree_start!(st.ped, Int(pedigree), gen0, first0, Int(ne))
 
     verbose &&
         @info "Fisher-Wright population simulation start" ne nt total_bp = Int(tg) threads =
@@ -197,8 +207,10 @@ function fisher_wright(
     haps = resize!(st.prt, 2 * st.n)
     result || return (haps, cbp)
     census, males, fmean, flmean, flvar, gmean, gvar, pmean, pvar, ppairs, mpairs = _record(init, st)
+    ped = _pedigree_result(st.ped, init, gen0, first0, Int(ne))
     return FisherWrightResult(haps, cbp, st.substitutions, census, males,
-        resize!(st.sel, 2 * st.n), st.ssubs, fmean, flmean, flvar, gmean, gvar, pmean, pvar, ppairs, mpairs)
+        resize!(st.sel, 2 * st.n), st.ssubs, fmean, flmean, flvar, gmean, gvar, pmean, pvar, ppairs, mpairs,
+        st.ped.first, ped)
 end
 
 """
@@ -215,6 +227,7 @@ end
         popsize = nothing,
         mating = RandomMating(),
         fitness = Neutral(),
+        pedigree = 0,
         verbose::Bool = false,
         progress_interval::Integer = 100,
         rng::AbstractRNG = Random.default_rng(),
@@ -244,6 +257,7 @@ are automatically extracted from `sp`:
 - `popsize = nothing`: Census size per generation, as a vector of `nt` integers or a function of the generation; see the method above.
 - `mating = RandomMating()`: Mating scheme, for example `RandomMating(nmale = 10)`; see the method above.
 - `fitness = Neutral()`: Fitness model, for example `SiteFitness(loci)` or `TraitFitness(loci; σe, fitness)`; requires `result = true`; see the method above.
+- `pedigree::Integer = 0`: Generations of matings to record in the result; see the method above.
 - `verbose::Bool = false`: If `true`, reports progress to `stderr`; see the method above.
 - `progress_interval::Integer = 100`: Generations between progress reports when `verbose = true`.
 - `rng::AbstractRNG = Random.default_rng()`: Random number generator; see the method above.
@@ -270,6 +284,7 @@ function fisher_wright(
     popsize = nothing,
     mating::AbstractMating = RandomMating(),
     fitness::AbstractFitness = Neutral(),
+    pedigree::Integer = 0,
     verbose::Bool = false,
     progress_interval::Integer = 100,
     rng::AbstractRNG = Random.default_rng(),
@@ -288,6 +303,7 @@ function fisher_wright(
         popsize = popsize,
         mating = mating,
         fitness = fitness,
+        pedigree = pedigree,
         verbose = verbose,
         progress_interval = progress_interval,
         rng = rng,

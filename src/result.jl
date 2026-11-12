@@ -3,7 +3,7 @@
                        selected_haplotypes, selected_substitutions,
                        mean_fitness, mean_log_fitness, var_log_fitness,
                        mean_genotypic, var_genotypic, mean_phenotypic, var_phenotypic,
-                       paternal_pairs, maternal_pairs)
+                       paternal_pairs, maternal_pairs, first_id, pedigree)
     FisherWrightResult(active_haplotypes, chromosome_ends, substitutions;
                        selected_haplotypes, selected_substitutions)
 
@@ -42,6 +42,14 @@ with the census record of the run.
   generation, as the number of ordered pairs of its offspring that share their sire, `Σ m(m - 1)` over the sires,
   and that share their dam, `Σ n(n - 1)` over the dams; [`effective_size`](@ref) uses them. `NaN` in a result
   built by hand.
+- `first_id::Int`: the ID of individual 1 of `active_haplotypes`; individual `i` (haplotypes `2i - 1` and `2i`)
+  has ID `first_id + i - 1`. Individuals are numbered in birth order across the run, the starting population
+  first, and a run continued through `init` continues the numbering. 1 in a result built by hand.
+- `pedigree::DataFrame`: with the `pedigree = k` keyword of [`fisher_wright`](@ref), the matings of the last `k`
+  generations, one row per individual: `id`, `sire` and `dam` (IDs; 0 for the founders of the record, which are
+  the parents of the oldest recorded generation, or the starting population), `sex` (`true` for male, the sex
+  the individual had when its generation reproduced; `missing` for the last generation) and `generation` (of
+  birth, numbered as in `census`). Empty without the keyword.
 
 A run continued from a `FisherWrightResult` through the `init` keyword of [`fisher_wright`](@ref) appends its
 generations to the record of that result, so generations are numbered from the first call; started from plain
@@ -69,7 +77,22 @@ struct FisherWrightResult
     var_phenotypic::Vector{Float64}
     paternal_pairs::Vector{Float64}
     maternal_pairs::Vector{Float64}
+    first_id::Int
+    pedigree::DataFrame
 end
+
+_empty_pedigree() = DataFrame(id=Int[], sire=Int[], dam=Int[], sex=Union{Missing,Bool}[], generation=Int[])
+
+# Without a pedigree: individual i has ID i, and nothing is recorded.
+FisherWrightResult(
+    active_haplotypes, chromosome_ends, substitutions, census, males,
+    selected_haplotypes, selected_substitutions, mean_fitness, mean_log_fitness, var_log_fitness,
+    mean_genotypic, var_genotypic, mean_phenotypic, var_phenotypic, paternal_pairs, maternal_pairs,
+) = FisherWrightResult(
+    active_haplotypes, chromosome_ends, substitutions, census, males,
+    selected_haplotypes, selected_substitutions, mean_fitness, mean_log_fitness, var_log_fitness,
+    mean_genotypic, var_genotypic, mean_phenotypic, var_phenotypic, paternal_pairs, maternal_pairs,
+    1, _empty_pedigree())
 
 # Without a record of family sizes: NaN for every recorded generation.
 FisherWrightResult(
@@ -390,7 +413,7 @@ function _extract_fixed(result::FisherWrightResult)
         result.selected_haplotypes, result.selected_substitutions,
         result.mean_fitness, result.mean_log_fitness, result.var_log_fitness,
         result.mean_genotypic, result.var_genotypic, result.mean_phenotypic, result.var_phenotypic,
-        result.paternal_pairs, result.maternal_pairs)
+        result.paternal_pairs, result.maternal_pairs, result.first_id, result.pedigree)
 end
 
 

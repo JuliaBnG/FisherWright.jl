@@ -13,6 +13,7 @@ using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_s
 using Distributions: Gamma, Exponential, Normal
 import FisherWright: _fitness!
 using BnGStructs
+using DataFrames: nrow, names
 using Distributions: Poisson
 using Statistics: mean, var, cor, std
 
@@ -1752,6 +1753,102 @@ end
     @test effective_size(up, 50:150) < effective_size(flat, 50:150)
     @test_throws "nothing to select on" fisher_wright(N, 5, chr, 2.0; kw..., mating=Hierarchical(3, 3),
         fitness=TraitFitness(loci; fitness=Directional(1.0)))
+end
+
+@testset "Pedigree" begin
+    chr, kw = [100_000, 100_000], (M=5e4, mut_base=1e5, result=true)
+    sizes = [12, 8, 15, 15, 10]
+    r = fisher_wright(10, 5, chr, 5.0; kw..., popsize=sizes, pedigree=typemax(Int), rng=Xoshiro(1))
+    ped = r.pedigree
+    @test names(ped) == ["id", "sire", "dam", "sex", "generation"]
+    # IDs in birth order, one row per individual of every generation.
+    @test ped.id == 1:sum(r.census) && ped.generation == reduce(vcat, [fill(g, n) for (g, n) in zip(0:5, r.census)])
+    @test r.first_id == sum(r.census) - r.census[end] + 1
+    # Founders have no parents, the last generation no sex yet; parents are
+    # of the previous generation, sires male and dams female.
+    @test all(==(0), ped.sire[ped.generation .== 0]) && all(==(0), ped.dam[ped.generation .== 0])
+    @test all(ismissing, ped.sex[ped.generation .== 5]) && !any(ismissing, ped.sex[ped.generation .< 5])
+    row = Dict(id => i for (i, id) in enumerate(ped.id))
+    off = ped[ped.generation .> 0, :]
+    @test all(ped.generation[row[s]] == g - 1 && ped.sex[row[s]] === true for (s, g) in zip(off.sire, off.generation))
+    @test all(ped.generation[row[d]] == g - 1 && ped.sex[row[d]] === false for (d, g) in zip(off.dam, off.generation))
+    # The other records agree: males among the parents, and pairs of
+    # offspring sharing a sire or a dam.
+    @test [count(x -> x === true, ped.sex[ped.generation .== g-1]) for g = 1:5] == r.males
+    pairs(v) = (c = values(Dict(k => count(==(k), v) for k in unique(v))); sum(n -> n * (n - 1), c))
+    @test [pairs(off.sire[off.generation .== g]) for g = 1:5] == r.paternal_pairs
+    @test [pairs(off.dam[off.generation .== g]) for g = 1:5] == r.maternal_pairs
+
+    # The pedigree describes the transmission: every haplotype of the start
+    # carries a private marker, there is no mutation, and every individual
+    # carries markers of its founder ancestors only.
+    N0 = 12
+    marker(k) = UInt32(1_000 * k)                    # haplotype k of the start
+    start = [[marker(k)] for k = 1:2N0]
+    r = fisher_wright(N0, 4, chr, 5.0; kw..., init=start, mutate=false, pedigree=typemax(Int), rng=Xoshiro(2))
+    ped = r.pedigree
+    row = Dict(id => i for (i, id) in enumerate(ped.id))
+    founders(id) = ped.sire[row[id]] == 0 ? [id] : vcat(founders(ped.sire[row[id]]), founders(ped.dam[row[id]]))
+    for i = 1:length(r.active_haplotypes)÷2
+        id = r.first_id + i - 1
+        allowed = Set(marker(k) for f in founders(id) for k in (2f - 1, 2f))
+        @test issubset(union(r.active_haplotypes[2i-1], r.active_haplotypes[2i]), allowed)
+    end
+    # ... and exactly in one generation: the paternal haplotype comes from
+    # the sire, the maternal one from the dam.
+    r = fisher_wright(N0, 1, chr, 5.0; kw..., init=start, mutate=false, pedigree=1, rng=Xoshiro(3))
+    ped = r.pedigree[r.pedigree.generation .== 1, :]
+    @test ped.id == r.first_id .+ (0:N0-1)
+    for i = 1:N0
+        s, d = ped.sire[i], ped.dam[i]
+        @test issubset(r.active_haplotypes[2i-1], [marker(2s - 1), marker(2s)])
+        @test issubset(r.active_haplotypes[2i], [marker(2d - 1), marker(2d)])
+    end
+
+    # A window of the last k generations: k + 1 generations, the oldest as
+    # founders of the record.
+    w = fisher_wright(10, 6, chr, 5.0; kw..., pedigree=2, rng=Xoshiro(4))
+    full = fisher_wright(10, 6, chr, 5.0; kw..., pedigree=typemax(Int), rng=Xoshiro(4))
+    @test w.active_haplotypes == full.active_haplotypes      # recording does not change the run
+    @test sort(unique(w.pedigree.generation)) == 4:6
+    @test all(==(0), w.pedigree.sire[w.pedigree.generation .== 4])
+    tail = full.pedigree[full.pedigree.generation .>= 5, :]
+    @test isequal(w.pedigree[w.pedigree.generation .>= 5, :], tail)
+    @test w.pedigree.sex[w.pedigree.generation .== 4] == full.pedigree.sex[full.pedigree.generation .== 4]
+
+    # Without the keyword: nothing recorded, IDs counted, and the run is the
+    # same.
+    none = fisher_wright(10, 6, chr, 5.0; kw..., rng=Xoshiro(4))
+    @test nrow(none.pedigree) == 0 && none.first_id == full.first_id
+    @test none.active_haplotypes == full.active_haplotypes
+
+    # A continued run continues generations and IDs and appends to the
+    # pedigree of init, within the window; init is left alone.
+    a = fisher_wright(10, 3, chr, 5.0; kw..., pedigree=typemax(Int), rng=Xoshiro(5))
+    keep = copy(a.pedigree)
+    b = fisher_wright(10, 3, chr, 5.0; kw..., init=a, pedigree=typemax(Int), rng=Xoshiro(6))
+    @test b.pedigree.id == 1:70 && b.first_id == 61 && maximum(b.pedigree.generation) == 6
+    @test isequal(b.pedigree[1:30, :], a.pedigree[1:30, :])     # generations 0 to 2
+    @test !any(ismissing, b.pedigree.sex[b.pedigree.generation .== 3])   # sexes of the start filled in
+    @test isequal(a.pedigree, keep)
+    c = fisher_wright(10, 3, chr, 5.0; kw..., init=a, pedigree=4, rng=Xoshiro(6))
+    @test sort(unique(c.pedigree.generation)) == 2:6 && all(==(0), c.pedigree.sire[c.pedigree.generation .== 2])
+    @test isequal(c.pedigree[c.pedigree.generation .>= 3, :], b.pedigree[b.pedigree.generation .>= 3, :])
+    # From plain haplotypes the numbering starts at 1.
+    plain = fisher_wright(10, 2, chr, 5.0; kw..., init=a.active_haplotypes, pedigree=1, rng=Xoshiro(7))
+    @test plain.first_id == 21 && minimum(plain.pedigree.generation) == 1
+
+    # Family sizes: every dam has one sire.
+    f = fisher_wright(20, 4, chr, 5.0; kw..., mating=Hierarchical(2, 3), pedigree=typemax(Int), rng=Xoshiro(8))
+    off = f.pedigree[f.pedigree.generation .> 0, :]
+    @test all(length(unique(off.sire[off.dam .== d])) == 1 for d in unique(off.dam))
+    @test all(g -> length(unique(off.sire[off.generation .== g])) == 2, 1:4)
+
+    # Errors, and the Species method.
+    @test_throws ArgumentError fisher_wright(10, 2, chr, 5.0; pedigree=1)
+    @test_throws ArgumentError fisher_wright(10, 2, chr, 5.0; kw..., pedigree=-1)
+    sp = GenericSpecies("Ped", Int32(10), UInt32.(chr), UInt32(50_000))
+    @test isequal(fisher_wright(sp, 6, 5.0; mut_base=1e5, result=true, pedigree=2, rng=Xoshiro(4)).pedigree, w.pedigree)
 end
 
 @testset "Simulation invariants at scale" begin

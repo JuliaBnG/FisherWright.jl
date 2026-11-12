@@ -6,7 +6,8 @@
 fisher_wright(ne, nt, chr, mr; M=1e8, mut_base=1e8,
               result=false, fixation_interval=1, mutate=true,
               init=nothing, popsize=nothing, mating=RandomMating(),
-              fitness=Neutral(), verbose=false, progress_interval=100)
+              fitness=Neutral(), pedigree=0, verbose=false,
+              progress_interval=100)
 ```
 
 Simulate `ne` diploid individuals for `nt` generations. `chr` is a vector of
@@ -24,6 +25,7 @@ new mutations per `mut_base` base pairs per haplotype per meiosis.
 | `popsize` | `nothing` | Census size per generation: a vector of `nt` sizes or a function of the generation; `nothing` keeps `ne`. |
 | `mating` | `RandomMating()` | Mating scheme; `RandomMating(nmale=m)` or `RandomMating(sexratio=p)` fixes the number or the proportion of males. |
 | `fitness` | `Neutral()` | Fitness model; `SiteFitness(loci)` selects on the sites of a `FitnessLoci` table (needs `result=true`). |
+| `pedigree` | `0` | Generations of matings to record as a pedigree (needs `result=true`); see [Pedigree](@ref). |
 | `verbose` | `false` | Report progress (mean mutations per haplotype, substitutions, elapsed time, ETA) to `stderr`. |
 | `progress_interval` | `100` | Generations between progress reports when `verbose=true`. |
 
