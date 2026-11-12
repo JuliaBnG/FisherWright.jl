@@ -27,8 +27,8 @@ fitness loci with a table of chr, pos, s, h and frequency, and
 the neutral export. Fitness record (2026-11-12): `mean_fitness`,
 `mean_log_fitness` and `var_log_fitness` per generation, for the
 parents, absolute (substituted sites included), appended through
-`init`. Still to do in 0.6.0: the rest of validation 6
-(mutation–selection balance, substitution rate, SFS at selected sites).
+`init`. Validation 6 completed 2026-11-12 (see below). The 0.6.0 row is
+complete apart from the release itself.
 
 The refactor (`src/simulate.jl`): a `SimState` struct holds the
 haplotypes, buffers and per-slot streams; `fisher_wright` builds it and
@@ -329,6 +329,17 @@ replicates and seeds; logs go under `docs/src/validation/`.
    - Substitution-rate ratio K_sel/K_neu = 2N·u(1/2N).
    - SFS at selected sites against the Poisson random field
      (Sawyer–Hartl) expectation per 4Ns class.
+   Done together (2026-11-12), against the same kind of reference:
+   the distribution of the derived-allele count per selected site,
+   fixed class included, after 300 generations at N = 30, for
+   deleterious (h = ½ and 0.1), neutral and beneficial sites, engine
+   against a naive single-site simulation
+   (`validate-selection-balance.jl`, CI test "Selection under recurrent
+   mutation"). The deterministic values (μ/(hs), e^{−U}) are printed for
+   comparison; the Poisson random field comparison at large N and weak
+   selection remains open. With many sites, interference lowers the
+   per-site Ne by 1/(1 + 4C²) (Robertson; Santiago and Caballero),
+   which the run with 50 sites resolves and matches.
 7. **Linked selection, against SLiM:** extend `bench/simulate-slim.slim`
    with an `m2` mutation type and genomic elements at the same sites,
    the same DFE, and `mutationStackPolicy = "f"`. Compare neutral π and
