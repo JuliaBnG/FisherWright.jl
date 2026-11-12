@@ -26,8 +26,11 @@ julia --project=docs --startup-file=no docs/make.jl
 The generated site is in `docs/build/`.
 
 ## Features
-- Forward simulation of a randomly mating diploid population with two
-  sexes, any number of autosomes and genomes up to 2³² − 1 bp
+- Forward simulation of a diploid population with two sexes, any number
+  of autosomes and genomes up to 2³² − 1 bp
+- Random mating, or controlled family sizes with one sire per dam
+  (equal, multinomial or overdispersed families; breeder subsets and
+  the nested sire–dam design of livestock breeding)
 - Constant census size or a given trajectory (bottleneck, growth, any
   vector or function of the generation), and a binomial or fixed sex
   ratio
@@ -38,17 +41,20 @@ The generated site is in `docs/build/`.
 - Optional extraction of fixed mutations during the run, which keeps memory
   bounded over long burn-ins
 - Selection at an explicit table of sites with given effects (`s`, `h`,
-  or drawn from a distribution of fitness effects), soft and within each
-  sex; the causal variants and their effects can be exported
+  or drawn from a distribution of fitness effects), or on a quantitative
+  trait (stabilizing, directional or any function of the phenotype);
+  soft and within each sex; the causal variants and their effects can be
+  exported
+- Effective size realized by the family sizes of a run
 - Export to a 1-bit-per-allele `BitArray` with a linkage map (`DataFrame`), to a
   targeted SNP-chip panel, or to `BnGStructs.Haplotype`
 - Validated against neutral theory, msprime, and independent simulations
   of the same model under selection (see the manual)
 
-Not modelled: hard selection and quantitative traits (selection acts on
-the fitness of given sites only), overlapping generations, mating schemes
-other than random mating between the sexes, population structure or
-migration, and non-uniform recombination maps in `fisher_wright`.
+Not modelled: hard selection and an emergent census size, overlapping
+generations, mating by relatedness or phenotype, selfing, population
+structure or migration, and non-uniform recombination maps in
+`fisher_wright`.
 
 ## Main Functions
 
@@ -69,8 +75,8 @@ Keyword arguments:
 | `mutate` | `true` | generate new mutations; `false` leaves drift and recombination only |
 | `init` | `nothing` | starting population: `2ne` haplotypes or a `FisherWrightResult` to continue from |
 | `popsize` | `nothing` | census size per generation: a vector of `nt` sizes or a function of the generation, for example `bottleneck(100, 10, 21, 5)` or `growth(50, 0.05)` |
-| `mating` | `RandomMating()` | `RandomMating(nmale = m)` or `RandomMating(sexratio = p)` fixes the number or proportion of males |
-| `fitness` | `Neutral()` | `SiteFitness(loci)` selects on the sites of a `FitnessLoci` table; needs `result = true` |
+| `mating` | `RandomMating()` | `RandomMating(nmale = m)` or `RandomMating(sexratio = p)` fixes the number or proportion of males; `FamilySize(...)` and `Hierarchical(s, d)` control family sizes |
+| `fitness` | `Neutral()` | `SiteFitness(loci)` selects on the sites of a `FitnessLoci` table, `TraitFitness(loci; σe, fitness)` on a quantitative trait; needs `result = true` |
 | `verbose` | `false` | report progress (mean muts/hap, substitutions, elapsed, ETA) to `stderr` |
 | `progress_interval` | `100` | generations between progress reports, when `verbose = true` |
 | `rng` | `Random.default_rng()` | random number generator; the realization depends only on its state |
@@ -424,6 +430,72 @@ number of selected sites (10³ to 10⁵) and the rate of new selected
 alleles (0.01 to 0.1 per haplotype per generation;
 `bench/benchmark-selection.jl`). The log is
 `docs/src/validation/benchmark-v0.6.0-vs-v0.5.0.txt`.
+
+## Changes in v0.7.0
+
+**Selection on a quantitative trait.** `fitness = TraitFitness(loci;
+σe, fitness)` with a `TraitLoci(pos, a; h, μ)` table (or `trait_loci`):
+the genotypic value G sums 0, h·a and a over the loci, including fixed
+sites; the phenotype is P = G + e with e ~ N(0, σe²) drawn serially from
+`rng`; fitness is `Stabilizing(θ, ω²)`, `Directional(β)` or any
+non-negative function of P. Selection is soft and within each sex. The
+result records the mean and variance of G and P of the parents of every
+generation, and `to_haplotype(result, loci)` exports the trait loci with
+their effects.
+
+**Family sizes.** `mating = FamilySize(; dams, sires, nsires, ndams,
+nmale, sexratio)` keeps the census size of each generation and splits
+its offspring among the dams and the dams among the sires (`:equal`,
+`:random`, or Dirichlet-multinomial with Gamma(k) weights); every dam
+has one sire, so her offspring are full sibs. `nsires` and `ndams`
+restrict breeding to random subsets of the cohort, and
+`Hierarchical(s, d)` is the nested design of s sires with d dams each
+and equal families. With selection, the split weights are multiplied by
+fitness (`:equal` splits refuse selection).
+
+**Realized effective size.** The result records the realized family
+sizes of every generation (`paternal_pairs`, `maternal_pairs`), and
+`effective_size(result)` returns 1/a with
+a = (Σm(m − 1) + Σn(n − 1))/(4N(N − 1)), harmonic over generations:
+correct for every mating scheme, and including the variance in family
+size that selection adds.
+
+**Breaking changes.**
+
+- `effective_size(result)` now returns the effective size realized by
+  the family sizes of the run. Under random mating it equals the
+  previous value on average but varies between runs;
+  `effective_size(result; from = :sexes)` gives the previous value,
+  4NmNf/(Nm + Nf).
+- `FisherWrightResult` has six new fields (`mean_genotypic`,
+  `var_genotypic`, `mean_phenotypic`, `var_phenotypic`,
+  `paternal_pairs`, `maternal_pairs`); the existing constructors still
+  work.
+- New exported names: `TraitLoci`, `trait_loci`, `TraitFitness`,
+  `Stabilizing`, `Directional`, `FamilySize`, `Hierarchical`.
+
+**Seeded output is unchanged** for runs with the default mating and no
+selection: the golden-output digests of v0.4.0 pass.
+
+**Validation.** Drift under every family-size scheme, against the exact
+two-sex recursion with the coalescence probability of the scheme
+(closed forms for all splits, breeder subsets included). One generation
+of trait selection is tested to be unbiased given the parents, under
+random mating and under family sizes. The neutral genetic variance of a
+trait matches its exact expectation E[α²](2H_B − H_W) at every
+generation (22 checks, |z| ≤ 1.93); the response to directional
+selection is reported against the Gaussian prediction (manual,
+"Validation: selection").
+
+**Performance.** Runs with the default mating and no selection are as
+fast as in v0.6.0: on the 1 Gb benchmark (`ne = 2000`, `nt = 2000`,
+10 × 100 Mbp, 8 threads, idle AMD Ryzen 9 3900X), 63.29 s for v0.6.0
+and 63.28 s for v0.7.0 (means of three interleaved runs), with the same
+output. Over 500 generations of the same genome, selection at sites
+costs 7 to 15% more, selection on a trait with 10,000 loci 16%, and
+`FamilySize` costs nothing in itself (its runs are faster when families
+are variable, because the effective size and so the diversity are
+lower). The log is `docs/src/validation/benchmark-v0.7.0-vs-v0.6.0.txt`.
 
 ## Contributing and support
 

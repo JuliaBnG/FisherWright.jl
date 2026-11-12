@@ -1,9 +1,10 @@
 # FisherWright.jl
 
 `FisherWright.jl` simulates diploid Fisher-Wright populations under mutation,
-recombination, and random mating, at constant size or along a given
-trajectory of census sizes, with a binomial or fixed sex ratio, and
-neutrally or with selection at given sites. It is designed for generating population
+recombination, and random mating or controlled family sizes, at
+constant size or along a given trajectory of census sizes, with a
+binomial or fixed sex ratio, and neutrally or with selection at given
+sites or on a quantitative trait. It is designed for generating population
 genetic data while keeping each haplotype as a sorted, unique vector of
 `UInt32` mutation positions.
 
