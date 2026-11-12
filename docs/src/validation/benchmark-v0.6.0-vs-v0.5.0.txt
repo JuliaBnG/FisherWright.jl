@@ -1,0 +1,35 @@
+# Date: 2026-11-12T09:20Z  Commits: v0.5.0 (tag) and 5a9a57b (package source identical to v0.6.0), both from git archive
+# CPU: AMD Ryzen 9 3900X 12-Core Processor, otherwise idle; julia version 1.13.3; deps: BnGStructs v0.2.7 DataFrames v1.8.3 Distributions v0.25.134
+# Three interleaved runs of each version (summary lines):
+# $ julia --startup-file=no -t 8 --project=<dir> <dir>/bench/simulate-fisher-wright.jl 2000 2000 10 100000000 1.0 42
+
+Default path, simulation runtime (s); every run: 571686 polymorphic SNPs, 4 substitutions
+  run   v0.5.0    v0.6.0
+  1     63.351    63.230
+  2     63.242    63.252
+  3     63.196    63.279
+  mean  63.263    63.254
+Peak RSS: 2313-2315 MiB (v0.5.0), 2321-2325 MiB (v0.6.0)
+
+Note: a first run of the same comparison on a shared AMD Ryzen Threadripper 3970X
+(svr, load 14-21 from other jobs) gave 49.9 s for v0.5.0 and 71.3 s for v0.6.0
+(means of three interleaved runs), with identical output and identical
+dependency versions. The difference did not reproduce on the idle machine
+above, nor in shorter runs at each merge between v0.5.0 and v0.6.0
+(2.14-2.21 s for 300 generations); it is attributed to the shared machine
+and not used.
+
+Selection overhead
+# $ julia --startup-file=no -t 8 --project=. bench/benchmark-selection.jl 2000 500 3 42
+========================================================================
+ Selection overhead: ne = 2000, nt = 500, 10 × 100 Mb, threads = 8, reps = 3
+========================================================================
+  model                      median (s)      ratio   runs (s)
+  neutral                          4.29      1.000   4.35, 4.29, 4.29
+  K =   1000, Kμ = 0.01            4.44      1.036   4.55, 4.44, 4.43
+  K =   1000, Kμ = 0.10            4.67      1.090   4.59, 4.67, 4.69
+  K =  10000, Kμ = 0.01            4.50      1.049   4.59, 4.50, 4.45
+  K =  10000, Kμ = 0.10            4.72      1.100   4.73, 4.66, 4.72
+  K = 100000, Kμ = 0.01            4.59      1.071   4.59, 4.60, 4.52
+  K = 100000, Kμ = 0.10            4.92      1.147   5.00, 4.82, 4.92
+========================================================================
