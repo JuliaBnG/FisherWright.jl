@@ -23,7 +23,7 @@ new mutations per `mut_base` base pairs per haplotype per meiosis.
 | `mutate` | `true` | Generate new mutations; `false` leaves drift and recombination only. |
 | `init` | `nothing` | Starting population: `2ne` haplotypes or a `FisherWrightResult`; `nothing` starts monomorphic. |
 | `popsize` | `nothing` | Census size per generation: a vector of `nt` sizes or a function of the generation; `nothing` keeps `ne`. |
-| `mating` | `RandomMating()` | Mating scheme; `RandomMating(nmale=m)` or `RandomMating(sexratio=p)` fixes the number or the proportion of males. |
+| `mating` | `RandomMating()` | Mating scheme; `RandomMating(nmale=m)` or `RandomMating(sexratio=p)` fixes the number or the proportion of males; `FamilySize`, `Hierarchical` and `Monoecious` are described below. |
 | `fitness` | `Neutral()` | Fitness model; `SiteFitness(loci)` selects on the sites of a `FitnessLoci` table (needs `result=true`). |
 | `pedigree` | `0` | Generations of matings to record as a pedigree (needs `result=true`); see [Pedigree](@ref). |
 | `verbose` | `false` | Report progress (mean mutations per haplotype, substitutions, elapsed time, ETA) to `stderr`. |
@@ -302,6 +302,51 @@ sel = fisher_wright(40, 100, [100_000, 100_000], 1.0; result=true,
                                          fitness=Directional(1.0)))
 (sel.mean_genotypic[end], effective_size(sel))
 ```
+
+## Hermaphrodites
+
+`mating = Monoecious(; selfing)` drops the sexes: every individual can
+be either parent of an offspring. Each offspring draws its first parent
+uniformly from the cohort, with replacement, and its second parent
+
+- `Monoecious()`: uniformly from the whole cohort, the first parent
+  included, so that offspring are selfed at random with probability
+  ``1/N``, the monoecious Wright–Fisher model (as in msprime's DTWF);
+- `Monoecious(selfing=s)`: the first parent itself with probability
+  ``s``, and otherwise uniformly from the ``N - 1`` others;
+  `selfing=0` excludes selfing.
+
+Two genes in different offspring come from the same parent with
+probability ``a = 1/N`` in all three cases, and the two genes of one
+offspring with probability ``\sigma`` (``s``, or ``1/N`` under random
+selfing). The heterozygosity within (``H_W``) and between (``H_B``)
+individuals then follows
+
+```math
+H_B' = (1 - a)H_B + \frac{a}{2}H_W, \qquad
+H_W' = (1 - \sigma)H_B + \frac{\sigma}{2}H_W,
+```
+
+which reduces to the two-sex recursion of [Effective size](@ref) for
+``\sigma = 0``. At equilibrium of the identity within individuals,
+``F = \sigma/(2 - \sigma)``, and the effective size is
+``N/(1 + F) = N(2 - \sigma)/2`` (Pollak 1987; Nordborg and Donnelly
+1997): ``N`` for random selfing, ``N/2`` for complete selfing.
+
+```@example simulation
+selfer = fisher_wright(40, 100, [100_000, 100_000], 1.0;
+                       mating=Monoecious(selfing=0.5), result=true)
+(selfer.males[end], selfer.selfing[end], effective_size(selfer))
+```
+
+The record holds no males (0), the proportion of selfed offspring of
+every generation (`selfing`), and family sizes that count a parent
+shared through either role; `effective_size` returns
+``(2 - \sigma_g)/(2a_g)`` per generation, about 30 here. In a
+pedigree the first parent is listed as `sire`, the second as `dam` (the
+same for a selfed individual), and the sex is `missing`. With a fitness
+model both parents are drawn with probability proportional to fitness,
+the second among the others when the offspring is not selfed.
 
 ## Selection
 

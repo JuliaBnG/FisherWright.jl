@@ -33,11 +33,13 @@ function _pedigree_start!(p::PedRecord, k::Int, gen::Int, first::Int, n::Int)
 end
 
 # One generation: the current cohort (st.n parents, sexes in st.sex) has
-# produced `no` offspring with the matings in st.pm.
-function _record_pedigree!(p::PedRecord, st, no::Int)
+# produced `no` offspring with the matings in st.pm; hermaphrodites
+# (`monoecious`) have no sex.
+function _record_pedigree!(p::PedRecord, st, no::Int, monoecious::Bool=false)
     pf = p.first
     if p.k > 0
-        sex = Vector{Union{Missing,Bool}}(view(st.sex, 1:st.n))
+        sex = monoecious ? Vector{Union{Missing,Bool}}(missing, st.n) :
+              Vector{Union{Missing,Bool}}(view(st.sex, 1:st.n))
         isempty(p.cgen) ? (p.bsex = sex) : (p.csex[end] = sex)
         push!(p.cgen, p.gen + 1)
         push!(p.cfirst, p.next)

@@ -282,7 +282,9 @@ current cohort occupies the leading entries.
 - `pcnt`: scratch for the number of offspring of each parent.
 - `swt`: scratch for the split weights of parents under selection.
 - `ppairs`, `mpairs`: per generation, the number of ordered pairs of
-  offspring that share their sire and that share their dam.
+  offspring that share their sire and that share their dam (with
+  hermaphrodites, a parent of one shared through either role).
+- `selfing`: per generation, the proportion of selfed offspring.
 - `ped`: IDs of the current cohort and the pedigree record.
 - `census`, `males`: record of the run. `census` starts with the size of the
   starting cohort and gains the number of offspring of every generation;
@@ -329,6 +331,7 @@ mutable struct SimState
     const swt::Vector{Float64}
     const ppairs::Vector{Float64}
     const mpairs::Vector{Float64}
+    const selfing::Vector{Float64}
     const ped::PedRecord
 end
 
@@ -364,7 +367,7 @@ function SimState(
         zeros(nmax), zeros(nmax), Float64[], Float64[], Float64[], Float64[],
         sizehint!(Int[], nmax), sizehint!(Int[], nmax), sizehint!(Int[], nmax),
         sizehint!(Int[], nmax), sizehint!(Int[], nmax),
-        zeros(Int, nmax), zeros(nmax), Float64[], Float64[], PedRecord(n),
+        zeros(Int, nmax), zeros(nmax), Float64[], Float64[], Float64[], PedRecord(n),
     )
 end
 
@@ -416,7 +419,7 @@ function _initial_state(init::FisherWrightResult, nh::Int, cbp::Vector{UInt32}, 
         throw(ArgumentError("init.census and init.males do not describe the $(nh ÷ 2) individuals of init"))
     all(v -> length(v) == length(init.males), (init.mean_fitness, init.mean_log_fitness,
         init.var_log_fitness, init.mean_genotypic, init.var_genotypic, init.mean_phenotypic,
-        init.var_phenotypic, init.paternal_pairs, init.maternal_pairs)) ||
+        init.var_phenotypic, init.paternal_pairs, init.maternal_pairs, init.selfing)) ||
         throw(ArgumentError("the fitness and trait records of init must have one entry per generation"))
     # A substitution is carried by every haplotype: kept apart when the run
     # tracks substitutions, merged back into the haplotypes when it does not.
@@ -428,20 +431,26 @@ end
 # a FisherWrightResult the run was continued from.
 _record(::Any, st::SimState) =
     (st.census, st.males, st.fmean, st.flmean, st.flvar, st.gmean, st.gvar, st.pmean, st.pvar,
-        st.ppairs, st.mpairs)
+        st.ppairs, st.mpairs, st.selfing)
 _record(init::FisherWrightResult, st::SimState) = (
     vcat(init.census, view(st.census, 2:length(st.census))), vcat(init.males, st.males),
     vcat(init.mean_fitness, st.fmean), vcat(init.mean_log_fitness, st.flmean),
     vcat(init.var_log_fitness, st.flvar), vcat(init.mean_genotypic, st.gmean),
     vcat(init.var_genotypic, st.gvar), vcat(init.mean_phenotypic, st.pmean),
     vcat(init.var_phenotypic, st.pvar), vcat(init.paternal_pairs, st.ppairs),
-    vcat(init.maternal_pairs, st.mpairs))
+    vcat(init.maternal_pairs, st.mpairs), vcat(init.selfing, st.selfing))
 
-# Realized family sizes of one generation: the number of ordered pairs of
-# its `no` offspring that share their sire, and that share their dam, from
-# the mating table.
+# Realized family sizes of one generation, from the mating table: for the
+# first (sire) and the second (dam) parent of an offspring i, the number of
+# ordered pairs (i, j) of distinct offspring of which it is also a parent of
+# j, counted once for each role it has in j. With separate sexes these are
+# Σ m(m - 1) over the sires and Σ n(n - 1) over the dams; a hermaphrodite
+# also links offspring through different roles, which adds the cross term
+# Σ_k m_k n_k - (selfed offspring) to both. Also the proportion of selfed
+# offspring.
 function _record_families!(st::SimState, no::Int)
     c, pm = st.pcnt, st.pm
+    cross = selfed = 0
     for (col, out) in ((1, st.ppairs), (2, st.mpairs))
         fill!(view(c, 1:st.n), 0)
         @inbounds for i = 1:no
@@ -451,8 +460,17 @@ function _record_families!(st::SimState, no::Int)
         @inbounds for k = 1:st.n
             pairs += c[k] * (c[k] - 1)
         end
-        push!(out, pairs)
+        if col == 1
+            # Σ_k m_k n_k as Σ_i m_{dam(i)}; zero with separate sexes.
+            @inbounds for i = 1:no
+                cross += c[pm[i, 2]]
+                selfed += pm[i, 1] == pm[i, 2]
+            end
+            cross -= selfed
+        end
+        push!(out, pairs + cross)
     end
+    push!(st.selfing, selfed / no)
     return nothing
 end
 
@@ -633,7 +651,7 @@ function _simulate!(
         _mate!(mating, fitness, st, no, rng)
         push!(st.males, length(st.sires))
         _record_families!(st, no)
-        _record_pedigree!(st.ped, st, no)
+        _record_pedigree!(st.ped, st, no, _monoecious(mating))
         selected ? _meiosis_selected!(st, recomb_map, no) : _meiosis!(st, recomb_map, no)
         push!(st.census, no)
         mutate && _mutation!(st, p_mut, span)

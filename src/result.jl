@@ -3,7 +3,7 @@
                        selected_haplotypes, selected_substitutions,
                        mean_fitness, mean_log_fitness, var_log_fitness,
                        mean_genotypic, var_genotypic, mean_phenotypic, var_phenotypic,
-                       paternal_pairs, maternal_pairs, first_id, pedigree)
+                       paternal_pairs, maternal_pairs, selfing, first_id, pedigree)
     FisherWrightResult(active_haplotypes, chromosome_ends, substitutions;
                        selected_haplotypes, selected_substitutions)
 
@@ -20,7 +20,7 @@ with the census record of the run.
 - `census::Vector{Int}`: Census sizes ``N_0, N_1, …, N_{nt}`` of the recorded generations: `census[1]` is
   the starting population and `census[g + 1]` the number of individuals born in generation `g`.
 - `males::Vector{Int}`: `males[g]` is the realized number of males among the `census[g]` parents of generation `g`;
-  the remaining `census[g] - males[g]` parents are females.
+  the remaining `census[g] - males[g]` parents are females. 0 for parents without sexes ([`Monoecious`](@ref)).
 
 - `selected_haplotypes::Vector{Vector{UInt32}}`: for each haplotype, the sorted positions of the derived alleles
   it carries at the fitness loci of a run with selection ([`SiteFitness`](@ref)); empty vectors in a neutral run.
@@ -41,14 +41,19 @@ with the census record of the run.
 - `paternal_pairs::Vector{Float64}`, `maternal_pairs::Vector{Float64}`: the realized family sizes of each
   generation, as the number of ordered pairs of its offspring that share their sire, `Σ m(m - 1)` over the sires,
   and that share their dam, `Σ n(n - 1)` over the dams; [`effective_size`](@ref) uses them. `NaN` in a result
-  built by hand.
+  built by hand. With hermaphrodites ([`Monoecious`](@ref)), `paternal_pairs` counts the ordered pairs `(i, j)` of
+  distinct offspring in which the first parent of `i` is a parent of `j`, once for each role it has in `j`, and
+  `maternal_pairs` the same for the second parent of `i`; with separate sexes these are the sums above.
+- `selfing::Vector{Float64}`: the proportion of the offspring of each generation that are selfed (one parent in
+  both roles); 0 with separate sexes.
 - `first_id::Int`: the ID of individual 1 of `active_haplotypes`; individual `i` (haplotypes `2i - 1` and `2i`)
   has ID `first_id + i - 1`. Individuals are numbered in birth order across the run, the starting population
   first, and a run continued through `init` continues the numbering. 1 in a result built by hand.
 - `pedigree::DataFrame`: with the `pedigree = k` keyword of [`fisher_wright`](@ref), the matings of the last `k`
   generations, one row per individual: `id`, `sire` and `dam` (IDs; 0 for the founders of the record, which are
-  the parents of the oldest recorded generation, or the starting population), `sex` (`true` for male, the sex
-  the individual had when its generation reproduced; `missing` for the last generation) and `generation` (of
+  the parents of the oldest recorded generation, or the starting population; with hermaphrodites the first and
+  the second parent, the same for a selfed individual), `sex` (`true` for male, the sex the individual had when
+  its generation reproduced; `missing` for the last generation and for hermaphrodites) and `generation` (of
   birth, numbered as in `census`). Empty without the keyword.
 
 A run continued from a `FisherWrightResult` through the `init` keyword of [`fisher_wright`](@ref) appends its
@@ -77,6 +82,7 @@ struct FisherWrightResult
     var_phenotypic::Vector{Float64}
     paternal_pairs::Vector{Float64}
     maternal_pairs::Vector{Float64}
+    selfing::Vector{Float64}
     first_id::Int
     pedigree::DataFrame
 end
@@ -87,12 +93,23 @@ _empty_pedigree() = DataFrame(id=Int[], sire=Int[], dam=Int[], sex=Union{Missing
 FisherWrightResult(
     active_haplotypes, chromosome_ends, substitutions, census, males,
     selected_haplotypes, selected_substitutions, mean_fitness, mean_log_fitness, var_log_fitness,
+    mean_genotypic, var_genotypic, mean_phenotypic, var_phenotypic, paternal_pairs, maternal_pairs, selfing,
+) = FisherWrightResult(
+    active_haplotypes, chromosome_ends, substitutions, census, males,
+    selected_haplotypes, selected_substitutions, mean_fitness, mean_log_fitness, var_log_fitness,
+    mean_genotypic, var_genotypic, mean_phenotypic, var_phenotypic, paternal_pairs, maternal_pairs, selfing,
+    1, _empty_pedigree())
+
+# Without a record of selfing: separate sexes in every recorded generation.
+FisherWrightResult(
+    active_haplotypes, chromosome_ends, substitutions, census, males,
+    selected_haplotypes, selected_substitutions, mean_fitness, mean_log_fitness, var_log_fitness,
     mean_genotypic, var_genotypic, mean_phenotypic, var_phenotypic, paternal_pairs, maternal_pairs,
 ) = FisherWrightResult(
     active_haplotypes, chromosome_ends, substitutions, census, males,
     selected_haplotypes, selected_substitutions, mean_fitness, mean_log_fitness, var_log_fitness,
     mean_genotypic, var_genotypic, mean_phenotypic, var_phenotypic, paternal_pairs, maternal_pairs,
-    1, _empty_pedigree())
+    zeros(length(males)))
 
 # Without a record of family sizes: NaN for every recorded generation.
 FisherWrightResult(
@@ -155,9 +172,17 @@ that selection adds within a generation; it does not include the cumulative effe
 generations (Robertson 1961). It is the value realized by the pedigree of the run, not an estimate from the
 genetic data, and it varies from run to run as family sizes do.
 
+With hermaphrodites ([`Monoecious`](@ref)), `a_g` counts a parent shared through either role, and a proportion
+`σ_g = result.selfing[g]` of the offspring are selfed. Two genes in one individual then descend from one parent
+with probability `σ_g`, so that two genes of different individuals, followed back, coalesce at the rate
+`a_g/(2 - σ_g)` per generation instead of `a_g/2`, and the effective size of the generation is `(2 - σ_g)/(2a_g)`
+(Nordborg and Donnelly 1997): `N/(1 + F)` with `F = σ/(2 - σ)` at a constant selfing rate, and about `N` under
+random selfing. With separate sexes `σ_g = 0` and this is `1/a_g`; over several generations, the harmonic mean.
+
 With `from = :sexes`, from the recorded numbers of male and female parents only, as in version 0.5 and 0.6:
 `a_g = 1/(4N_m) + 1/(4N_f)`, the expectation under random mating, which gives Wright's (1931)
-`4N_mN_f/(N_m + N_f)`. It does not apply to other mating schemes or to selection.
+`4N_mN_f/(N_m + N_f)`. It does not apply to other mating schemes or to selection, and it throws for a generation of
+hermaphrodites.
 
 Under random mating the two agree on average. At constant numbers the asymptotic rate of loss of heterozygosity,
 `1/(2N_e)`, corresponds to `N_e ≈ 1/a + 1/2`, because the two genes of one individual come from different parents.
@@ -184,6 +209,8 @@ function effective_size(result::FisherWrightResult, generations=eachindex(result
     for g in generations
         if from === :sexes
             m = result.males[g]
+            m > 0 || throw(ArgumentError(
+                "generation $g has no male parents (hermaphrodites); use from = :families"))
             f = result.census[g] - m
             a += 1 / 4m + 1 / 4f
         else
@@ -191,7 +218,7 @@ function effective_size(result::FisherWrightResult, generations=eachindex(result
             (isnan(pp) || isnan(mp)) &&
                 throw(ArgumentError("the family sizes of generation $g are not recorded; use from = :sexes"))
             n = result.census[g+1]
-            a += (pp + mp) / (4n * (n - 1))
+            a += (pp + mp) / (4n * (n - 1)) * 2 / (2 - result.selfing[g])
         end
     end
     return length(generations) / a
@@ -413,7 +440,7 @@ function _extract_fixed(result::FisherWrightResult)
         result.selected_haplotypes, result.selected_substitutions,
         result.mean_fitness, result.mean_log_fitness, result.var_log_fitness,
         result.mean_genotypic, result.var_genotypic, result.mean_phenotypic, result.var_phenotypic,
-        result.paternal_pairs, result.maternal_pairs, result.first_id, result.pedigree)
+        result.paternal_pairs, result.maternal_pairs, result.selfing, result.first_id, result.pedigree)
 end
 
 

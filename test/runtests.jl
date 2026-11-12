@@ -9,7 +9,8 @@ using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_s
     AbstractFitness, AliasTable, _alias_build!, _alias_draw, _alias_probabilities,
     _draw_parents!, _mate!, FitnessLoci, fitness_loci, SiteFitness, _log_fitness, _selected,
     _meiosis!, _meiosis_selected!, _sel_mutation!, TraitLoci, trait_loci, TraitFitness, Stabilizing,
-    Directional, _genotypic_value, FamilySize, Hierarchical
+    Directional, _genotypic_value, FamilySize, Hierarchical, Monoecious,
+    _record_families!
 using Distributions: Gamma, Exponential, Normal
 import FisherWright: _fitness!
 using BnGStructs
@@ -1755,6 +1756,122 @@ end
         fitness=TraitFitness(loci; fitness=Directional(1.0)))
 end
 
+@testset "Monoecious mating" begin
+    @test_throws ArgumentError Monoecious(selfing=-0.1)
+    @test_throws ArgumentError Monoecious(selfing=1.5)
+    @test sprint(show, Monoecious()) == "Monoecious()"
+    @test sprint(show, Monoecious(selfing=0.25)) == "Monoecious(selfing = 0.25)"
+
+    # The mating table: parents from the whole cohort, no sexes, and the
+    # selfed offspring at the requested rate (binomial z-score).
+    rng = Xoshiro(31)
+    N = 40
+    st = SimState([UInt32[] for _ = 1:2N], UInt32[], 60, rng)
+    for (s, no) in ((nothing, 40), (0.0, 57), (1.0, 13), (0.3, 60))
+        selfed = 0
+        inrange = true
+        R = 2_000
+        for _ = 1:R
+            _mate!(Monoecious(selfing=s), Neutral(), st, no, rng)
+            pm = st.pm[1:no, :]
+            inrange &= all(1 .<= pm .<= N)
+            selfed += count(pm[:, 1] .== pm[:, 2])
+        end
+        @test inrange
+        @test isempty(st.sires) && isempty(st.dams)
+        p = s === nothing ? 1 / N : s
+        if 0 < p < 1
+            @test abs(selfed / (R * no) - p) / sqrt(p * (1 - p) / (R * no)) < 3.5
+        else
+            @test selfed == p * R * no
+        end
+    end
+
+    # Pairs of offspring sharing a parent, against the brute-force count
+    # over ordered pairs (i, j), i ≠ j, of the roles of i's parent in j:
+    # the cross term vanishes with separate sexes.
+    for m in (Monoecious(), Monoecious(selfing=0.5), RandomMating()), no in (30, 45)
+        _mate!(m, Neutral(), st, no, rng)
+        empty!(st.ppairs), empty!(st.mpairs), empty!(st.selfing)
+        _record_families!(st, no)
+        pm = st.pm[1:no, :]
+        pp = sum((pm[i, 1] == pm[j, 1]) + (pm[i, 1] == pm[j, 2]) for i = 1:no, j = 1:no if i != j)
+        mp = sum((pm[i, 2] == pm[j, 1]) + (pm[i, 2] == pm[j, 2]) for i = 1:no, j = 1:no if i != j)
+        @test (st.ppairs[1], st.mpairs[1]) == (pp, mp)
+        @test st.selfing[1] == count(pm[:, 1] .== pm[:, 2]) / no
+        if m isa RandomMating
+            @test pp == sum(c * (c - 1) for c in (count(==(k), pm[:, 1]) for k = 1:N))
+        end
+    end
+
+    # Under selection: each parent is first parent no·w/Σw times on average,
+    # and a parent of weight zero is never used. 12 parents, 30 offspring,
+    # 20,000 replicates.
+    Nw, no, R = 12, 30, 20_000
+    w = [0.2, 1.0, 3.0, 0.5, 2.0, 1.0, 0.0, 4.0, 1.5, 0.7, 2.5, 1.2]
+    f = IndexFitness(w)
+    st = SimState([UInt32[] for _ = 1:2Nw], UInt32[], 40, rng)
+    st.w[1:Nw] .= w
+    for s in (nothing, 0.0, 0.4)
+        firsts = zeros(R, Nw)
+        used0, outcrossed = false, true
+        for r = 1:R
+            _mate!(Monoecious(selfing=s), f, st, no, rng)
+            pm = st.pm[1:no, :]
+            for k = 1:Nw
+                firsts[r, k] = count(==(k), pm[:, 1])
+            end
+            used0 |= any(==(7), pm)
+            s == 0 && (outcrossed &= all(pm[:, 1] .!= pm[:, 2]))
+        end
+        @test !used0 && outcrossed
+        dev = firsts .- no .* (w ./ sum(w))'
+        z = [mean(dev[:, k]) / (std(dev[:, k]) / sqrt(R)) for k = 1:Nw if w[k] > 0]
+        @test maximum(abs, z) < 4
+    end
+    lone = zeros(Nw)
+    lone[3] = 1.0
+    st.w[1:Nw] .= lone
+    @test_throws ErrorException _mate!(Monoecious(selfing=0.5), IndexFitness(lone), st, no, rng)
+    _mate!(Monoecious(selfing=1), IndexFitness(lone), st, no, rng)
+    @test all(==(3), st.pm[1:no, :])
+
+    # A run: no males, the selfing record, hermaphrodites in the pedigree,
+    # and a continuation that appends to the record.
+    chr = [100_000]
+    res = fisher_wright(30, 20, chr, 1.0; mating=Monoecious(selfing=0.5), result=true, pedigree=3, rng=rng)
+    @test res.males == zeros(Int, 20)
+    @test length(res.selfing) == 20 && all(0 .<= res.selfing .<= 1)
+    @test all(ismissing, res.pedigree.sex)
+    kids = res.pedigree[res.pedigree.generation .== 20, :]
+    @test count(kids.sire .== kids.dam) / 30 == res.selfing[20]
+    @test_throws ArgumentError effective_size(res; from=:sexes)
+    more = fisher_wright(30, 5, chr, 1.0; init=res, mating=RandomMating(), result=true, rng=rng)
+    @test length(more.selfing) == 25 && all(iszero, more.selfing[21:25])
+    @test effective_size(more, 21:25; from=:sexes) > 0
+
+    # E[a_g] = 1/N for every selfing model (the four parent slots of two
+    # offspring are uniform and independent); 1,000 generations, z-score.
+    for s in (nothing, 0.0, 0.5, 1.0)
+        r = fisher_wright(30, 1_000, [1_000], 1.0; mut_base=1e12, mating=Monoecious(selfing=s), result=true, rng=rng)
+        a = (r.paternal_pairs .+ r.maternal_pairs) ./ (4 * 30 * 29)
+        @test abs(mean(a) - 1 / 30) / (std(a) / sqrt(length(a))) < 3.5
+        σ = s === nothing ? 1 / 30 : s
+        # Realized Ne about N(2 - σ)/2.
+        @test isapprox(effective_size(r), 30 * (2 - σ) / 2; rtol=0.05)
+    end
+
+    # Within the reserved capacity, a generation allocates task overhead only.
+    rmap = uniform_recombination_map([1_000, 1_000]; M=1e3)
+    st = SimState([UInt32.(findall(rand(rng, Bool, 2_000))) for _ = 1:80], UInt32[], 40, rng)
+    run!(st, m, nt) = _simulate!(st, ConstantSize(40), m, Neutral(), nt, rmap, Poisson(1.0), UInt32(1):UInt32(2_000);
+        mutate=false, track=false, fixation_interval=1, verbose=false, progress_interval=100, rng=rng)
+    for m in (Monoecious(), Monoecious(selfing=0.3))
+        run!(st, m, 50)
+        @test @allocated(run!(st, m, 50)) / 50 < 2^14
+    end
+end
+
 @testset "Pedigree" begin
     chr, kw = [100_000, 100_000], (M=5e4, mut_base=1e5, result=true)
     sizes = [12, 8, 15, 15, 10]
@@ -2357,6 +2474,44 @@ end
         se = sqrt(var(H) / reps)
         @test abs(mean(H) - expected(coalescence(m, N))) / se < 3.5
         @test abs(mean(H) - expected(coalescence(alt, N))) / se > 3.5
+    end
+end
+
+@testset "Heterozygosity decay under monoecious mating" begin
+    # Drift alone from a polymorphic start, hermaphrodites with selfing rate
+    # σ (random selfing: σ = 1/N), against the exact recursion of the
+    # heterozygosity within (h_W) and between (h_B) individuals:
+    #   h_B' = (1 - 1/N) h_B + h_W/(2N),  h_W' = (1 - σ) h_B + σ h_W/2,
+    # since the two genes of different offspring come from independent,
+    # uniform parents, and the two genes of one offspring from one parent
+    # with probability σ. Both Σ2pq and the observed heterozygosity are
+    # tested; 20 parents, 15 generations, 400 replicates of 1,000 sites on 20
+    # chromosomes of 1 Morgan. Each case is also separated from no selfing.
+    N, chr, reps, t = 20, fill(50, 20), 400, 15
+    L = sum(chr)
+    rng = Xoshiro(20261117)
+    function expected(σ)
+        hB = hW = 0.5
+        for _ = 1:t
+            hB, hW = (1 - 1 / N) * hB + hW / 2N, (1 - σ) * hB + σ * hW / 2
+        end
+        return hW / 2N + (1 - 1 / N) * hB, hW
+    end
+    observed(haps) = mean(length(symdiff(haps[2i-1], haps[2i])) for i = 1:N) / L
+    for s in (nothing, 0.0, 0.5, 1.0)
+        H, O = zeros(reps), zeros(reps)
+        for r = 1:reps
+            start = [UInt32.(findall(rand(rng, Bool, L))) for _ = 1:2N]
+            haps, _ = fisher_wright(N, t, chr, 1.0; M=50, init=start, mutate=false,
+                mating=Monoecious(selfing=s), rng=rng)
+            H[r] = site_heterozygosity(haps, L)
+            O[r] = observed(haps)
+        end
+        σ = s === nothing ? 1 / N : s
+        eH, eO = expected(σ)
+        @test abs(mean(H) - eH) / sqrt(var(H) / reps) < 3.5
+        @test abs(mean(O) - eO) / sqrt(var(O) / reps) < 3.5
+        σ >= 0.5 && @test abs(mean(O) - expected(0.0)[2]) / sqrt(var(O) / reps) > 3.5
     end
 end
 
