@@ -1176,6 +1176,155 @@ end
     @test_throws "cannot reproduce" fisher_wright(N, 5, chr, 2.0; kw..., fitness=lethal, init=doomed)
 end
 
+@testset "Export of selected alleles" begin
+    chr, cbp, N = [5_000, 5_000], UInt32[5_000, 10_000], 20
+    loci = FitnessLoci(collect(50:50:10_000), [0.02k / 200 for k = 1:200]; h=0.3, μ=2e-3)
+    res = fisher_wright(N, 300, chr, 2.0; M=2_000, mut_base=1e4, result=true, fitness=SiteFitness(loci),
+        rng=Xoshiro(4))
+    sel, ssubs = res.selected_haplotypes, res.selected_substitutions
+    @test !isempty(ssubs) && any(!isempty, sel) && !isempty(res.substitutions)
+
+    # The fitness loci with their effects: one row per site of the table,
+    # in its order, against a brute-force lookup.
+    qtl, map = to_haplotype(res, loci)
+    @test qtl isa Haplotype && size(qtl) == (200, 2N)
+    @test propertynames(map) == [:chr, :pos, :s, :h, :frq]
+    @test map.pos == loci.pos && map.s == loci.s && map.h == loci.h
+    @test map.chr == [p <= 5_000 ? 1 : 2 for p in loci.pos] && eltype(map.chr) == Int8
+    dense = [(loci.pos[k] in sel[j]) || (loci.pos[k] in ssubs) for k = 1:200, j = 1:2N]
+    @test qtl == dense
+    @test map.frq ≈ vec(sum(dense; dims=2)) ./ 2N
+    @test all(==(1.0), map.frq[indexin(ssubs, loci.pos)])       # substituted sites are fixed
+    # Without the substitutions they read as absent.
+    qtl0, map0 = to_haplotype(res, loci; include_fixed=false)
+    @test qtl0 == [loci.pos[k] in sel[j] for k = 1:200, j = 1:2N]
+    @test all(==(0.0), map0.frq[indexin(ssubs, loci.pos)])
+    # The fitness that the run used is recovered from the export.
+    f = SiteFitness(loci)
+    for i in (1, 7, N)
+        w = prod(1:200) do k
+            d = qtl[k, 2i-1] + qtl[k, 2i]
+            d == 0 ? 1.0 : d == 1 ? 1 + loci.h[k] * loci.s[k] : 1 + loci.s[k]
+        end
+        fixed = prod(1 + loci.s[k] for k in indexin(ssubs, loci.pos))
+        @test w ≈ exp(_log_fitness(f, sel[2i-1], sel[2i])) * fixed
+    end
+
+    # Neutral and selected alleles in one matrix.
+    hap, lmap = to_haplotype(res)
+    both, bmap = to_haplotype(res; selected=true)
+    @test !isdisjoint(lmap.pos, loci.pos)       # neutral mutations also fall on coordinates of fitness loci
+    segsel = [p for p in loci.pos if 0 < count(h -> p in h, sel) < 2N]
+    @test sort(bmap.pos) == sort!(union(lmap.pos, segsel))
+    for (r, p) in enumerate(bmap.pos)
+        @test collect(both[r, :]) == [(p in res.active_haplotypes[j]) || (p in sel[j]) for j = 1:2N]
+    end
+    allb, amap = to_haplotype(res; selected=true, include_fixed=true)
+    @test issubset(ssubs, amap.pos) && issubset(res.substitutions, amap.pos)
+    @test all(==(1.0f0), amap.frq[indexin(ssubs, amap.pos)])
+    # Chip extraction: a selected site is carried only with selected = true.
+    chip = UInt32[loci.pos[1], segsel[1], ssubs[1], 9_999]
+    sort!(unique!(chip))
+    plain = to_haplotype(res, chip)
+    withsel = to_haplotype(res, chip; selected=true, include_fixed=true)
+    k = findfirst(==(segsel[1]), chip)
+    @test !any(plain[k, :]) && collect(withsel[k, :]) == [segsel[1] in h for h in sel]
+    @test all(withsel[findfirst(==(ssubs[1]), chip), :])
+    @test to_haplotype(res, chip; selected=true)[findfirst(==(ssubs[1]), chip), :] == falses(2N)
+
+    # A coordinate carried in both streams is one locus.
+    clash = FisherWrightResult([UInt32[100], UInt32[], UInt32[300], UInt32[]], UInt32[1_000], UInt32[];
+        selected_haplotypes=[UInt32[], UInt32[100], UInt32[], UInt32[]])
+    m, cm = to_haplotype(clash; selected=true)
+    @test cm.pos == UInt32[100, 300] && collect(m[1, :]) == [true, true, false, false]
+
+    # A neutral result exports as before, and has nothing at fitness loci.
+    neutral = fisher_wright(N, 50, chr, 2.0; M=2_000, mut_base=1e4, result=true, rng=Xoshiro(6))
+    @test to_haplotype(neutral; selected=true)[2].pos == to_haplotype(neutral)[2].pos
+    q, mq = to_haplotype(neutral, loci)
+    @test !any(q) && all(==(0.0), mq.frq)
+
+    # Errors.
+    @test_throws ArgumentError to_haplotype(res, FitnessLoci(Int[], 0.1))
+    @test_throws ArgumentError to_haplotype(res, FitnessLoci([20_000], 0.1))      # beyond the genome
+    @test_throws ArgumentError to_haplotype(res, FitnessLoci([50, 100], 0.1))     # not the run's table
+end
+
+@testset "Fitness record" begin
+    chr, cbp, N = [5_000, 5_000], UInt32[5_000, 10_000], 20
+    kw = (M=2_000, mut_base=1e4, result=true)
+    record(r) = (r.mean_fitness, r.mean_log_fitness, r.var_log_fitness)
+
+    # A neutral run records fitness 1 for the parents of every generation.
+    neutral = fisher_wright(N, 30, chr, 2.0; kw..., rng=Xoshiro(1))
+    @test record(neutral) == (ones(30), zeros(30), zeros(30))
+
+    # With selection, entry g is the fitness of the parents of generation
+    # g: one generation from a known population, against the dense product.
+    loci = FitnessLoci(collect(50:50:10_000), [0.03 * (-1)^k for k = 1:200]; h=0.3, μ=2e-3)
+    f = SiteFitness(loci)
+    res = fisher_wright(N, 200, chr, 2.0; kw..., fitness=f, rng=Xoshiro(2))
+    @test all(v -> length(v) == length(res.males) == 200, record(res))
+    @test !isempty(res.selected_substitutions)
+    @test all(>(0), res.var_log_fitness[50:end])
+    qtl, _ = to_haplotype(res, loci)          # substituted sites included
+    lw = [sum(1:200) do k
+        d = qtl[k, 2i-1] + qtl[k, 2i]
+        d == 0 ? 0.0 : d == 1 ? log1p(loci.h[k] * loci.s[k]) : log1p(loci.s[k])
+    end for i = 1:N]
+    next = fisher_wright(N, 1, chr, 2.0; kw..., fitness=f, init=res, rng=Xoshiro(3))
+    @test next.mean_log_fitness[end] ≈ mean(lw)
+    @test next.var_log_fitness[end] ≈ var(lw)
+    @test next.mean_fitness[end] ≈ mean(exp, lw)
+    # A continued run appends to the record of init, which is left alone.
+    @test all(v -> length(v) == 201, record(next))
+    @test next.mean_fitness[1:200] == res.mean_fitness && length(res.mean_fitness) == 200
+    # The record does not depend on the fixation interval, although the
+    # sites move between the haplotypes and the substitutions.
+    again = fisher_wright(N, 200, chr, 2.0; kw..., fitness=f, fixation_interval=17, rng=Xoshiro(2))
+    @test again.mean_fitness ≈ res.mean_fitness && again.mean_log_fitness ≈ res.mean_log_fitness
+    @test again.var_log_fitness ≈ res.var_log_fitness atol = 1e-12
+
+    # A site carried by everyone: fitness 1 + s for all, before and after it
+    # is moved to the substitutions.
+    one = SiteFitness(FitnessLoci([100], 0.25))
+    full = FisherWrightResult([UInt32[] for _ = 1:2N], cbp, UInt32[];
+        selected_haplotypes=[UInt32[100] for _ = 1:2N])
+    fixed = fisher_wright(N, 3, chr, 2.0; kw..., fitness=one, init=full, mutate=false)
+    @test fixed.selected_substitutions == UInt32[100] && all(isempty, fixed.selected_haplotypes)
+    @test fixed.mean_fitness ≈ fill(1.25, 3) && fixed.mean_log_fitness ≈ fill(log(1.25), 3)
+    @test fixed.var_log_fitness == zeros(3)
+
+    # Directional selection raises mean fitness; purifying selection keeps
+    # it below 1.
+    up = fisher_wright(N, 300, chr, 2.0; kw..., fitness=SiteFitness(FitnessLoci(loci.pos, 0.05; μ=2e-3)),
+        rng=Xoshiro(4))
+    @test up.mean_fitness[1] == 1.0 && up.mean_fitness[end] > 2 && issorted(up.mean_fitness[[1, 100, 200, 300]])
+    down = fisher_wright(N, 300, chr, 2.0; kw..., fitness=SiteFitness(FitnessLoci(loci.pos, -0.05; μ=2e-3)),
+        rng=Xoshiro(4))
+    @test all(<=(1), down.mean_fitness) && down.mean_fitness[end] < 0.9
+
+    # A lethal homozygote among the parents: mean log fitness is -Inf.
+    lethal = SiteFitness(FitnessLoci([100], -1.0; h=0.0))
+    mixed = FisherWrightResult([UInt32[] for _ = 1:2N], cbp, UInt32[];
+        selected_haplotypes=[i <= 2 ? UInt32[100] : UInt32[] for i = 1:2N])
+    dead = fisher_wright(N, 1, chr, 2.0; kw..., fitness=lethal, init=mixed, mutate=false,
+        mating=RandomMating(sexratio=0.5))
+    @test dead.mean_fitness == [(N - 1) / N] && dead.mean_log_fitness == [-Inf] && isnan(dead.var_log_fitness[1])
+
+    # Results built by hand: a neutral record of the right length, and a
+    # record of the wrong length is rejected as a start.
+    bare = FisherWrightResult(res.active_haplotypes, cbp, res.substitutions)
+    @test record(bare) == (Float64[], Float64[], Float64[])
+    five = FisherWrightResult(res.active_haplotypes, cbp, res.substitutions, fill(N, 4), fill(10, 3))
+    @test record(five) == (ones(3), zeros(3), zeros(3))
+    wrong = FisherWrightResult(res.active_haplotypes, cbp, res.substitutions, fill(N, 4), fill(10, 3),
+        res.selected_haplotypes, res.selected_substitutions, ones(2), zeros(3), zeros(3))
+    @test_throws ArgumentError fisher_wright(N, 1, chr, 2.0; kw..., fitness=f, init=wrong)
+    kept = _extract_fixed(res)
+    @test record(kept) == record(res)
+end
+
 @testset "Simulation invariants at scale" begin
     Random.seed!(31)
     res = fisher_wright(60, 80, [5_000_000, 5_000_000, 5_000_000], 4.0;

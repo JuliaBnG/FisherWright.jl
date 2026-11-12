@@ -85,7 +85,7 @@ total genome lengths up to ``2^{32} \\approx 4.29 \\times 10^9`` base pairs (bp)
   - `prt::Vector{Vector{UInt32}}`: Active haplotypes (`2 * ne`, or `2 * N_nt` with `popsize`), each containing sorted, unique 1-based genomic mutation positions.
   - `cbp::Vector{UInt32}`: Cumulative chromosome end positions in base pairs (`cumsum(chr)`).
 - When `result = true`:
-  - A [`FisherWrightResult`](@ref) containing `active_haplotypes`, `chromosome_ends`, accumulated `substitutions`, and the record of the run: the census size of every generation (`census`) and the realized number of males among its parents (`males`), from which [`effective_size`](@ref) gives the realized effective size.
+  - A [`FisherWrightResult`](@ref) containing `active_haplotypes`, `chromosome_ends`, accumulated `substitutions`, and the record of the run: the census size of every generation (`census`) and the realized number of males among its parents (`males`), from which [`effective_size`](@ref) gives the realized effective size. With selection it also holds the selected alleles (`selected_haplotypes`, `selected_substitutions`) and, per generation, the mean fitness of the parents and the mean and variance of its logarithm (`mean_fitness`, `mean_log_fitness`, `var_log_fitness`).
 
 # Details
 - **Recombination & Independent Assortment**: Recombination is modeled as a Poisson process along each chromosome with rate `chr[i] / M`. Independent assortment between chromosomes occurs with probability 0.5 at each chromosome boundary.
@@ -195,9 +195,10 @@ function fisher_wright(
     )
     # Drop the spare buffers beyond the final cohort.
     haps = resize!(st.prt, 2 * st.n)
-    return result ?
-           FisherWrightResult(haps, cbp, st.substitutions, _record(init, st)...,
-        resize!(st.sel, 2 * st.n), st.ssubs) : (haps, cbp)
+    result || return (haps, cbp)
+    census, males, fmean, flmean, flvar = _record(init, st)
+    return FisherWrightResult(haps, cbp, st.substitutions, census, males,
+        resize!(st.sel, 2 * st.n), st.ssubs, fmean, flmean, flvar)
 end
 
 """

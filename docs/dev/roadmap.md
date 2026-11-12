@@ -20,10 +20,14 @@ selection at explicit sites (`src/fitness.jl`): `FitnessLoci`,
 selected stream `sel` carried through meiosis with the same crossovers
 and strand, mutation at the fitness loci, selected substitutions, and
 `selected_haplotypes` and `selected_substitutions` in the result.
-`Neutral()` keeps the uniform draw and the v0.4.0 realizations. Still
-to do in 0.6.0: export of the selected stream with its true effects
-(`to_haplotype`, `muts2bitarray`), the per-generation trajectory of
-mean and variance of log fitness, and the rest of validation 6
+`Neutral()` keeps the uniform draw and the v0.4.0 realizations. Export
+(2026-11-12): `to_haplotype(result, loci)` gives the genotypes at the
+fitness loci with a table of chr, pos, s, h and frequency, and
+`selected = true` on the other methods merges the selected alleles into
+the neutral export. Fitness record (2026-11-12): `mean_fitness`,
+`mean_log_fitness` and `var_log_fitness` per generation, for the
+parents, absolute (substituted sites included), appended through
+`init`. Still to do in 0.6.0: the rest of validation 6
 (mutation–selection balance, substitution rate, SFS at selected sites).
 
 The refactor (`src/simulate.jl`): a `SimState` struct holds the

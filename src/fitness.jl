@@ -171,19 +171,32 @@ function _log_fitness(f::SiteFitness, a::Vector{UInt32}, b::Vector{UInt32})
     return lw
 end
 
-# Relative fitness of every parent, scaled so that the fittest has w = 1.
+# Relative fitness of every parent, scaled so that the fittest has w = 1,
+# and the fitness record of the generation: log fitness is absolute, so the
+# substituted sites, which every parent carries on both haplotypes, are
+# added back.
 function _fitness!(f::SiteFitness, st::SimState)
     w, sel, n = st.w, st.sel, st.n
     Threads.@threads for i = 1:n
         @inbounds w[i] = _log_fitness(f, sel[2i-1], sel[2i])
     end
-    top = maximum(view(w, 1:n))
+    lw = view(w, 1:n)
+    offset = 0.0
+    for x in st.ssubs
+        offset += f.lhom[searchsortedfirst(f.loci.pos, x)]
+    end
+    push!(st.flmean, mean(lw) + offset)
+    push!(st.flvar, var(lw))
+    push!(st.fmean, sum(x -> exp(x + offset), lw) / n)
+    top = maximum(lw)
     top > -Inf || error("every individual has zero fitness: the population cannot reproduce")
     @inbounds for i = 1:n
         w[i] = exp(w[i] - top)
     end
     return nothing
 end
+
+_record_fitness!(::SiteFitness, ::SimState) = nothing
 
 # New mutations at the fitness loci on each haplotype of the current cohort
 # (threaded). Haplotype i draws from `st.srng[i]`, after its neutral
@@ -252,4 +265,70 @@ function _initial_selected(init::FisherWrightResult, f::AbstractFitness, nh::Int
     end
     _check_selected(subs, f.loci, "init.selected_substitutions")
     return ([_remove_sorted!(copy(h), subs) for h in sel], copy(subs))
+end
+
+"""
+    to_haplotype(result::FisherWrightResult, loci::FitnessLoci; include_fixed::Bool = true) -> Tuple{Haplotype, DataFrame}
+
+Genotypes at the fitness loci of a run with selection, with their true effects: the causal variants of the
+simulated population.
+
+Row `k` of the returned `BnGStructs.Haplotype` is site `loci.pos[k]`, for every site of the table whether or
+not it segregates, and the columns are the haplotypes; an entry is `true` where the haplotype carries the
+derived allele. Neutral mutations are not included, also not at the same coordinate.
+
+# Keywords
+- `include_fixed::Bool = true`: Sites in `result.selected_substitutions` are carried by every haplotype and are
+  exported as such. With `false` they are exported as absent, like a lost allele. Note that the default differs
+  from the other methods of `to_haplotype`: here a fixed site is a row of the table either way, and `true` is
+  its genotype.
+
+# Returns
+- `Haplotype`: `length(loci)` loci × `2N` haplotypes.
+- `DataFrame`: one row per site, with columns
+  - `chr::Int8`: 1-based chromosome,
+  - `pos::UInt32`: genome-wide position,
+  - `s::Float64`, `h::Float64`: selection coefficient and dominance of the derived allele,
+  - `frq::Float64`: frequency of the derived allele in the exported haplotypes.
+
+# Errors
+- Throws an `ArgumentError` if `loci` is empty, if a site lies beyond the genome of `result`, or if `result`
+  carries a selected allele that is not a site of `loci`.
+
+# Examples
+```julia
+using FisherWright
+
+chr = [100_000, 100_000]
+loci = fitness_loci(chr, 20; s = 0.05, μ = 1e-4)
+res = fisher_wright(50, 200, chr, 1.0; fitness = SiteFitness(loci), result = true)
+qtl, map = to_haplotype(res, loci)
+dosage = [qtl[k, 2i-1] + qtl[k, 2i] for k in 1:length(loci), i in 1:50]   # sites × individuals
+```
+"""
+function to_haplotype(result::FisherWrightResult, loci::FitnessLoci; include_fixed::Bool=true)
+    K = length(loci)
+    K > 0 || throw(ArgumentError("the table of fitness loci is empty"))
+    cbp = result.chromosome_ends
+    loci.pos[end] <= cbp[end] ||
+        throw(ArgumentError("a fitness locus lies beyond the genome length $(Int(cbp[end]))"))
+    sel, subs = result.selected_haplotypes, result.selected_substitutions
+    for (i, h) in pairs(sel)
+        _check_selected(h, loci, "selected haplotype $i")
+    end
+    _check_selected(subs, loci, "selected_substitutions")
+    xy = extract_chip_bitarray(sel, loci.pos)
+    if include_fixed
+        for x in subs
+            xy[searchsortedfirst(loci.pos, x), :] .= true
+        end
+    end
+    map = DataFrame(
+        chr=Int8[searchsortedfirst(cbp, p) for p in loci.pos],
+        pos=copy(loci.pos),
+        s=copy(loci.s),
+        h=copy(loci.h),
+        frq=vec(sum(xy; dims=2)) ./ size(xy, 2),
+    )
+    return Haplotype(xy), map
 end

@@ -1,6 +1,7 @@
 """
     FisherWrightResult(active_haplotypes, chromosome_ends, substitutions, census, males,
-                       selected_haplotypes, selected_substitutions)
+                       selected_haplotypes, selected_substitutions,
+                       mean_fitness, mean_log_fitness, var_log_fitness)
     FisherWrightResult(active_haplotypes, chromosome_ends, substitutions;
                        selected_haplotypes, selected_substitutions)
 
@@ -25,6 +26,13 @@ with the census record of the run.
 - `selected_substitutions::Vector{UInt32}`: sorted positions of fitness loci whose derived allele reached fixation
   and was removed from `selected_haplotypes`.
 
+- `mean_fitness::Vector{Float64}`, `mean_log_fitness::Vector{Float64}`, `var_log_fitness::Vector{Float64}`:
+  fitness of the parents of each generation, entry `g` describing the same `census[g]` adults as `males[g]`:
+  the arithmetic mean of fitness, and the mean and the (sample) variance of its logarithm. Fitness is absolute,
+  relative to an individual without any derived allele at the fitness loci, so substituted sites are included.
+  In a neutral run these are `1`, `0` and `0`. If an adult has zero fitness (a lethal genotype), the mean of the
+  logarithm is `-Inf` and its variance `NaN`.
+
 A run continued from a `FisherWrightResult` through the `init` keyword of [`fisher_wright`](@ref) appends its
 generations to the record of that result, so generations are numbered from the first call; started from plain
 haplotypes, the record begins anew. The three-argument constructor builds a result without a record, with `census`
@@ -42,7 +50,20 @@ struct FisherWrightResult
     males::Vector{Int}
     selected_haplotypes::Vector{Vector{UInt32}}
     selected_substitutions::Vector{UInt32}
+    mean_fitness::Vector{Float64}
+    mean_log_fitness::Vector{Float64}
+    var_log_fitness::Vector{Float64}
 end
+
+# Without a fitness record: that of a neutral population, one entry per
+# recorded generation.
+FisherWrightResult(
+    active_haplotypes, chromosome_ends, substitutions, census, males,
+    selected_haplotypes, selected_substitutions,
+) = FisherWrightResult(
+    active_haplotypes, chromosome_ends, substitutions, census, males,
+    selected_haplotypes, selected_substitutions,
+    ones(length(males)), zeros(length(males)), zeros(length(males)))
 
 FisherWrightResult(active_haplotypes, chromosome_ends, substitutions, census, males) =
     FisherWrightResult(active_haplotypes, chromosome_ends, substitutions, census, males,
@@ -287,6 +308,20 @@ function _with_fixed(result::FisherWrightResult)
     return merged
 end
 
+# Haplotypes for dense export: the neutral mutations, with the substitutions
+# when `include_fixed`, and merged with the selected alleles (and their
+# substitutions) when `selected`. A coordinate carried in both streams
+# appears once.
+function _export_haplotypes(result::FisherWrightResult, include_fixed::Bool, selected::Bool)
+    muts = include_fixed ? _with_fixed(result) : result.active_haplotypes
+    selected || return muts
+    sel = result.selected_haplotypes
+    length(sel) == length(muts) ||
+        throw(ArgumentError("selected_haplotypes must have one entry per haplotype"))
+    subs = result.selected_substitutions
+    return [merge_sorted(include_fixed ? merge_sorted(sel[i], subs) : sel[i], muts[i]) for i in eachindex(muts)]
+end
+
 """
     _extract_fixed(result::FisherWrightResult) -> FisherWrightResult
 
@@ -296,12 +331,13 @@ and return a new `FisherWrightResult` with updated haplotypes and accumulated su
 function _extract_fixed(result::FisherWrightResult)
     cleaned, substitutions = _fixation_step(result.active_haplotypes, result.substitutions)
     return FisherWrightResult(cleaned, result.chromosome_ends, substitutions, result.census, result.males,
-        result.selected_haplotypes, result.selected_substitutions)
+        result.selected_haplotypes, result.selected_substitutions,
+        result.mean_fitness, result.mean_log_fitness, result.var_log_fitness)
 end
 
 
 """
-    to_haplotype(result::FisherWrightResult; include_fixed::Bool = false) -> Tuple{Haplotype, DataFrame}
+    to_haplotype(result::FisherWrightResult; include_fixed::Bool = false, selected::Bool = false) -> Tuple{Haplotype, DataFrame}
 
 Convert a structured Fisher-Wright simulation result into a dense `BnGStructs.Haplotype`
 matrix and an accompanying linkage map `DataFrame`.
@@ -312,6 +348,11 @@ matrix and an accompanying linkage map `DataFrame`.
 # Keywords
 - `include_fixed::Bool = false`: If `true`, merges fixed `substitutions` back into each haplotype before matrix construction.
   If `false`, only segregating (polymorphic) loci are exported.
+- `selected::Bool = false`: If `true`, the derived alleles at the fitness loci of a run with selection
+  (`selected_haplotypes`, and `selected_substitutions` with `include_fixed`) are exported together with the
+  neutral mutations, as sequence data that contain the causal variants. A coordinate that carries both a neutral
+  mutation and a selected allele is one locus, derived if either is. For the selected sites alone, with their
+  effects, use `to_haplotype(result, loci::FitnessLoci)`.
 
 # Returns
 - `Haplotype`: A `BnGStructs.Haplotype` wrapping a `BitMatrix` of shape `(nlc, nhp)` (loci in rows, haplotypes in columns).
@@ -333,15 +374,15 @@ res = fisher_wright(20, 10, [100_000, 100_000], 1.0; result = true)
 hap, loci = to_haplotype(res)
 ```
 """
-function to_haplotype(result::FisherWrightResult; include_fixed::Bool=false)
-    muts = include_fixed ? _with_fixed(result) : result.active_haplotypes
+function to_haplotype(result::FisherWrightResult; include_fixed::Bool=false, selected::Bool=false)
+    muts = _export_haplotypes(result, include_fixed, selected)
     xy, loci = muts2bitarray(muts, result.chromosome_ends; include_fixed=include_fixed)
     isempty(xy) && error("No polymorphic loci available for dense export")
     return Haplotype(xy), loci
 end
 
 """
-    to_haplotype(result::FisherWrightResult, chip_positions::Vector{UInt32}; include_fixed::Bool = false) -> Haplotype
+    to_haplotype(result::FisherWrightResult, chip_positions::Vector{UInt32}; include_fixed::Bool = false, selected::Bool = false) -> Haplotype
 
 Directly extract a dense `BnGStructs.Haplotype` at specified coordinate positions `chip_positions`
 without materializing other simulated loci.
@@ -352,6 +393,7 @@ without materializing other simulated loci.
 
 # Keywords
 - `include_fixed::Bool = false`: If `true`, includes fixed substitutions from `result` in the extraction.
+- `selected::Bool = false`: If `true`, the selected alleles of a run with selection count as carried, as in the method above.
 
 # Returns
 - `Haplotype`: A `BnGStructs.Haplotype` wrapping a `BitMatrix` of shape `(length(chip_positions), 2*ne)`.
@@ -369,14 +411,14 @@ chip_pos = UInt32[10_000, 25_000, 50_000, 75_000]
 hap = to_haplotype(res, chip_pos)
 ```
 """
-function to_haplotype(result::FisherWrightResult, chip_positions::Vector{UInt32}; include_fixed::Bool=false)
-    muts = include_fixed ? _with_fixed(result) : result.active_haplotypes
+function to_haplotype(result::FisherWrightResult, chip_positions::Vector{UInt32}; include_fixed::Bool=false, selected::Bool=false)
+    muts = _export_haplotypes(result, include_fixed, selected)
     xy = extract_chip_bitarray(muts, chip_positions)
     return Haplotype(xy)
 end
 
 """
-    to_haplotype(result::FisherWrightResult, locus_set::BnGStructs.LocusSet, all_positions::Vector{UInt32}; include_fixed::Bool = false) -> Haplotype
+    to_haplotype(result::FisherWrightResult, locus_set::BnGStructs.LocusSet, all_positions::Vector{UInt32}; include_fixed::Bool = false, selected::Bool = false) -> Haplotype
 
 Directly extract a dense `BnGStructs.Haplotype` for coordinates selected by a `BnGStructs.LocusSet`.
 
@@ -389,11 +431,12 @@ The coordinates extracted are `all_positions[locus_set.loci]`.
 
 # Keywords
 - `include_fixed::Bool = false`: If `true`, includes fixed substitutions in the extraction.
+- `selected::Bool = false`: If `true`, the selected alleles of a run with selection count as carried.
 
 # Returns
 - `Haplotype`: A `BnGStructs.Haplotype` for the selected chip coordinates.
 """
-function to_haplotype(result::FisherWrightResult, locus_set::BnGStructs.LocusSet, all_positions::Vector{UInt32}; include_fixed::Bool=false)
+function to_haplotype(result::FisherWrightResult, locus_set::BnGStructs.LocusSet, all_positions::Vector{UInt32}; include_fixed::Bool=false, selected::Bool=false)
     chip_positions = all_positions[locus_set.loci]
-    return to_haplotype(result, chip_positions; include_fixed=include_fixed)
+    return to_haplotype(result, chip_positions; include_fixed=include_fixed, selected=selected)
 end
