@@ -11,6 +11,7 @@ FisherWright.FisherWright
 ```@docs
 fisher_wright
 RandomMating
+FamilySize
 bottleneck
 growth
 SiteFitness

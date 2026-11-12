@@ -107,7 +107,7 @@ offspring derive from the same parent with probability ``a_g = 1/(4N_m) + 1/(4N_
 generation is ``1/a_g = 4N_mN_f/(N_m + N_f)`` (Wright 1931), and over several generations it is the harmonic mean,
 ``1/\\bar{a}``.
 
-This is the value determined by the realized census record, not an estimate from the genetic data. It depends
+This is the value determined by the realized census record, not an estimate from the genetic data. It assumes [`RandomMating`](@ref): the result does not record the mating scheme, and under [`FamilySize`](@ref), whose families are not those of random mating, the value is not the effective size (see the docstring of `FamilySize` for its coalescence probability). Selection, which also changes the variance of family size, is not accounted for either. It depends
 on the parents only, not on the number of offspring. At constant sex numbers the asymptotic rate of loss of
 heterozygosity, ``1/(2N_e)``, corresponds to ``N_e \\approx 1/a + 1/2``, because the two genes of one individual
 come from different parents.
