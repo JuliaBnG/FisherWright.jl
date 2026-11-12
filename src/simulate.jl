@@ -272,6 +272,8 @@ current cohort occupies the leading entries.
   `prt`, `off`, `substitutions`, `mbuf` and `nbuf`: the derived alleles each
   haplotype carries at the fitness loci. Empty unless the fitness model
   keeps selected alleles.
+- `fmean`, `flmean`, `flvar`: per generation, the arithmetic mean of the
+  fitness of the parents and the mean and variance of its logarithm.
 - `census`, `males`: record of the run. `census` starts with the size of the
   starting cohort and gains the number of offspring of every generation;
   `males` gains the number of males among its parents.
@@ -299,6 +301,9 @@ mutable struct SimState
     ssubs::Vector{UInt32}
     const smbuf::Vector{Vector{UInt32}}
     const snbuf::Vector{Vector{UInt32}}
+    const fmean::Vector{Float64}
+    const flmean::Vector{Float64}
+    const flvar::Vector{Float64}
 end
 
 # State for the starting cohort `prt` (two haplotypes per individual), with
@@ -329,6 +334,7 @@ function SimState(
         ones(nmax), AliasTable(nmax), AliasTable(nmax),
         [Xoshiro(rand(rng, UInt64)) for _ = 1:nh], [n], Int[],
         sel, bufs(nh), ssubs, bufs(nh), bufs(nh),
+        Float64[], Float64[], Float64[],
     )
 end
 
@@ -378,6 +384,8 @@ function _initial_state(init::FisherWrightResult, nh::Int, cbp::Vector{UInt32}, 
     _check_positions(subs, cbp[end], "init.substitutions")
     (length(init.census) == length(init.males) + 1 && init.census[end] == nh ÷ 2) ||
         throw(ArgumentError("init.census and init.males do not describe the $(nh ÷ 2) individuals of init"))
+    length(init.mean_fitness) == length(init.mean_log_fitness) == length(init.var_log_fitness) ==
+    length(init.males) || throw(ArgumentError("the fitness record of init must have one entry per generation"))
     # A substitution is carried by every haplotype: kept apart when the run
     # tracks substitutions, merged back into the haplotypes when it does not.
     return result ? ([_remove_sorted!(copy(h), subs) for h in haps], copy(subs)) :
@@ -386,11 +394,23 @@ end
 
 # Census record of the result: that of this call, appended to the record of
 # a FisherWrightResult the run was continued from.
-_record(::Any, st::SimState) = (st.census, st.males)
-_record(init::FisherWrightResult, st::SimState) =
-    (vcat(init.census, view(st.census, 2:length(st.census))), vcat(init.males, st.males))
+_record(::Any, st::SimState) = (st.census, st.males, st.fmean, st.flmean, st.flvar)
+_record(init::FisherWrightResult, st::SimState) = (
+    vcat(init.census, view(st.census, 2:length(st.census))), vcat(init.males, st.males),
+    vcat(init.mean_fitness, st.fmean), vcat(init.mean_log_fitness, st.flmean),
+    vcat(init.var_log_fitness, st.flvar))
 
 _fitness!(::Neutral, ::SimState) = nothing
+
+# Fitness record of the parents of one generation. A model that evaluates
+# fitness on a scale of its own records it in `_fitness!` and makes this a
+# no-op; otherwise the generation is recorded as neutral.
+function _record_fitness!(::AbstractFitness, st::SimState)
+    push!(st.fmean, 1.0)
+    push!(st.flmean, 0.0)
+    push!(st.flvar, 0.0)
+    return nothing
+end
 
 # Sex of the parents, then sire and dam of each of `no` offspring.
 # Conditioning on both sexes being present is exact rejection sampling;
@@ -532,6 +552,7 @@ function _simulate!(
     for g = 1:nt
         no = _popsize(demog, g)
         _fitness!(fitness, st)
+        _record_fitness!(fitness, st)
         _mate!(mating, fitness, st, no, rng)
         push!(st.males, length(st.sires))
         selected ? _meiosis_selected!(st, recomb_map, no) : _meiosis!(st, recomb_map, no)

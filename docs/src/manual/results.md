@@ -62,6 +62,7 @@ simulations. The result fields are:
 | `males` | Number of males among the parents of each generation. |
 | `selected_haplotypes` | Derived alleles each haplotype carries at the fitness loci; empty in a neutral run. |
 | `selected_substitutions` | Fitness loci whose derived allele was fixed and removed. |
+| `mean_fitness`, `mean_log_fitness`, `var_log_fitness` | Fitness of the parents of each generation: mean, and mean and variance of its logarithm. |
 
 Convert a structured result to `BnGStructs.Haplotype` and a linkage map:
 
@@ -110,6 +111,71 @@ numbers; under the default binomial sex its expectation is close to
 ``N - 1``. At constant sex numbers the asymptotic rate of loss of
 heterozygosity, ``1/(2N_e)``, corresponds to this value plus ½ (see
 [Effective size](@ref)).
+
+## Selected alleles
+
+After a run with selection (see [Selection](@ref)) the derived alleles
+at the fitness loci are in `selected_haplotypes` and
+`selected_substitutions`, apart from the neutral mutations.
+`to_haplotype(result, loci)` returns them as genotypes at the sites of
+the table, with their true effects:
+
+```@example results
+using Random
+
+chr = [100_000, 100_000]
+loci = fitness_loci(chr, 200; s=0.02, μ=5e-4, rng=Xoshiro(1))
+sel = fisher_wright(50, 300, chr, 1.0; mut_base=1e6,
+                    fitness=SiteFitness(loci), result=true,
+                    rng=Xoshiro(2))
+qtl, effects = to_haplotype(sel, loci)
+first(effects, 5)
+```
+
+```@example results
+(segregating=count(x -> 0 < x < 1, effects.frq),
+ fixed=count(==(1), effects.frq))
+```
+
+Row `k` of `qtl` is site `loci.pos[k]`, for every site of the table
+whether or not it segregates, so the rows line up with the table and
+with `effects`. A site whose derived allele was fixed and moved to
+`selected_substitutions` is exported as carried by every haplotype
+(`frq = 1`); pass `include_fixed=false` to export it as absent. The
+dosage of individual `i` at site `k` is `qtl[k, 2i-1] + qtl[k, 2i]`.
+
+The result also records, for the parents of every generation, the mean
+fitness and the mean and variance of log fitness. Entry `g` describes
+the same `census[g]` adults as `males[g]`. Fitness is absolute, relative
+to an individual without any derived allele at the fitness loci, so
+fixed sites count; a neutral run records `1`, `0` and `0`.
+
+```@example results
+g = [1, 100, 200, 300]
+(sel.mean_fitness[g], sel.var_log_fitness[g])
+```
+
+Under soft selection the mean fitness itself has no effect on the
+population; it is the quantity that mutation–selection balance and
+the genetic load are stated in. A lethal genotype among the parents
+makes the mean of log fitness `-Inf` and its variance `NaN`, while the
+mean fitness stays finite.
+
+To export the causal variants together with the neutral mutations, as
+sequence data would contain them, add `selected=true` to the other
+methods of `to_haplotype`:
+
+```@example results
+sequence, map = to_haplotype(sel; selected=true)
+(size(sequence), count(in(loci.pos), map.pos))
+```
+
+A neutral mutation can fall on the coordinate of a fitness locus. In
+the combined export such a coordinate is one locus, derived on a
+haplotype that carries either; `to_haplotype(result, loci)` reports the
+selected allele alone. `muts2bitarray(result.selected_haplotypes,
+result.chromosome_ends)` gives the segregating selected sites as a
+`BitMatrix`.
 
 ## Chip extraction
 
