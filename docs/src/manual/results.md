@@ -64,6 +64,9 @@ simulations. The result fields are:
 | `selected_substitutions` | Fitness loci whose derived allele was fixed and removed. |
 | `mean_fitness`, `mean_log_fitness`, `var_log_fitness` | Fitness of the parents of each generation: mean, and mean and variance of its logarithm. |
 | `mean_genotypic`, `var_genotypic`, `mean_phenotypic`, `var_phenotypic` | Under `TraitFitness`, the mean and variance of the genotypic value and of the phenotype of the parents of each generation; `NaN` otherwise. |
+| `paternal_pairs`, `maternal_pairs` | Ordered pairs of offspring sharing a sire, and sharing a dam, in each generation. |
+| `first_id` | ID of individual 1 of `active_haplotypes`. |
+| `pedigree` | With `pedigree = k`, the matings of the last `k` generations (a `DataFrame`). |
 
 Convert a structured result to `BnGStructs.Haplotype` and a linkage map:
 
@@ -136,6 +139,39 @@ At constant numbers the asymptotic rate of loss of heterozygosity,
 [Effective size](@ref)). Selection that is heritable lowers the
 effective size further over generations (Robertson 1961), which a
 record of one generation at a time does not include.
+
+## Pedigree
+
+Individuals are numbered in birth order across a run: the starting
+population has IDs `1:N₀`, and the offspring of every generation take
+the next IDs. Individual `i` of the result, haplotypes `2i - 1` and
+`2i`, has ID `first_id + i - 1`. With `pedigree = k`, `fisher_wright`
+records the matings of the last `k` generations (`typemax(Int)` for
+all):
+
+```@example results
+run = fisher_wright(6, 3, [100_000], 1.0; result=true, pedigree=2)
+run.pedigree
+```
+
+Each row is an individual: its `sire` and `dam` (IDs; 0 for the
+founders of the record, which are the parents of the oldest recorded
+generation, or the starting population), its `sex` (`true` for male, as
+assigned when its generation reproduced; `missing` for the last
+generation) and its `generation` of birth, numbered as in `census`.
+Every parent that is referred to has a row, so the table is a complete
+pedigree for software that reads one, and `run.first_id` links it to
+the haplotypes:
+
+```@example results
+ids = run.first_id .+ (0:length(run.active_haplotypes) ÷ 2 - 1)
+ids == run.pedigree.id[run.pedigree.generation .== 3]
+```
+
+A run continued from a result through `init` continues the generations
+and the IDs, and appends its matings to the pedigree of `init`, within
+the window of the last `k` generations. Recording does not change the
+run: the same seed gives the same population with or without it.
 
 ## Selected alleles
 

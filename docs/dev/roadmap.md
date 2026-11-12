@@ -1,10 +1,21 @@
 # Roadmap: variable population size, non-random mating, and selection
 
-Status: 0.5.0 released 2026-11-11, 0.6.0 released 2026-11-12; 0.7.0
-complete, release prepared 2026-11-12 (release benchmark: 63.29 s for
-v0.6.0 and 63.28 s for v0.7.0 on the 1 Gb run); 0.8.0 not started
-(drafted 2026-10-07 against v0.3.8; selection added 2026-11-02 against
-v0.4.0).
+Status: 0.5.0 released 2026-11-11, 0.6.0 and 0.7.0 released
+2026-11-12 (release benchmark of 0.7.0: 63.29 s for v0.6.0 and 63.28 s
+on the 1 Gb run); 0.8.0 in progress (drafted 2026-10-07 against v0.3.8;
+selection added 2026-11-02 against v0.4.0).
+
+0.8.0 so far (2026-11-12): pedigree recording, as decided: `pedigree =
+k` keeps the matings of the last k generations, individuals have
+running IDs in birth order (continued through `init`; `first_id` links
+the result to the pedigree), and the result holds a `DataFrame` with
+id, sire, dam, sex and generation, the parents of the oldest recorded
+generation as founders. Tested against the transmission itself
+(private markers of the start found only in the recorded founder
+ancestors), the census and family records, the window, continuation,
+`FamilySize` and the `Species` method; recording does not change the
+run. Next in 0.8.0: `Monoecious(selfing)`, `AvoidRelatives`,
+`CustomMating`, and the SLiM comparison (validation 7).
 
 0.7.0 so far (2026-11-12): `TraitFitness` (`src/trait.jl`), with its own
 table `TraitLoci(pos, a; h, μ)`, since trait effects are not bounded as

@@ -283,6 +283,7 @@ current cohort occupies the leading entries.
 - `swt`: scratch for the split weights of parents under selection.
 - `ppairs`, `mpairs`: per generation, the number of ordered pairs of
   offspring that share their sire and that share their dam.
+- `ped`: IDs of the current cohort and the pedigree record.
 - `census`, `males`: record of the run. `census` starts with the size of the
   starting cohort and gains the number of offspring of every generation;
   `males` gains the number of males among its parents.
@@ -328,6 +329,7 @@ mutable struct SimState
     const swt::Vector{Float64}
     const ppairs::Vector{Float64}
     const mpairs::Vector{Float64}
+    const ped::PedRecord
 end
 
 # State for the starting cohort `prt` (two haplotypes per individual), with
@@ -362,7 +364,7 @@ function SimState(
         zeros(nmax), zeros(nmax), Float64[], Float64[], Float64[], Float64[],
         sizehint!(Int[], nmax), sizehint!(Int[], nmax), sizehint!(Int[], nmax),
         sizehint!(Int[], nmax), sizehint!(Int[], nmax),
-        zeros(Int, nmax), zeros(nmax), Float64[], Float64[],
+        zeros(Int, nmax), zeros(nmax), Float64[], Float64[], PedRecord(n),
     )
 end
 
@@ -631,6 +633,7 @@ function _simulate!(
         _mate!(mating, fitness, st, no, rng)
         push!(st.males, length(st.sires))
         _record_families!(st, no)
+        _record_pedigree!(st.ped, st, no)
         selected ? _meiosis_selected!(st, recomb_map, no) : _meiosis!(st, recomb_map, no)
         push!(st.census, no)
         mutate && _mutation!(st, p_mut, span)
