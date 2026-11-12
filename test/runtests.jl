@@ -1829,6 +1829,41 @@ end
     end
 end
 
+@testset "Selection under recurrent mutation" begin
+    # 10 deleterious sites (s = -0.1, h = 0.5, μ = 0.002 per site), one per
+    # chromosome so that they recombine freely, N = 30, 300 generations from
+    # a population without variation, 1,000 runs. At the end, the mean
+    # derived-allele frequency per site and the proportion of sites without
+    # the derived allele are compared with an independent naive simulation
+    # of one site of the same model, 400,000 replicates
+    # (docs/src/validation/validate-selection-balance.txt, case 1). The
+    # variance of log fitness among parents is about 0.002, so selection at
+    # the other sites changes the effective size by less than 1%. A wrong
+    # dominance (h = 0.1: q = 0.0567) is 5.3 standard errors away.
+    N, K, T, runs = 30, 10, 300, 1_000
+    loci = FitnessLoci(collect(50:100:100K), -0.1; h=0.5, μ=2e-3)
+    f = SiteFitness(loci)
+    rng = Xoshiro(20261115)
+    q, zero = zeros(runs), zeros(runs)
+    for r = 1:runs
+        res = fisher_wright(N, T, fill(100, K), 0.02; mut_base=1e12, fitness=f, result=true, rng=rng)
+        c = zeros(Int, K)
+        for hap in res.selected_haplotypes, x in hap
+            c[searchsortedfirst(loci.pos, x)] += 1
+        end
+        for x in res.selected_substitutions
+            c[searchsortedfirst(loci.pos, x)] = 2N
+        end
+        q[r] = mean(c) / 2N
+        zero[r] = count(==(0), c) / K
+    end
+    z(x, ref, se_ref) = (mean(x) - ref) / sqrt(var(x) / runs + se_ref^2)
+    @test abs(z(q, 0.06502, 0.00024)) < 3.5
+    @test abs(z(zero, 0.50406, 0.00079)) < 3.5
+    # The test can tell h = 0.5 from h = 0.1 (reference q = 0.05668).
+    @test z(q, 0.05668, 0.00022) > 3.5
+end
+
 @testset "Heterozygosity decay under weighted parents" begin
     # Fitness that is not heritable (it goes with the position in the
     # cohort) only raises the variance of family size. Two genes in
