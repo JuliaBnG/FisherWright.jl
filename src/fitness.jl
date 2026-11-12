@@ -198,13 +198,20 @@ end
 
 _record_fitness!(::SiteFitness, ::SimState) = nothing
 
+function _check_fitness(f::SiteFitness, tbp::UInt32)
+    (isempty(f.loci.pos) || f.loci.pos[end] <= tbp) ||
+        throw(ArgumentError("a fitness locus lies beyond the genome length $(Int(tbp))"))
+    return nothing
+end
+
 # New mutations at the fitness loci on each haplotype of the current cohort
 # (threaded). Haplotype i draws from `st.srng[i]`, after its neutral
 # mutations: a Poisson number of hits on sites drawn uniformly from the
 # table. A hit on a site the haplotype carries, or on a substituted site, is
 # a no-op.
-function _sel_mutation!(f::SiteFitness, st::SimState, p_sel::Poisson{Float64})
-    pos = f.loci.pos
+_sel_mutation!(f::SiteFitness, st::SimState, p_sel::Poisson{Float64}) = _sel_mutation!(f.loci.pos, st, p_sel)
+
+function _sel_mutation!(pos::Vector{UInt32}, st::SimState, p_sel::Poisson{Float64})
     K = length(pos)
     sel, mbuf, nbuf, srng, subs = st.sel, st.smbuf, st.snbuf, st.srng, st.ssubs
     Threads.@threads for i = 1:2*st.n
@@ -234,7 +241,7 @@ _sel_poisson(f::SiteFitness) =
     f.loci.μ > 0 && length(f.loci) > 0 ? Poisson(length(f.loci) * f.loci.μ) : nothing
 
 # Selected alleles must be sites of the table.
-function _check_selected(v::Vector{UInt32}, loci::FitnessLoci, what)
+function _check_selected(v::Vector{UInt32}, loci, what)
     pos = loci.pos
     K = length(pos)
     k = 1
@@ -242,7 +249,7 @@ function _check_selected(v::Vector{UInt32}, loci::FitnessLoci, what)
         (m == 1 || v[m-1] < x) || throw(ArgumentError("$what: positions must be sorted and unique"))
         k = searchsortedfirst(pos, x, k, K, Base.Order.Forward)
         (k <= K && pos[k] == x) ||
-            throw(ArgumentError("$what: position $(Int(x)) is not a site of the fitness loci"))
+            throw(ArgumentError("$what: position $(Int(x)) is not a site of the table of loci"))
     end
     return nothing
 end
@@ -306,12 +313,13 @@ qtl, map = to_haplotype(res, loci)
 dosage = [qtl[k, 2i-1] + qtl[k, 2i] for k in 1:length(loci), i in 1:50]   # sites × individuals
 ```
 """
-function to_haplotype(result::FisherWrightResult, loci::FitnessLoci; include_fixed::Bool=true)
+# Genotypes at the sites of a table of loci, rows in table order.
+function _selected_matrix(result::FisherWrightResult, loci, include_fixed::Bool)
     K = length(loci)
-    K > 0 || throw(ArgumentError("the table of fitness loci is empty"))
+    K > 0 || throw(ArgumentError("the table of loci is empty"))
     cbp = result.chromosome_ends
     loci.pos[end] <= cbp[end] ||
-        throw(ArgumentError("a fitness locus lies beyond the genome length $(Int(cbp[end]))"))
+        throw(ArgumentError("a locus of the table lies beyond the genome length $(Int(cbp[end]))"))
     sel, subs = result.selected_haplotypes, result.selected_substitutions
     for (i, h) in pairs(sel)
         _check_selected(h, loci, "selected haplotype $i")
@@ -323,6 +331,11 @@ function to_haplotype(result::FisherWrightResult, loci::FitnessLoci; include_fix
             xy[searchsortedfirst(loci.pos, x), :] .= true
         end
     end
+    return xy, cbp
+end
+
+function to_haplotype(result::FisherWrightResult, loci::FitnessLoci; include_fixed::Bool=true)
+    xy, cbp = _selected_matrix(result, loci, include_fixed)
     map = DataFrame(
         chr=Int8[searchsortedfirst(cbp, p) for p in loci.pos],
         pos=copy(loci.pos),

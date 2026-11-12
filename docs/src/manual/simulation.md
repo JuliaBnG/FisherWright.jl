@@ -289,6 +289,64 @@ population cannot reproduce and the run stops with an error. For the
 same seed, a run with selection shares no realization with a neutral
 run.
 
+## Selection on a trait
+
+`fitness = TraitFitness(loci; σe, fitness)` selects on a quantitative
+trait instead of on the sites directly. `loci` is a `TraitLoci` table:
+each site has a position, an effect ``a`` of its derived allele and a
+dominance ``h``, and the table has a mutation rate ``\mu`` per site per
+haplotype per generation. `trait_loci` draws the sites, and the effects
+from a distribution if `a` is one.
+
+**Model.** The genotypic value ``G`` of an individual is the sum over
+sites of ``0``, ``ha`` and ``a`` for zero, one and two copies of the
+derived allele (``h = ½`` is additive), including sites whose derived
+allele was fixed and moved to `selected_substitutions`. The phenotype
+is ``P = G + e``, with ``e \sim N(0, \sigma_e^2)`` drawn anew for every
+adult in every generation, serially from `rng`, so that the run does
+not depend on the number of threads. Fitness is a function of ``P``:
+
+| Fitness | ``w(P)`` |
+|---|---|
+| `Directional(β)` | ``e^{\beta P}``; with a normal phenotype, the selection differential is ``\beta\sigma_P^2`` |
+| `Stabilizing(θ, ω²)` | ``e^{-(P - \theta)^2/(2\omega^2)}`` |
+| any function | its value, which must be non-negative; for example `P -> P > 0 ? 1.0 : 0.0` for truncation |
+
+Selection is soft and within each sex, as with `SiteFitness`: every
+offspring draws its sire among the males and its dam among the females
+with probability proportional to ``w(P)``, with replacement.
+
+```@example simulation
+chr = [1_000_000, 1_000_000]
+qtl = trait_loci(chr, 200; a=Normal(0, 0.2), μ=2e-4, rng=Xoshiro(1))
+up = fisher_wright(100, 200, chr, 1.0; result=true, rng=Xoshiro(2),
+                   fitness=TraitFitness(qtl; σe=1.0,
+                                        fitness=Directional(0.5)))
+g = [1, 50, 100, 150, 200]
+(up.mean_genotypic[g], up.var_genotypic[g])
+```
+
+The result records, for the parents of every generation, the mean and
+variance of ``G`` and of ``P`` (`mean_genotypic`, `var_genotypic`,
+`mean_phenotypic`, `var_phenotypic`; `NaN` for generations without a
+trait model), besides the fitness record. Continuing the population
+under stabilizing selection around ``\theta = 2`` pulls the mean back:
+
+```@example simulation
+held = fisher_wright(100, 200, chr, 1.0; init=up, result=true,
+                     rng=Xoshiro(3),
+                     fitness=TraitFitness(qtl; σe=1.0,
+                                          fitness=Stabilizing(2.0, 4.0)))
+held.mean_genotypic[[200, 250, 300, 350, 400]]
+```
+
+`to_haplotype(result, qtl)` exports the genotypes at the trait loci
+with their effects (columns `chr`, `pos`, `a`, `h`, `frq`), from which
+the true genotypic values of the population follow. A fixed site adds
+its ``a`` to every ``G``; it is kept as an offset when it is moved out
+of the haplotypes, so the realization does not depend on
+`fixation_interval`.
+
 ## Reproducibility
 
 Pass an explicit generator, for example `rng = Xoshiro(2026)`.

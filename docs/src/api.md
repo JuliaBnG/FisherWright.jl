@@ -17,6 +17,11 @@ SiteFitness
 FitnessLoci
 fitness_loci
 Neutral
+TraitFitness
+TraitLoci
+trait_loci
+Stabilizing
+Directional
 FisherWrightResult
 effective_size
 to_haplotype

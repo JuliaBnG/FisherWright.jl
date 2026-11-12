@@ -8,12 +8,13 @@ using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_s
     SimState, ConstantSize, SizeTrajectory, RandomMating, Neutral, bottleneck, growth,
     AbstractFitness, AliasTable, _alias_build!, _alias_draw, _alias_probabilities,
     _draw_parents!, _mate!, FitnessLoci, fitness_loci, SiteFitness, _log_fitness, _selected,
-    _meiosis!, _meiosis_selected!, _sel_mutation!
-using Distributions: Gamma, Exponential
+    _meiosis!, _meiosis_selected!, _sel_mutation!, TraitLoci, trait_loci, TraitFitness, Stabilizing,
+    Directional, _genotypic_value
+using Distributions: Gamma, Exponential, Normal
 import FisherWright: _fitness!
 using BnGStructs
 using Distributions: Poisson
-using Statistics: mean, var, cor
+using Statistics: mean, var, cor, std
 
 """
 Reference implementation of meiosis: emit the positions of alternating parents
@@ -1323,6 +1324,168 @@ end
     @test_throws ArgumentError fisher_wright(N, 1, chr, 2.0; kw..., fitness=f, init=wrong)
     kept = _extract_fixed(res)
     @test record(kept) == record(res)
+end
+
+@testset "Trait loci and genotypic value" begin
+    l = TraitLoci([10, 20, 30], [-2.0, 0.5, 3.0]; h=[0.5, 0.0, 1.0], μ=1e-4)
+    @test l.pos == UInt32[10, 20, 30] && l.a == [-2.0, 0.5, 3.0] && l.h == [0.5, 0.0, 1.0] && l.μ == 1e-4
+    @test TraitLoci([5], 1.0).h == [0.5] && length(TraitLoci(Int[], 1.0)) == 0
+    for bad in (() -> TraitLoci([20, 10], 1.0), () -> TraitLoci([0], 1.0), () -> TraitLoci([1, 2], [1.0]),
+        () -> TraitLoci([1], Inf), () -> TraitLoci([1], 1.0; h=NaN), () -> TraitLoci([1], 1.0; μ=-1.0))
+        @test_throws ArgumentError bad()
+    end
+    t = trait_loci([1_000, 2_000], 100; a=Normal(0, 1), h=x -> x > 0 ? 0.2 : 0.8, μ=1e-3, rng=Xoshiro(1))
+    @test length(t) == 100 && issorted(t.pos) && allunique(t.pos) && all(<=(3_000), t.pos)
+    @test any(<(0), t.a) && any(>(0), t.a) && t.h == [x > 0 ? 0.2 : 0.8 for x in t.a]
+    @test trait_loci([1_000, 2_000], 100; a=Normal(0, 1), h=x -> x > 0 ? 0.2 : 0.8, μ=1e-3, rng=Xoshiro(1)).a == t.a
+    @test_throws ArgumentError trait_loci([1_000], 5; a="big")
+    for bad in (() -> Stabilizing(0, 0), () -> Stabilizing(Inf, 1), () -> Directional(NaN),
+        () -> TraitFitness(t; σe=-1, fitness=Directional(0.1)))
+        @test_throws ArgumentError bad()
+    end
+
+    # The merge-walk equals the sum over the dense genotype.
+    rng = Xoshiro(2)
+    for _ = 1:300
+        K = rand(rng, 1:40)
+        pos = sort!(unique(rand(rng, UInt32(1):UInt32(500), K)))
+        K = length(pos)
+        l = TraitLoci(pos, randn(rng, K); h=rand(rng, K) .* 1.5 .- 0.25)
+        x, y = pos[rand(rng, Bool, K)], pos[rand(rng, Bool, K)]
+        dense = sum(1:K; init=0.0) do k
+            d = (pos[k] in x) + (pos[k] in y)
+            d == 0 ? 0.0 : d == 1 ? l.h[k] * l.a[k] : l.a[k]
+        end
+        @test _genotypic_value(l, x, y) ≈ dense
+        @test _genotypic_value(l, x, y) ≈ _genotypic_value(l, y, x)
+    end
+    alloc(l, x, y) = @allocated _genotypic_value(l, x, y)
+    l = TraitLoci([7, 9], [1.0, 2.0])
+    alloc(l, UInt32[7], UInt32[9])
+    @test alloc(l, UInt32[7], UInt32[9]) == 0
+end
+
+@testset "Selection on a trait" begin
+    chr, cbp = [5_000, 5_000], UInt32[5_000, 10_000]
+    kw = (M=2_000, mut_base=1e4, result=true)
+    N = 30
+    loci = TraitLoci(collect(100:100:10_000), [0.2 * (-1)^k for k = 1:100]; μ=2e-3)
+
+    # The phenotype is G + e: with no derived alleles, G = 0 and the
+    # variance of P is σe². 40 generations × 30 parents, χ² on 39·40 df.
+    f = TraitFitness(TraitLoci(loci.pos, loci.a; μ=0.0); σe=2.0, fitness=Directional(0.3))
+    r = fisher_wright(N, 40, chr, 2.0; kw..., fitness=f, rng=Xoshiro(1))
+    @test r.mean_genotypic == zeros(40) && r.var_genotypic == zeros(40)
+    df = 40 * (N - 1)
+    @test abs(sum(r.var_phenotypic) * (N - 1) / 4 - df) / sqrt(2df) < 3.5
+    @test abs(mean(r.mean_phenotypic) / sqrt(4 / (40N))) < 3.5
+    @test r.mean_log_fitness ≈ 0.3 .* r.mean_phenotypic
+    @test r.var_log_fitness ≈ 0.09 .* r.var_phenotypic
+
+    # One generation of selection is unbiased: for additive loci, the
+    # expected mean G of the offspring, given the parents and the fitness of
+    # each, is the fitness-weighted mean G of the parents within each sex,
+    # averaged over the sexes. Repeated from the same parents, with new
+    # environmental deviations, matings and meioses each time.
+    rmap = uniform_recombination_map(chr; M=2_000)
+    rng = Xoshiro(3)
+    lt = TraitLoci(collect(100:100:10_000), randn(rng, 100) .* 0.3)
+    start = [lt.pos[rand(rng, 100) .< 0.3] for _ = 1:2N]
+    for fit in (Directional(0.8), Stabilizing(1.0, 0.5))
+        tf = TraitFitness(lt; σe=0.7, fitness=fit)
+        R = 3_000
+        d, shift = zeros(R), zeros(R)
+        for r = 1:R
+            st = SimState([UInt32[] for _ = 1:2N], UInt32[], N, rng, copy.(start), UInt32[])
+            _simulate!(st, ConstantSize(N), RandomMating(), tf, 1, rmap, Poisson(1.0), UInt32(1):UInt32(10_000);
+                mutate=false, track=false, fixation_interval=1, verbose=false, progress_interval=100, rng=rng)
+            G, w, sex = st.gval[1:N], st.w[1:N], st.sex[1:N]
+            if r == 1
+                # Fitness is the function of the phenotype, up to the
+                # scaling of the fittest to 1.
+                lw = [fit isa Directional ? fit.β * p : -(p - fit.θ)^2 / (2fit.ω²) for p in st.pval[1:N]]
+                @test log.(w) .- lw ≈ fill(-maximum(lw), N) atol = 1e-9
+                @test maximum(w) == 1.0
+            end
+            expect = (sum(G[sex] .* w[sex]) / sum(w[sex]) + sum(G[.!sex] .* w[.!sex]) / sum(w[.!sex])) / 2
+            got = mean(_genotypic_value(lt, st.sel[2i-1], st.sel[2i]) for i = 1:N)
+            d[r] = got - expect
+            shift[r] = got - mean(G)
+        end
+        @test abs(mean(d)) / (std(d) / sqrt(R)) < 3.5
+        # ... and selection does act: the offspring differ from the mean of
+        # their parents.
+        @test abs(mean(shift)) / (std(shift) / sqrt(R)) > 10
+    end
+
+    # Directional selection moves the mean in its direction; stabilizing
+    # selection holds it near the optimum.
+    up = fisher_wright(N, 150, chr, 2.0; kw..., fitness=TraitFitness(loci; σe=0.5, fitness=Directional(1.0)),
+        rng=Xoshiro(4))
+    down = fisher_wright(N, 150, chr, 2.0; kw..., fitness=TraitFitness(loci; σe=0.5, fitness=Directional(-1.0)),
+        rng=Xoshiro(4))
+    @test up.mean_genotypic[end] > 2 && down.mean_genotypic[end] < -2
+    held = fisher_wright(N, 300, chr, 2.0; kw..., fitness=TraitFitness(loci; σe=0.5, fitness=Stabilizing(1.5, 0.5)),
+        rng=Xoshiro(5))
+    @test abs(mean(held.mean_genotypic[201:300]) - 1.5) < 0.5
+    @test !isempty(up.selected_substitutions) && !isempty(held.selected_substitutions)
+
+    # Substituted sites keep their value: under stabilizing selection, which
+    # is not multiplicative over sites, the realization does not depend on
+    # how often fixed sites are moved out of the haplotypes.
+    ff = TraitFitness(loci; σe=0.5, fitness=Stabilizing(1.5, 0.5))
+    a1 = fisher_wright(N, 300, chr, 2.0; kw..., fitness=ff, rng=Xoshiro(5))
+    a2 = fisher_wright(N, 300, chr, 2.0; kw..., fitness=ff, fixation_interval=17, rng=Xoshiro(5))
+    @test a1.selected_haplotypes == held.selected_haplotypes == a2.selected_haplotypes
+    @test a1.selected_substitutions == a2.selected_substitutions
+    @test a1.mean_genotypic ≈ a2.mean_genotypic && a1.mean_phenotypic ≈ a2.mean_phenotypic
+
+    # The export gives the genotypic values: one more generation without
+    # noise records the mean G of the exported population.
+    hap, map = to_haplotype(held, loci)
+    @test propertynames(map) == [:chr, :pos, :a, :h, :frq] && map.a == loci.a
+    G = [sum(k -> (d = hap[k, 2i-1] + hap[k, 2i]; d == 0 ? 0.0 : d == 1 ? loci.h[k] * loci.a[k] : loci.a[k]),
+        1:length(loci)) for i = 1:N]
+    nxt = fisher_wright(N, 1, chr, 2.0; kw..., init=held, fitness=TraitFitness(loci; fitness=Stabilizing(1.5, 0.5)),
+        rng=Xoshiro(6))
+    @test nxt.mean_genotypic[end] ≈ mean(G) && nxt.var_genotypic[end] ≈ var(G)
+    @test nxt.mean_phenotypic[end] == nxt.mean_genotypic[end]          # σe = 0
+    @test length(nxt.mean_genotypic) == 301 && nxt.mean_genotypic[1:300] == held.mean_genotypic
+
+    # Without a trait model the trait record is NaN, and continues as such.
+    neutral = fisher_wright(N, 5, chr, 2.0; kw..., rng=Xoshiro(7))
+    @test all(isnan, neutral.mean_genotypic) && length(neutral.var_phenotypic) == 5
+    site = fisher_wright(N, 5, chr, 2.0; kw..., fitness=SiteFitness(FitnessLoci([50], 0.1; μ=1e-3)), rng=Xoshiro(7))
+    @test all(isnan, site.mean_phenotypic) && length(site.mean_phenotypic) == 5
+    bare = FisherWrightResult(neutral.active_haplotypes, cbp, UInt32[])
+    @test isempty(bare.mean_genotypic)
+
+    # A user function of the phenotype: truncation on P (the best half by
+    # a threshold) gives the same as the equivalent built-in where they
+    # coincide, and an invalid value is an error.
+    tr = TraitFitness(loci; σe=0.5, fitness=P -> P > 0 ? 1.0 : 0.0)
+    @test fisher_wright(N, 50, chr, 2.0; kw..., fitness=tr, rng=Xoshiro(8)).mean_genotypic[end] > 0.5
+    flat = TraitFitness(loci; σe=0.5, fitness=P -> 1.0)
+    dirz = TraitFitness(loci; σe=0.5, fitness=Directional(0.0))
+    @test fisher_wright(N, 20, chr, 2.0; kw..., fitness=flat, rng=Xoshiro(9)).selected_haplotypes ==
+          fisher_wright(N, 20, chr, 2.0; kw..., fitness=dirz, rng=Xoshiro(9)).selected_haplotypes
+    @test_throws "non-negative" fisher_wright(N, 5, chr, 2.0; kw..., fitness=TraitFitness(loci; fitness=P -> -1.0))
+    @test_throws ArgumentError fisher_wright(N, 5, [5_000], 2.0; kw..., fitness=TraitFitness(loci; fitness=Directional(1.0)))
+    @test_throws ArgumentError fisher_wright(N, 5, chr, 2.0; fitness=TraitFitness(loci; fitness=Directional(1.0)))
+    other = TraitFitness(TraitLoci([1, 2], 1.0); fitness=Directional(1.0))
+    @test_throws ArgumentError fisher_wright(N, 5, chr, 2.0; kw..., init=held, fitness=other)
+
+    # The environmental deviations do not depend on the number of threads.
+    other_t = Threads.nthreads() == 1 ? 3 : 1
+    code = "using FisherWright, Random; l = TraitLoci(collect(100:100:10_000), 0.2; μ = 2e-3); " *
+           "r = fisher_wright(30, 60, [5_000, 5_000], 2.0; M = 2_000, mut_base = 1e4, result = true, " *
+           "fitness = TraitFitness(l; σe = 1.0, fitness = Stabilizing(1.0, 1.0)), rng = Xoshiro(11)); " *
+           "print(hash((r.selected_haplotypes, r.mean_phenotypic)))"
+    cmd = `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active_project()) -t $other_t -e $code`
+    l = TraitLoci(collect(100:100:10_000), 0.2; μ=2e-3)
+    here = fisher_wright(30, 60, [5_000, 5_000], 2.0; M=2_000, mut_base=1e4, result=true,
+        fitness=TraitFitness(l; σe=1.0, fitness=Stabilizing(1.0, 1.0)), rng=Xoshiro(11))
+    @test parse(UInt, read(cmd, String)) == hash((here.selected_haplotypes, here.mean_phenotypic))
 end
 
 @testset "Simulation invariants at scale" begin

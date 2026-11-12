@@ -75,7 +75,7 @@ total genome lengths up to ``2^{32} \\approx 4.29 \\times 10^9`` base pairs (bp)
 - `init = nothing`: Starting population; `nothing` starts monomorphic. Either a `Vector{Vector{UInt32}}` of `2 * ne` haplotypes (each sorted, unique, with positions in `1:sum(chr)`), or a [`FisherWrightResult`](@ref) whose `chromosome_ends` equal `cumsum(chr)`. Haplotypes `2i - 1` and `2i` form individual `i`, the convention of the output, and these individuals are the parents of generation 1. `init` is copied and left unmodified. The substitutions of a `FisherWrightResult` are carried over when `result = true` and merged back into every haplotype when `result = false`; given as plain haplotypes, sites carried by all of them are extracted at the first fixation scan when `result = true`. See *Continuing a run* below.
 - `popsize = nothing`: Census size per generation; `nothing` keeps it at `ne`. Either a vector of `nt` integers or a function `g -> N_g` of the generation `g = 1, …, nt`, which is called once per generation before the run; every size must exceed 1. Generation `g` draws the parents of its `N_g` offspring from the `N_{g-1}` individuals of the previous generation (`N_0 = ne`), so the run returns `2 * N_nt` haplotypes. [`bottleneck`](@ref) and [`growth`](@ref) build common trajectories. See *Changing population size* below.
 - `mating = RandomMating()`: Mating scheme. The default redraws sex as Bernoulli(½) per individual in every generation; [`RandomMating`](@ref)`(nmale = m)` or `RandomMating(sexratio = p)` fixes the number or the proportion of males instead. See *Sex ratio* below.
-- `fitness = Neutral()`: Fitness model. [`SiteFitness`](@ref)`(loci)` selects on the sites of a [`FitnessLoci`](@ref) table, drawing each parent with probability proportional to its fitness within its sex; it requires `result = true`. See *Selection* below.
+- `fitness = Neutral()`: Fitness model. [`SiteFitness`](@ref)`(loci)` selects on the sites of a [`FitnessLoci`](@ref) table, and [`TraitFitness`](@ref)`(loci; σe, fitness)` on a quantitative trait with the loci of a [`TraitLoci`](@ref) table; each draws parents with probability proportional to fitness within each sex, and requires `result = true`. See *Selection* below.
 - `verbose::Bool = false`: If `true`, writes a start banner and a progress line to `stderr` every `progress_interval` generations and at the last generation, reporting mean mutations per haplotype, accumulated substitutions (when `result = true`), elapsed wall time, and a linear ETA. On a terminal the line is updated in place; when `stderr` is redirected each report is a separate line.
 - `progress_interval::Integer = 100`: Generations between progress reports when `verbose = true` (must be positive).
 - `rng::AbstractRNG = Random.default_rng()`: Random number generator; see *Reproducibility* below.
@@ -95,7 +95,7 @@ total genome lengths up to ``2^{32} \\approx 4.29 \\times 10^9`` base pairs (bp)
 - **Continuing a run**: With `init`, the population evolves for `nt` further generations from the given state, for example to burn in once and then start several replicates, or to follow a set of standing variants with `mutate = false`. The per-slot streams are seeded anew from `rng` on every call, so two calls of `nt₁` and `nt₂` generations are a valid realization of `nt₁ + nt₂` generations but not the one a single call would give for the same seed. When `init` is a `FisherWrightResult` and `result = true`, the census record of the new generations is appended to that of `init`, so the result describes all `nt₁ + nt₂` generations.
 - **Changing population size**: With `popsize`, the census size follows the given trajectory, for example a bottleneck or an expansion; mating, meiosis and mutation are otherwise as described above, and sex is redrawn in every generation, so the effective size of generation `g` follows the `N_{g-1}` parents. Working buffers and the per-slot streams are allocated once for the largest size of the run, so the realization for a given seed depends on that maximum: a trajectory that stays at `ne` reproduces the run without `popsize`, while two trajectories with different maxima share no random numbers.
 - **Sex ratio**: Sex is not inherited: it is assigned anew to each cohort when it reproduces, and every offspring draws a sire and a dam with replacement. By default the number of males among `N` parents is Binomial(`N`, ½) conditioned on both sexes being present, which gives ``N_e \\approx N - 1``. With `mating = RandomMating(nmale = m)` exactly `m` individuals, a uniformly random subset, are males in every generation, and with `RandomMating(sexratio = p)` exactly `round(Int, p * N)` (at least one of each sex); the effective size is then ``4 N_m N_f / (N_m + N_f)``, so `sexratio = 0.5` gives ``N_e \\approx N`` for even `N`. The fixed-sex schemes draw sex differently from `rng`, so they share no realization with the default for the same seed.
-- **Selection**: With `fitness = SiteFitness(loci)`, the sites of `loci` are under selection: a genotype has fitness `1`, `1 + h*s` or `1 + s` with zero, one or two copies of the derived allele, multiplied over sites. Selection is soft and acts within each sex: every offspring draws its sire among the males and its dam among the females with probability proportional to fitness, with replacement, so the census size is unchanged and only relative fitness within a sex matters. The derived alleles at the fitness loci are kept apart from the neutral mutations: they are returned in `selected_haplotypes` and, once fixed, `selected_substitutions`, they arise by mutation at rate `loci.μ` per site per haplotype per generation (never by the neutral mutation process, which may hit the same coordinates without effect on fitness), and they recombine with the neutral mutations as one haplotype. A selected allele of the starting population is given through `init`, as a `FisherWrightResult` with `selected_haplotypes`. If no member of a sex has positive fitness the run stops with an error. For the same seed, a run with selection shares no realization with a neutral run.
+- **Selection**: With `fitness = SiteFitness(loci)`, the sites of `loci` are under selection: a genotype has fitness `1`, `1 + h*s` or `1 + s` with zero, one or two copies of the derived allele, multiplied over sites. Selection is soft and acts within each sex: every offspring draws its sire among the males and its dam among the females with probability proportional to fitness, with replacement, so the census size is unchanged and only relative fitness within a sex matters. The derived alleles at the fitness loci are kept apart from the neutral mutations: they are returned in `selected_haplotypes` and, once fixed, `selected_substitutions`, they arise by mutation at rate `loci.μ` per site per haplotype per generation (never by the neutral mutation process, which may hit the same coordinates without effect on fitness), and they recombine with the neutral mutations as one haplotype. A selected allele of the starting population is given through `init`, as a `FisherWrightResult` with `selected_haplotypes`. If no member of a sex has positive fitness the run stops with an error. For the same seed, a run with selection shares no realization with a neutral run. With `fitness = TraitFitness(loci; σe, fitness)` the same holds for a quantitative trait: the genotypic value `G` sums `0`, `h*a` and `a` over the sites of `loci` (substituted sites included), the phenotype is `P = G + e` with `e ~ Normal(0, σe²)` drawn serially from `rng`, and fitness is `fitness(P)`, for example [`Stabilizing`](@ref)`(θ, ω²)` or [`Directional`](@ref)`(β)`.
 - **Allocation Efficiency**: Working buffers (mutations, crossovers, mating assignments) are allocated once at start and reused, achieving zero steady-state per-generation allocations.
 
 # Examples
@@ -170,11 +170,10 @@ function fisher_wright(
 
     demog = _demography(Int(ne), Int(nt), popsize)
     _check_mating(mating, demog, Int(ne), Int(nt))
+    _check_fitness(fitness, tbp)
     if _selected(fitness)
         result || throw(ArgumentError(
             "selection needs result = true: the selected alleles are returned in a FisherWrightResult"))
-        (isempty(fitness.loci.pos) || fitness.loci.pos[end] <= tbp) ||
-            throw(ArgumentError("a fitness locus lies beyond the genome length $(Int(tbp))"))
     end
     prt, substitutions = _initial_state(init, 2 * Int(ne), cbp, result)
     sel, ssubs = _initial_selected(init, fitness, 2 * Int(ne))
@@ -196,9 +195,9 @@ function fisher_wright(
     # Drop the spare buffers beyond the final cohort.
     haps = resize!(st.prt, 2 * st.n)
     result || return (haps, cbp)
-    census, males, fmean, flmean, flvar = _record(init, st)
+    census, males, fmean, flmean, flvar, gmean, gvar, pmean, pvar = _record(init, st)
     return FisherWrightResult(haps, cbp, st.substitutions, census, males,
-        resize!(st.sel, 2 * st.n), st.ssubs, fmean, flmean, flvar)
+        resize!(st.sel, 2 * st.n), st.ssubs, fmean, flmean, flvar, gmean, gvar, pmean, pvar)
 end
 
 """
@@ -243,7 +242,7 @@ are automatically extracted from `sp`:
 - `init = nothing`: Starting population of `2 * sp.nid` haplotypes, or a [`FisherWrightResult`](@ref); see the method above.
 - `popsize = nothing`: Census size per generation, as a vector of `nt` integers or a function of the generation; see the method above.
 - `mating = RandomMating()`: Mating scheme, for example `RandomMating(nmale = 10)`; see the method above.
-- `fitness = Neutral()`: Fitness model, for example `SiteFitness(loci)`; requires `result = true`; see the method above.
+- `fitness = Neutral()`: Fitness model, for example `SiteFitness(loci)` or `TraitFitness(loci; σe, fitness)`; requires `result = true`; see the method above.
 - `verbose::Bool = false`: If `true`, reports progress to `stderr`; see the method above.
 - `progress_interval::Integer = 100`: Generations between progress reports when `verbose = true`.
 - `rng::AbstractRNG = Random.default_rng()`: Random number generator; see the method above.

@@ -274,6 +274,9 @@ current cohort occupies the leading entries.
   keeps selected alleles.
 - `fmean`, `flmean`, `flvar`: per generation, the arithmetic mean of the
   fitness of the parents and the mean and variance of its logarithm.
+- `gval`, `pval`: genotypic value and phenotype of each parent under a
+  trait model; `gmean`, `gvar`, `pmean`, `pvar`: their mean and variance per
+  generation (NaN without a trait).
 - `census`, `males`: record of the run. `census` starts with the size of the
   starting cohort and gains the number of offspring of every generation;
   `males` gains the number of males among its parents.
@@ -304,6 +307,12 @@ mutable struct SimState
     const fmean::Vector{Float64}
     const flmean::Vector{Float64}
     const flvar::Vector{Float64}
+    const gval::Vector{Float64}
+    const pval::Vector{Float64}
+    const gmean::Vector{Float64}
+    const gvar::Vector{Float64}
+    const pmean::Vector{Float64}
+    const pvar::Vector{Float64}
 end
 
 # State for the starting cohort `prt` (two haplotypes per individual), with
@@ -335,6 +344,7 @@ function SimState(
         [Xoshiro(rand(rng, UInt64)) for _ = 1:nh], [n], Int[],
         sel, bufs(nh), ssubs, bufs(nh), bufs(nh),
         Float64[], Float64[], Float64[],
+        zeros(nmax), zeros(nmax), Float64[], Float64[], Float64[], Float64[],
     )
 end
 
@@ -384,8 +394,10 @@ function _initial_state(init::FisherWrightResult, nh::Int, cbp::Vector{UInt32}, 
     _check_positions(subs, cbp[end], "init.substitutions")
     (length(init.census) == length(init.males) + 1 && init.census[end] == nh ÷ 2) ||
         throw(ArgumentError("init.census and init.males do not describe the $(nh ÷ 2) individuals of init"))
-    length(init.mean_fitness) == length(init.mean_log_fitness) == length(init.var_log_fitness) ==
-    length(init.males) || throw(ArgumentError("the fitness record of init must have one entry per generation"))
+    all(v -> length(v) == length(init.males), (init.mean_fitness, init.mean_log_fitness,
+        init.var_log_fitness, init.mean_genotypic, init.var_genotypic, init.mean_phenotypic,
+        init.var_phenotypic)) ||
+        throw(ArgumentError("the fitness and trait records of init must have one entry per generation"))
     # A substitution is carried by every haplotype: kept apart when the run
     # tracks substitutions, merged back into the haplotypes when it does not.
     return result ? ([_remove_sorted!(copy(h), subs) for h in haps], copy(subs)) :
@@ -394,11 +406,14 @@ end
 
 # Census record of the result: that of this call, appended to the record of
 # a FisherWrightResult the run was continued from.
-_record(::Any, st::SimState) = (st.census, st.males, st.fmean, st.flmean, st.flvar)
+_record(::Any, st::SimState) =
+    (st.census, st.males, st.fmean, st.flmean, st.flvar, st.gmean, st.gvar, st.pmean, st.pvar)
 _record(init::FisherWrightResult, st::SimState) = (
     vcat(init.census, view(st.census, 2:length(st.census))), vcat(init.males, st.males),
     vcat(init.mean_fitness, st.fmean), vcat(init.mean_log_fitness, st.flmean),
-    vcat(init.var_log_fitness, st.flvar))
+    vcat(init.var_log_fitness, st.flvar), vcat(init.mean_genotypic, st.gmean),
+    vcat(init.var_genotypic, st.gvar), vcat(init.mean_phenotypic, st.pmean),
+    vcat(init.var_phenotypic, st.pvar))
 
 _fitness!(::Neutral, ::SimState) = nothing
 
@@ -411,6 +426,23 @@ function _record_fitness!(::AbstractFitness, st::SimState)
     push!(st.flvar, 0.0)
     return nothing
 end
+
+# Trait record of the parents of one generation: NaN unless the fitness
+# model is a trait model, which records it in `_fitness!`.
+function _record_trait!(::AbstractFitness, st::SimState)
+    push!(st.gmean, NaN)
+    push!(st.gvar, NaN)
+    push!(st.pmean, NaN)
+    push!(st.pvar, NaN)
+    return nothing
+end
+
+# Fitness models that draw random numbers (environmental deviations) take
+# the run's serial rng; the others ignore it.
+_fitness!(f::AbstractFitness, st::SimState, ::AbstractRNG) = _fitness!(f, st)
+
+# Errors in a fitness model that the run would otherwise hit midway.
+_check_fitness(::AbstractFitness, ::UInt32) = nothing
 
 # Sex of the parents, then sire and dam of each of `no` offspring.
 # Conditioning on both sexes being present is exact rejection sampling;
@@ -551,8 +583,9 @@ function _simulate!(
     p_sel = _sel_poisson(fitness)
     for g = 1:nt
         no = _popsize(demog, g)
-        _fitness!(fitness, st)
+        _fitness!(fitness, st, rng)
         _record_fitness!(fitness, st)
+        _record_trait!(fitness, st)
         _mate!(mating, fitness, st, no, rng)
         push!(st.males, length(st.sires))
         selected ? _meiosis_selected!(st, recomb_map, no) : _meiosis!(st, recomb_map, no)
