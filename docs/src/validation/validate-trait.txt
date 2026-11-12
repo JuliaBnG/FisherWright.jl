@@ -1,0 +1,56 @@
+# Date: 2026-11-12T14:45Z  Commit: e2deb3a (main; package source unchanged on this branch)
+# CPU: AMD Ryzen 9 3900X 12-Core Processor; julia version 1.13.3; deps: BnGStructs v0.2.7 DataFrames v1.8.3 Distributions v0.25.134
+# $ julia -t 8 --project=. docs/src/validation/scripts/validate-trait.jl 1000 2026
+
+================================================================================
+ FisherWright.jl validation of selection on a trait
+ K = 20000 additive loci, a ~ Normal(0, 0.2²), μ = 1.0e-5, reps = 1000, seed = 2026,
+ threads = 8. A check fails when |z| > 3.5
+================================================================================
+
+[1/2] Neutral genetic variance against its exact expectation
+
+  N = 20, T = 200, σe = 0  (11 s); equilibrium 2NeVm = 0.1510 with Ne = 1/a = 18.87
+  generation              mean var G   expected        z
+  2               0.00401 ± 0.00008     0.00400     0.07  pass
+  5               0.01538 ± 0.00028     0.01508     1.06  pass
+  10              0.03262 ± 0.00057     0.03172     1.56  pass
+  20              0.06029 ± 0.00103     0.05915     1.11  pass
+  50              0.11035 ± 0.00188     0.10904     0.70  pass
+  100             0.13729 ± 0.00228     0.13961    -1.02  pass
+  200             0.14649 ± 0.00253     0.15013    -1.44  pass
+
+  N = 50, T = 500, σe = 0  (38 s); equilibrium 2NeVm = 0.3917 with Ne = 1/a = 48.96
+  generation              mean var G   expected        z
+  2               0.00400 ± 0.00005     0.00400     0.04  pass
+  5               0.01594 ± 0.00019     0.01564     1.61  pass
+  10              0.03444 ± 0.00040     0.03426     0.45  pass
+  20              0.07036 ± 0.00081     0.06879     1.93  pass
+  50              0.15554 ± 0.00170     0.15362     1.13  pass
+  100             0.24882 ± 0.00279     0.24843     0.14  pass
+  200             0.33608 ± 0.00413     0.33980    -0.90  pass
+  500             0.38516 ± 0.00507     0.38919    -0.79  pass
+
+  N = 50, T = 100, σe = 1  (7 s); equilibrium 2NeVm = 0.3917 with Ne = 1/a = 48.96
+  generation              mean var G   expected        z
+  2               0.00400 ± 0.00006     0.00400     0.00  pass
+  5               0.01552 ± 0.00018     0.01564    -0.68  pass
+  10              0.03414 ± 0.00039     0.03426    -0.32  pass
+  20              0.06896 ± 0.00077     0.06879     0.22  pass
+  50              0.15126 ± 0.00170     0.15362    -1.39  pass
+  100             0.24528 ± 0.00286     0.24843    -1.10  pass
+  var P - var G    0.99769 ± 0.00784     1.00000    -0.30  pass
+
+[2/2] Response to directional selection exp(βP), for comparison
+  N = 50, 30 generations of selection after 500 neutral, β = 0.5, σe = 1, 200 replicates
+  cumulative response / Σ β V_G = 0.923 ± 0.008
+  Gaussian prediction 1; with the finite-N bias of the weighted mean 0.943
+
+================================================================================
+ All checks passed.
+================================================================================
+
+real	1m9.504s
+user	8m54.949s
+sys	0m18.792s
+exit status: 0

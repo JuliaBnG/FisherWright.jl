@@ -2339,6 +2339,39 @@ end
     @test z(q, 0.05668, 0.00022) > 3.5
 end
 
+@testset "Neutral genetic variance of a trait" begin
+    # The genetic variance of a neutral additive trait under mutation and
+    # drift against its exact expectation E[α²](2H_B - H_W), α = a/2, with
+    # H_B and H_W from the two-sex recursion with 2U new alleles per pair of
+    # genes (docs/src/validation/validate-trait.txt). N = 50, 20,000 loci,
+    # a ~ Normal(0, 0.2²) drawn anew for each of 100 replicates, μ = 1e-5,
+    # 200 generations from no variation. A heterozygote coded as a instead
+    # of a/2 would about quadruple the variance (most derived alleles are
+    # rare, so mostly heterozygous), and a mutation rate off by a factor 2
+    # double it.
+    N, T, K, μ, σa, reps = 50, 200, 20_000, 1e-5, 0.2, 100
+    chr = fill(1_000_000, 10)
+    rng = Xoshiro(20261117)
+    V = zeros(reps, T)
+    for r = 1:reps
+        loci = trait_loci(chr, K; a=Normal(0, σa), μ=μ, rng=rng)
+        res = fisher_wright(N, T, chr, 0.02; mut_base=1e12, result=true, rng=rng,
+            fitness=TraitFitness(loci; fitness=P -> 1.0))
+        V[r, :] .= res.var_genotypic
+    end
+    binom = [Float64(binomial(big(N), k)) for k = 1:N-1]
+    a = sum(binom[k] * (1 / 4k + 1 / 4(N - k)) for k = 1:N-1) / sum(binom)
+    hB = hW = 0.0
+    E = zeros(T)
+    for g = 1:T
+        E[g] = σa^2 / 4 * (2hB - hW)
+        hB, hW = (1 - a) * hB + a / 2 * hW + 2K * μ, hB + 2K * μ
+    end
+    for g in (10, 50, 200)
+        @test abs(mean(V[:, g]) - E[g]) / (std(V[:, g]) / sqrt(reps)) < 3.5
+    end
+end
+
 @testset "Heterozygosity decay under weighted parents" begin
     # Fitness that is not heritable (it goes with the position in the
     # cohort) only raises the variance of family size. Two genes in

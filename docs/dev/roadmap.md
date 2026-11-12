@@ -58,9 +58,17 @@ dams and sires (z-scores per individual), unbiasedness of one
 generation of trait selection under `:random` splits, response and a
 lower realized Ne through `fisher_wright`.
 
-Next in 0.7.0: a theory-level validation of `TraitFitness` (response to
-selection and Bulmer effect, mutation–stabilizing selection balance);
-then the release.
+`TraitFitness` against theory (2026-11-12,
+`validate-trait.jl`): the neutral genetic variance under mutation and
+drift against its exact expectation E[α²](2H_B − H_W) at every
+generation (22 checks, |z| ≤ 1.93; equilibrium 2NeVm), var P − var G
+against σe², and, for comparison, the response to exp(βP) against
+βV_G (0.923 ± 0.008, of which the finite-N bias of the weighted mean
+predicts 0.943). CI test "Neutral genetic variance of a trait".
+Stabilizing selection against theory (Gaussian or house-of-cards
+equilibria) is not compared.
+
+The 0.7.0 row is complete apart from the release itself.
 v0.4.0 shipped without the refactor below, so the staging is renumbered
 from 0.5.0. The 0.5.0 row is complete: the golden-output regression
 test and the `_recombine!` kernel (v0.4.2); the `mutate` and `init`

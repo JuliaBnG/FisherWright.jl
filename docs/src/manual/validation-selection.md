@@ -138,6 +138,59 @@ Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "s
   alleles above ``\mu/(h|s|)`` (0.065 against 0.040 for case 1) and
   lowers the mean fitness below ``e^{-2K\mu}`` (0.936 against 0.961).
 
+## Selection on a trait
+
+`validate-trait.jl` checks `TraitFitness` against quantitative-genetic
+theory. The mechanism itself, that one generation of selection moves
+the mean genotypic value by exactly the fitness-weighted mean of the
+parents within each sex, is tested exactly in CI ("Selection on a
+trait").
+
+**Neutral genetic variance.** ``K = 20{,}000`` additive loci
+(``h = ½``, so the allele substitution effect is ``\alpha = a/2``) with
+effects ``a \sim N(0, 0.2^2)`` drawn anew for every replicate, mutation
+``\mu = 10^{-5}`` per site (``U = K\mu = 0.2`` per haplotype and
+generation), constant fitness, a population without variation at the
+start. For allele indicators, the sample variance of the dosage among
+the ``N`` individuals has expectation ``2H_B - H_W``; with independent
+effects of zero mean the loci add, so
+
+```math
+E[\operatorname{var} G] = E[\alpha^2]\,(2H_B - H_W),
+```
+
+with ``H_B`` and ``H_W`` from the two-sex recursion with ``2U`` new
+alleles per pair of genes (infinite sites). The expectation is exact at
+every generation, not only at equilibrium, where it is
+``2N_eV_m`` with ``N_e = 1/a`` and ``V_m = 2UE[\alpha^2]`` (Lynch and
+Hill 1986). With ``\sigma_e > 0``, also
+``E[\operatorname{var} P] = E[\operatorname{var} G] + \sigma_e^2``.
+
+**Directional response, for comparison.** With fitness ``e^{\beta P}``
+and Gaussian ``G`` and ``P``, the fitness-weighted mean of ``G`` is
+shifted by ``\beta V_G`` and its variance is unchanged (no Bulmer
+effect), so the response per generation is about ``\beta V_G``. In a
+finite population the weighted mean over ``n`` parents of a sex is a
+ratio estimator, with a first-order bias of
+``-\beta V_G e^{\beta^2 V_P}/n``.
+
+```@eval
+using Markdown, FisherWright
+Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "src", "validation", "validate-trait.txt"), String)))
+```
+
+- All 22 checks of the neutral variance pass, |z| ≤ 1.93, at 1,000
+  replicates per case, from the second generation (one round of
+  mutation) to near equilibrium (``0.385 \pm 0.005`` against
+  ``0.389`` after 500 generations at ``N = 50``, where ``2N_eV_m`` is
+  ``0.392``). ``\operatorname{var} P - \operatorname{var} G`` is
+  ``0.998 \pm 0.008`` for ``\sigma_e^2 = 1``.
+- The cumulative response over 30 generations of directional selection
+  is ``0.923 \pm 0.008`` of ``\beta\sum V_G``. The finite-``N`` bias
+  of the weighted mean explains most of the difference (prediction
+  0.943); the rest, ``2.0 \pm 0.8``%, is within what finite loci and
+  drift within a generation would give, and is not tested.
+
 ## CI test
 
 The testset "Selection under recurrent mutation" runs case 1 of the
@@ -157,6 +210,10 @@ rate at the fitness loci, and the weighted draw of parents.
 
 ## Not covered
 
+- Stabilizing selection against theory: the equilibrium genetic
+  variance under mutation and stabilizing selection depends on the
+  regime (Gaussian, house of cards) and is not compared; the mechanism
+  is tested exactly, and the mean is held at the optimum in CI.
 - Linked selection: the effect of selected sites on neutral diversity
   (background selection, sweeps) against SLiM.
 - Large ``N`` and weak selection (``4Nhs`` of order 1 at large ``N``),
@@ -171,7 +228,9 @@ rate at the fitness loci, and the weighted draw of parents.
 [`fixation-reference.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/fixation-reference.jl),
 [`validate-selection.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-selection.jl)
 and
-[`validate-selection-balance.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-selection-balance.jl).
+[`validate-selection-balance.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-selection-balance.jl)
+and
+[`validate-trait.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-trait.jl).
 Rerun them, and replace the result files and the reference values in
 `test/runtests.jl`, when the draw of parents, `SiteFitness`, the
 mutation or the meiosis of the selected stream changes:
@@ -181,4 +240,5 @@ D=docs/src/validation
 julia -t 16 $D/scripts/fixation-reference.jl 2000000 2026 > $D/fixation-reference.txt
 julia -t 8 --project=. $D/scripts/validate-selection.jl 200000 2000000 2026 > $D/validate-selection.txt
 julia -t 16 --project=. $D/scripts/validate-selection-balance.jl 4000 400000 2026 > $D/validate-selection-balance.txt
+julia -t 8 --project=. $D/scripts/validate-trait.jl 1000 2026 > $D/validate-trait.txt
 ```
