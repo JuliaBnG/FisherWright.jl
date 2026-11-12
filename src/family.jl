@@ -56,8 +56,8 @@ every parental cohort must hold them, which is checked before the run.
 [`Hierarchical`](@ref) is the nested design with equal splits.
 
 The census size is not affected. `FamilySize` cannot be combined with
-selection yet. [`effective_size`](@ref) assumes random mating and does not
-apply to runs with `FamilySize`.
+selection yet. [`effective_size`](@ref) returns the effective size realized
+by the family sizes of a run, `1/a` per generation.
 
 # Examples
 ```julia

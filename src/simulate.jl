@@ -279,6 +279,9 @@ current cohort occupies the leading entries.
 - `gval`, `pval`: genotypic value and phenotype of each parent under a
   trait model; `gmean`, `gvar`, `pmean`, `pvar`: their mean and variance per
   generation (NaN without a trait).
+- `pcnt`: scratch for the number of offspring of each parent.
+- `ppairs`, `mpairs`: per generation, the number of ordered pairs of
+  offspring that share their sire and that share their dam.
 - `census`, `males`: record of the run. `census` starts with the size of the
   starting cohort and gains the number of offspring of every generation;
   `males` gains the number of males among its parents.
@@ -320,6 +323,9 @@ mutable struct SimState
     const fidx::Vector{Int}
     const bsires::Vector{Int}
     const bdams::Vector{Int}
+    const pcnt::Vector{Int}
+    const ppairs::Vector{Float64}
+    const mpairs::Vector{Float64}
 end
 
 # State for the starting cohort `prt` (two haplotypes per individual), with
@@ -354,6 +360,7 @@ function SimState(
         zeros(nmax), zeros(nmax), Float64[], Float64[], Float64[], Float64[],
         sizehint!(Int[], nmax), sizehint!(Int[], nmax), sizehint!(Int[], nmax),
         sizehint!(Int[], nmax), sizehint!(Int[], nmax),
+        zeros(Int, nmax), Float64[], Float64[],
     )
 end
 
@@ -405,7 +412,7 @@ function _initial_state(init::FisherWrightResult, nh::Int, cbp::Vector{UInt32}, 
         throw(ArgumentError("init.census and init.males do not describe the $(nh ÷ 2) individuals of init"))
     all(v -> length(v) == length(init.males), (init.mean_fitness, init.mean_log_fitness,
         init.var_log_fitness, init.mean_genotypic, init.var_genotypic, init.mean_phenotypic,
-        init.var_phenotypic)) ||
+        init.var_phenotypic, init.paternal_pairs, init.maternal_pairs)) ||
         throw(ArgumentError("the fitness and trait records of init must have one entry per generation"))
     # A substitution is carried by every haplotype: kept apart when the run
     # tracks substitutions, merged back into the haplotypes when it does not.
@@ -416,13 +423,34 @@ end
 # Census record of the result: that of this call, appended to the record of
 # a FisherWrightResult the run was continued from.
 _record(::Any, st::SimState) =
-    (st.census, st.males, st.fmean, st.flmean, st.flvar, st.gmean, st.gvar, st.pmean, st.pvar)
+    (st.census, st.males, st.fmean, st.flmean, st.flvar, st.gmean, st.gvar, st.pmean, st.pvar,
+        st.ppairs, st.mpairs)
 _record(init::FisherWrightResult, st::SimState) = (
     vcat(init.census, view(st.census, 2:length(st.census))), vcat(init.males, st.males),
     vcat(init.mean_fitness, st.fmean), vcat(init.mean_log_fitness, st.flmean),
     vcat(init.var_log_fitness, st.flvar), vcat(init.mean_genotypic, st.gmean),
     vcat(init.var_genotypic, st.gvar), vcat(init.mean_phenotypic, st.pmean),
-    vcat(init.var_phenotypic, st.pvar))
+    vcat(init.var_phenotypic, st.pvar), vcat(init.paternal_pairs, st.ppairs),
+    vcat(init.maternal_pairs, st.mpairs))
+
+# Realized family sizes of one generation: the number of ordered pairs of
+# its `no` offspring that share their sire, and that share their dam, from
+# the mating table.
+function _record_families!(st::SimState, no::Int)
+    c, pm = st.pcnt, st.pm
+    for (col, out) in ((1, st.ppairs), (2, st.mpairs))
+        fill!(view(c, 1:st.n), 0)
+        @inbounds for i = 1:no
+            c[pm[i, col]] += 1
+        end
+        pairs = 0
+        @inbounds for k = 1:st.n
+            pairs += c[k] * (c[k] - 1)
+        end
+        push!(out, pairs)
+    end
+    return nothing
+end
 
 _fitness!(::Neutral, ::SimState) = nothing
 
@@ -597,6 +625,7 @@ function _simulate!(
         _record_trait!(fitness, st)
         _mate!(mating, fitness, st, no, rng)
         push!(st.males, length(st.sires))
+        _record_families!(st, no)
         selected ? _meiosis_selected!(st, recomb_map, no) : _meiosis!(st, recomb_map, no)
         push!(st.census, no)
         mutate && _mutation!(st, p_mut, span)

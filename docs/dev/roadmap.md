@@ -35,14 +35,25 @@ s sires and s·d dams. The recursion holds with the subset sizes; two
 more cases in the drift test (|z| ≤ 1.73 over six seeds, two at 10,000
 replicates).
 
-Next in 0.7.0: `FamilySize` with selection; a scheme-aware
-`effective_size` (needs the scheme in the result); a theory-level
-validation of `TraitFitness` (response to selection and Bulmer effect,
-mutation–stabilizing selection balance). Open: whether
-`WeightedParents` (skewed usage with a sire drawn per offspring) is
-still needed next to `FamilySize` with Gamma weights; density
-regulation and the extinction policy belong to an emergent census
-size, which was not chosen (2026-11-12: the census stays fixed).
+Decided 2026-11-12: `effective_size` uses the realized family sizes by
+default; `WeightedParents` is dropped (covered by `FamilySize` with
+Gamma weights); `FamilySize` gets selection by multiplying the split
+weights by fitness (`:random` and Gamma splits; `:equal` splits and
+`Hierarchical` stay without selection); density regulation and the
+extinction policy are not scheduled, since the census stays fixed.
+
+Realized effective size (2026-11-12): the result records, per
+generation, the ordered pairs of offspring sharing a sire and sharing a
+dam (`paternal_pairs`, `maternal_pairs`), and `effective_size` returns
+1/a with a = (Σm(m−1) + Σn(n−1))/(4N(N−1)), for every scheme and
+including the family-size variance from selection;
+`from = :sexes` keeps the 0.5/0.6 formula. Exact for `Hierarchical`
+(deterministic families), agrees with the sex-count value under random
+mating over a long run, and is lower under selection.
+
+Next in 0.7.0: `FamilySize` with selection; a theory-level validation of
+`TraitFitness` (response to selection and Bulmer effect,
+mutation–stabilizing selection balance).
 v0.4.0 shipped without the refactor below, so the staging is renumbered
 from 0.5.0. The 0.5.0 row is complete: the golden-output regression
 test and the `_recombine!` kernel (v0.4.2); the `mutate` and `init`
@@ -173,7 +184,7 @@ fitnesses (all ones, and ignored, under `Neutral()`).
 | `RandomMating(; nmale, sexratio)` | Fixed N_m, N_f or a fixed proportion | 4N_mN_f/(N_m+N_f) (Wright) |
 | `FamilySize(dist_f; dist_m)` | Offspring counts per dam (and sire usage) from Poisson, NegBinomial(r, p), or a constant (equal family size) | 8N/(V_m+V_f+4) (Hill 1972); equal families ≈ 2N |
 | `Hierarchical(nsire, dams_per_sire, offspring_per_dam)` | Livestock-style nested design | Hill/Gowe formulas; compare against SLiM |
-| `WeightedParents(w_m, w_f)` | Skewed parental usage (Gamma or Zipf weights, or user-supplied) | Through V_k |
+| ~~`WeightedParents(w_m, w_f)`~~ | Dropped 2026-11-12: skewed usage is covered by `FamilySize` with Gamma weights | Through V_k |
 | `Monoecious(; selfing = s)` | Hermaphrodite mode with selfing rate s | N/(1+F), F = s/(2−s) |
 | `AvoidRelatives(inner; level = :fullsib/:halfsib)` | Rejection sampling over a 1–2 generation pedigree | Design-dependent; empirical |
 | `CustomMating(f)` | User callback `(g, sex, pedigree, rng) -> pm` | User's responsibility |
@@ -404,7 +415,7 @@ replicates and seeds; logs go under `docs/src/validation/`.
 |---|---|
 | **0.5.0** | Internal refactor (state struct, function barrier over demography, mating and fitness, resizable buffers), `_recombine!` kernel split, `init` continuation, mutation switch for validation, exogenous `popsize`, fixed sex ratio, census and Ne metadata in results, bit-identical default path. Prerequisite for the rest. |
 | **0.6.0** | `FitnessLoci`, `SiteFitness`, `sel` stream, alias-table weighted mating, selected substitutions; validations 5–6. |
-| **0.7.0** | `TraitFitness` (stabilizing and directional), true-effect export; `FamilySize`, `Hierarchical`, `WeightedParents`, density regulation and extinction policy; Hill-formula and msprime validation. |
+| **0.7.0** | `TraitFitness` (stabilizing and directional), true-effect export; `FamilySize`, `Hierarchical`, realized effective size; Hill-formula validation. (`WeightedParents` dropped; density regulation and extinction policy not scheduled, the census stays fixed.) |
 | **0.8.0** | Pedigree recording, `Monoecious(selfing)`, `AvoidRelatives`, `CustomMating`; SLiM matched validation, including linked selection (validation 7). |
 
 ## Open decisions
