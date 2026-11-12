@@ -1568,7 +1568,7 @@ end
             m.dams === :equal && no >= length(st.dams) && @test maximum(dps) - minimum(dps) <= 1
         end
     end
-    @test_throws ArgumentError _mate!(FamilySize(), SiteFitness(FitnessLoci([5], 0.1)), st, 10, rng)
+    @test_throws ArgumentError _mate!(FamilySize(dams=:equal), SiteFitness(FitnessLoci([5], 0.1)), st, 10, rng)
 
     # Moments of dam family sizes: binomial under :random, and
     # Dirichlet-multinomial under Gamma(k): Var = μ(1 - 1/Nf)(no + Nf k)/(1 + Nf k).
@@ -1670,8 +1670,88 @@ end
         mating=FamilySize(dams=:equal, sires=:equal, nmale=5), rng=Xoshiro(2))
     @test r.census == [20; sizes] && r.males == fill(5, 10) && length(r.active_haplotypes) == 60
     @test_throws ArgumentError fisher_wright(20, 10, [100_000], 1.0; popsize=sizes, mating=FamilySize(nmale=12))
-    @test_throws ArgumentError fisher_wright(20, 10, [100_000], 1.0; result=true, mating=FamilySize(),
-        fitness=SiteFitness(FitnessLoci([5], 0.1)))
+    for m in (Hierarchical(2, 3), FamilySize(sires=:equal), FamilySize(dams=:equal))
+        @test_throws "nothing to select on" fisher_wright(20, 10, [100_000], 1.0; result=true, mating=m,
+            fitness=SiteFitness(FitnessLoci([5], 0.1)))
+    end
+end
+
+@testset "Family sizes under selection" begin
+    # Parent usage: with fitness weights w and :random splits, each dam has
+    # no·w/Σw offspring on average among the dams, and each sire no·w/Σw
+    # among the sires. 12 parents, 4 of them males (a new random subset in
+    # every replicate), 30 offspring, 20,000 replicates; z-score of the mean
+    # deviation of every individual in each role.
+    N, no, R = 12, 30, 20_000
+    w = [0.2, 1.0, 3.0, 0.5, 2.0, 1.0, 0.1, 4.0, 1.5, 0.7, 2.5, 1.2]
+    f = IndexFitness(w)
+    rng = Xoshiro(21)
+    st = SimState([UInt32[] for _ = 1:2N], UInt32[], 40, rng)
+    st.w[1:N] .= w
+    m = FamilySize(nmale=4)
+    dev_d, dev_s = zeros(R, N), zeros(R, N)      # deviation from no·w/Σw
+    uni_d = zeros(R, N)                          # deviation from uniform usage
+    onesire = true
+    for r = 1:R
+        _mate!(m, f, st, no, rng)
+        pm = st.pm[1:no, :]
+        sires, dams = findall(st.sex[1:N]), findall(.!st.sex[1:N])
+        for (dev, members, col) in ((dev_d, dams, 2), (dev_s, sires, 1))
+            W = sum(w[members])
+            for i in members
+                dev[r, i] = count(==(i), pm[:, col]) - no * w[i] / W
+            end
+        end
+        for i in dams
+            uni_d[r, i] = count(==(i), pm[:, 2]) - no / length(dams)
+        end
+        onesire &= all(length(unique(pm[pm[:, 2] .== d, 1])) == 1 for d in unique(pm[:, 2]))
+    end
+    @test onesire
+    zmax(dev) = maximum(abs(mean(c)) / (std(c) / sqrt(R)) for c in eachcol(dev))
+    @test zmax(dev_d) < 4 && zmax(dev_s) < 4      # 12 individuals per role
+    # Usage does follow fitness: against uniform usage the deviations are
+    # far from zero.
+    @test zmax(uni_d) > 20
+    # Under :equal splits selection is refused here as well.
+    @test_throws "nothing to select on" _mate!(FamilySize(dams=:equal), f, st, no, rng)
+
+    # One generation of selection on a trait is unbiased under :random
+    # splits, as under random mating: the offspring mean G given the parents
+    # is the fitness-weighted mean within each sex, averaged over sexes.
+    chr = [5_000, 5_000]
+    rmap = uniform_recombination_map(chr; M=2_000)
+    N = 30
+    lt = TraitLoci(collect(100:100:10_000), randn(rng, 100) .* 0.3)
+    start = [lt.pos[rand(rng, 100) .< 0.3] for _ = 1:2N]
+    tf = TraitFitness(lt; σe=0.7, fitness=Directional(0.8))
+    R = 3_000
+    d, shift = zeros(R), zeros(R)
+    for r = 1:R
+        st = SimState([UInt32[] for _ = 1:2N], UInt32[], N, rng, copy.(start), UInt32[])
+        _simulate!(st, ConstantSize(N), FamilySize(), tf, 1, rmap, Poisson(1.0), UInt32(1):UInt32(10_000);
+            mutate=false, track=false, fixation_interval=1, verbose=false, progress_interval=100, rng=rng)
+        G, wt, sex = st.gval[1:N], st.w[1:N], st.sex[1:N]
+        expect = (sum(G[sex] .* wt[sex]) / sum(wt[sex]) + sum(G[.!sex] .* wt[.!sex]) / sum(wt[.!sex])) / 2
+        got = mean(_genotypic_value(lt, st.sel[2i-1], st.sel[2i]) for i = 1:N)
+        d[r] = got - expect
+        shift[r] = got - mean(G)
+    end
+    @test abs(mean(d)) / (std(d) / sqrt(R)) < 3.5
+    @test mean(shift) / (std(shift) / sqrt(R)) > 10      # selection acts
+
+    # Through fisher_wright: selection with family sizes runs, responds, and
+    # lowers the realized effective size below that of the neutral scheme.
+    kw = (M=2_000, mut_base=1e4, result=true)
+    loci = TraitLoci(collect(100:100:10_000), [0.2 * (-1)^k for k = 1:100]; μ=2e-3)
+    m = FamilySize(dams=1.0, sires=:random, nmale=10)
+    up = fisher_wright(N, 150, chr, 2.0; kw..., mating=m, fitness=TraitFitness(loci; σe=0.5, fitness=Directional(1.0)),
+        rng=Xoshiro(22))
+    flat = fisher_wright(N, 150, chr, 2.0; kw..., mating=m, rng=Xoshiro(22))
+    @test up.mean_genotypic[end] > 2
+    @test effective_size(up, 50:150) < effective_size(flat, 50:150)
+    @test_throws "nothing to select on" fisher_wright(N, 5, chr, 2.0; kw..., mating=Hierarchical(3, 3),
+        fitness=TraitFitness(loci; fitness=Directional(1.0)))
 end
 
 @testset "Simulation invariants at scale" begin

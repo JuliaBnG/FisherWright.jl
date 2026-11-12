@@ -280,6 +280,7 @@ current cohort occupies the leading entries.
   trait model; `gmean`, `gvar`, `pmean`, `pvar`: their mean and variance per
   generation (NaN without a trait).
 - `pcnt`: scratch for the number of offspring of each parent.
+- `swt`: scratch for the split weights of parents under selection.
 - `ppairs`, `mpairs`: per generation, the number of ordered pairs of
   offspring that share their sire and that share their dam.
 - `census`, `males`: record of the run. `census` starts with the size of the
@@ -324,6 +325,7 @@ mutable struct SimState
     const bsires::Vector{Int}
     const bdams::Vector{Int}
     const pcnt::Vector{Int}
+    const swt::Vector{Float64}
     const ppairs::Vector{Float64}
     const mpairs::Vector{Float64}
 end
@@ -360,7 +362,7 @@ function SimState(
         zeros(nmax), zeros(nmax), Float64[], Float64[], Float64[], Float64[],
         sizehint!(Int[], nmax), sizehint!(Int[], nmax), sizehint!(Int[], nmax),
         sizehint!(Int[], nmax), sizehint!(Int[], nmax),
-        zeros(Int, nmax), Float64[], Float64[],
+        zeros(Int, nmax), zeros(nmax), Float64[], Float64[],
     )
 end
 
@@ -480,6 +482,9 @@ _fitness!(f::AbstractFitness, st::SimState, ::AbstractRNG) = _fitness!(f, st)
 
 # Errors in a fitness model that the run would otherwise hit midway.
 _check_fitness(::AbstractFitness, ::UInt32) = nothing
+
+# Combinations of mating scheme and fitness model that are not supported.
+_check_selection(::AbstractMating, ::AbstractFitness) = nothing
 
 # Sex of the parents, then sire and dam of each of `no` offspring.
 # Conditioning on both sexes being present is exact rejection sampling;

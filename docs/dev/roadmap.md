@@ -51,9 +51,16 @@ including the family-size variance from selection;
 (deterministic families), agrees with the sex-count value under random
 mating over a long run, and is lower under selection.
 
-Next in 0.7.0: `FamilySize` with selection; a theory-level validation of
-`TraitFitness` (response to selection and Bulmer effect,
-mutation–stabilizing selection balance).
+`FamilySize` with selection (2026-11-12): split weights × fitness for
+`:random` and Gamma splits; `:equal` splits and `Hierarchical` refuse
+selection. Tested: parent usage against no·w/Σw within each sex for
+dams and sires (z-scores per individual), unbiasedness of one
+generation of trait selection under `:random` splits, response and a
+lower realized Ne through `fisher_wright`.
+
+Next in 0.7.0: a theory-level validation of `TraitFitness` (response to
+selection and Bulmer effect, mutation–stabilizing selection balance);
+then the release.
 v0.4.0 shipped without the refactor below, so the staging is renumbered
 from 0.5.0. The 0.5.0 row is complete: the golden-output regression
 test and the `_recombine!` kernel (v0.4.2); the `mutate` and `init`
