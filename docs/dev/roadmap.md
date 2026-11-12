@@ -43,7 +43,18 @@ the inner scheme at `max_tries = 1`, the counted matings against a
 brute-force reading of the pedigree at every level, the selfing rate
 unchanged. No population-genetic reference yet: the effect on Ne and F
 is design-dependent and goes to the SLiM comparison (validation 4).
-Next in 0.8.0: `CustomMating`, and the SLiM comparison (validation 7).
+`CustomMating` (2026-11-12), decided: `f(ctx)` fills the mating table
+in place through a `MatingContext` (generation, n, offspring, `pm`,
+`sex`, relative fitness, IDs, the parents and grandparents table,
+haplotypes, genotypic value and phenotype, `rng`); with `sexes = true`
+the callback sets the sexes and sire/dam sexes are checked, otherwise
+the parents are hermaphrodites. Indices are checked after each call.
+Tested: callbacks that draw as `Monoecious()` and `RandomMating()` give
+their realizations bit for bit (haplotypes, record, pedigree); the
+context against the pedigree (generations through `init`, IDs, parents
+and grandparents), haplotypes, fitness and phenotype; the checks;
+selfing; allocations. Next in 0.8.0: the SLiM comparison (validations 4
+and 7).
 
 0.7.0 so far (2026-11-12): `TraitFitness` (`src/trait.jl`), with its own
 table `TraitLoci(pos, a; h, μ)`, since trait effects are not bounded as
@@ -243,7 +254,7 @@ fitnesses (all ones, and ignored, under `Neutral()`).
 | ~~`WeightedParents(w_m, w_f)`~~ | Dropped 2026-11-12: skewed usage is covered by `FamilySize` with Gamma weights | Through V_k |
 | `Monoecious(; selfing = s)` | Hermaphrodite mode with selfing rate s (done 2026-11-12; `Monoecious()` selfs at random) | N/(1+F), F = s/(2−s) |
 | `AvoidRelatives(inner; level = :fullsib/:halfsib/:cousin)` | Rejection sampling over a 1–2 generation pedigree (done 2026-11-12; `RandomMating` and `Monoecious`) | Design-dependent; empirical |
-| `CustomMating(f)` | User callback `(g, sex, pedigree, rng) -> pm` | User's responsibility |
+| `CustomMating(f; sexes)` | User callback `f(ctx)` filling `ctx.pm` from a `MatingContext` (done 2026-11-12) | User's responsibility |
 
 `WeightedParents` and selection share one sampler: a preallocated Vose
 alias table (`AliasTable`, done), rebuilt per sex per generation in

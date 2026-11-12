@@ -23,7 +23,7 @@ new mutations per `mut_base` base pairs per haplotype per meiosis.
 | `mutate` | `true` | Generate new mutations; `false` leaves drift and recombination only. |
 | `init` | `nothing` | Starting population: `2ne` haplotypes or a `FisherWrightResult`; `nothing` starts monomorphic. |
 | `popsize` | `nothing` | Census size per generation: a vector of `nt` sizes or a function of the generation; `nothing` keeps `ne`. |
-| `mating` | `RandomMating()` | Mating scheme; `RandomMating(nmale=m)` or `RandomMating(sexratio=p)` fixes the number or the proportion of males; `FamilySize`, `Hierarchical`, `Monoecious` and `AvoidRelatives` are described below. |
+| `mating` | `RandomMating()` | Mating scheme; `RandomMating(nmale=m)` or `RandomMating(sexratio=p)` fixes the number or the proportion of males; `FamilySize`, `Hierarchical`, `Monoecious`, `AvoidRelatives` and `CustomMating` are described below. |
 | `fitness` | `Neutral()` | Fitness model; `SiteFitness(loci)` selects on the sites of a `FitnessLoci` table (needs `result=true`). |
 | `pedigree` | `0` | Generations of matings to record as a pedigree (needs `result=true`); see [Pedigree](@ref). |
 | `verbose` | `false` | Report progress (mean mutations per haplotype, substitutions, elapsed time, ETA) to `stderr`. |
@@ -386,6 +386,54 @@ unrelated females. With `Monoecious`, whether an offspring is selfed
 is decided as without avoidance, and only an outcrossed second parent
 is redrawn. `FamilySize` and `Hierarchical` assign sires to dams as a
 whole and are not supported.
+
+## Custom mating
+
+`mating = CustomMating(f; sexes)` leaves the matings to a function. In
+every generation `f(ctx)` receives a `MatingContext` and fills
+`ctx.pm[i, 1]` and `ctx.pm[i, 2]`, the two parents of each offspring
+`i = 1:ctx.noffspring`, as indices `1:ctx.n` into the parental cohort.
+The context also holds the generation, the pedigree IDs of the parents,
+their parents and grandparents (`ctx.relatives`, as kept by
+`AvoidRelatives`), their haplotypes, their relative fitness, and their
+genotypic value and phenotype under `TraitFitness`, with the `rng` of
+the run. Positive assortative mating on the phenotype, for example:
+
+```@example simulation
+using Random
+
+assortative = CustomMating() do ctx
+    order = sortperm(ctx.phenotypic)
+    for i in 1:ctx.noffspring
+        k = rand(ctx.rng, 1:ctx.n-1)          # neighbours in phenotype
+        ctx.pm[i, 1], ctx.pm[i, 2] = order[k], order[k+1]
+    end
+end
+qtl = trait_loci([100_000, 100_000], 50; a=0.5, μ=1e-3, rng=Xoshiro(6))
+flat = TraitFitness(qtl; σe=0.5, fitness=p -> 1.0)
+am = fisher_wright(40, 60, [100_000, 100_000], 1.0; mating=assortative,
+                   fitness=flat, result=true, rng=Xoshiro(7))
+rm = fisher_wright(40, 60, [100_000, 100_000], 1.0; mating=Monoecious(),
+                   fitness=flat, result=true, rng=Xoshiro(7))
+(sum(am.var_genotypic[41:60]), sum(rm.var_genotypic[41:60])) ./ 20
+```
+
+Here the trait is neutral (`fitness = p -> 1.0`). In this one pair of
+runs assortment by phenotype nearly doubles the genotypic variance, the
+direction expected from the positive covariances between loci it builds
+up (Crow and Kimura 1970); a single replicate is not an estimate of the
+size of the effect. With
+`sexes = false` (the default) the parents are hermaphrodites: either
+role, selfing when a parent takes both (recorded in `selfing`), and no
+males. With `sexes = true` the function also sets `ctx.sex` for every
+parent, and every sire must be male and every dam female.
+
+The table is checked after each call: an index outside `1:ctx.n`, or a
+parent of the wrong sex, stops the run with an `ArgumentError`. All
+else is the function's: the family-size distribution, any selection
+(`ctx.fitness` is not used otherwise), and reproducibility, for which
+every draw should come from `ctx.rng`. The record and `effective_size`
+describe the realized matings as for the built-in schemes.
 
 ## Selection
 
