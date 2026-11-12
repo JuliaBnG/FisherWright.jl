@@ -62,19 +62,24 @@ end
 # No sexes: st.sires and st.dams are left empty, so the record of males is
 # 0. Per offspring the draws from `rng` are the first parent, then (for
 # 0 < s < 1) a uniform for selfing, then the second parent unless selfed.
-function _mate!(m::Monoecious, f::AbstractFitness, st::SimState, no::Int, rng::AbstractRNG)
+_mate!(m::Monoecious, f::AbstractFitness, st::SimState, no::Int, rng::AbstractRNG) =
+    _mono_mate!(st, m.selfing, f, no, rng, 0, 0)
+
+# Kernel of `Monoecious` mating at selfing rate `s` (< 0: random selfing).
+# With `level > 0` (AvoidRelatives), an outcrossed second parent related to
+# the first at that level is redrawn among the others, up to `max_tries`
+# draws in all; whether the offspring is selfed is decided before, as
+# without avoidance. Returns the number of offspring of relatives accepted
+# after `max_tries`.
+function _mono_mate!(st::SimState, s::Float64, f::AbstractFitness, no::Int, rng::AbstractRNG,
+    level::Int, max_tries::Int)
     n = st.n
     resize!(st.sex, n)
     empty!(st.sires)
     empty!(st.dams)
-    s, pm = m.selfing, st.pm
-    if f isa Neutral
-        @inbounds for i = 1:no
-            p = rand(rng, 1:n)
-            pm[i, 1] = p
-            pm[i, 2] = s < 0 ? rand(rng, 1:n) : _selfed(s, rng) ? p : _other(p, n, rng)
-        end
-    else
+    pm, t = st.pm, st.tf
+    neutral = f isa Neutral
+    if !neutral
         w = st.w
         np = count(i -> w[i] > 0, 1:n)
         np > 0 || error("no parent with positive fitness: the population cannot reproduce")
@@ -83,26 +88,39 @@ function _mate!(m::Monoecious, f::AbstractFitness, st::SimState, no::Int, rng::A
         idx = st.fidx
         resize!(idx, n)
         idx .= 1:n
-        t = st.tf
         _alias_build!(t, w, idx)
-        @inbounds for i = 1:no
-            p = _alias_draw(t, rng)
-            pm[i, 1] = p
-            if s < 0
-                pm[i, 2] = _alias_draw(t, rng)
-            elseif _selfed(s, rng)
-                pm[i, 2] = p
-            else
-                # In proportion to fitness among the others, by rejection.
-                q = _alias_draw(t, rng)
-                while q == p
-                    q = _alias_draw(t, rng)
+    end
+    forced = 0
+    @inbounds for i = 1:no
+        p = neutral ? rand(rng, 1:n) : _alias_draw(t, rng)
+        q = s < 0 ? (neutral ? rand(rng, 1:n) : _alias_draw(t, rng)) :
+            _selfed(s, rng) ? p : _draw_other(p, n, t, neutral, rng)
+        if level > 0 && q != p
+            k = 1
+            while _related(st.rel, p, q, level)
+                if k >= max_tries
+                    forced += 1
+                    break
                 end
-                pm[i, 2] = q
+                q = _draw_other(p, n, t, neutral, rng)
+                k += 1
             end
         end
+        pm[i, 1] = p
+        pm[i, 2] = q
     end
-    return nothing
+    return forced
+end
+
+# One of the individuals other than `p`: uniformly, or in proportion to
+# fitness from the alias table `t`, by rejection.
+@inline function _draw_other(p::Int, n::Int, t::AliasTable, neutral::Bool, rng)
+    neutral && return _other(p, n, rng)
+    q = _alias_draw(t, rng)
+    while q == p
+        q = _alias_draw(t, rng)
+    end
+    return q
 end
 
 # Whether an offspring is selfed at rate `s`; no draw for 0 or 1.

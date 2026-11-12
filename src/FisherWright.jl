@@ -43,9 +43,10 @@ include("fitness.jl")
 include("trait.jl")
 include("family.jl")
 include("monoecious.jl")
+include("relatives.jl")
 include("fwp.jl")
 include("quick-genotypes.jl")
 
-export fisher_wright, muts2bitarray, extract_chip_bitarray, quickGT, quickHap, FisherWrightResult, effective_size, to_haplotype, RecombinationMap, uniform_recombination_map, RandomMating, bottleneck, growth, FitnessLoci, fitness_loci, SiteFitness, Neutral, TraitLoci, trait_loci, TraitFitness, Stabilizing, Directional, FamilySize, Hierarchical, Monoecious
+export fisher_wright, muts2bitarray, extract_chip_bitarray, quickGT, quickHap, FisherWrightResult, effective_size, to_haplotype, RecombinationMap, uniform_recombination_map, RandomMating, bottleneck, growth, FitnessLoci, fitness_loci, SiteFitness, Neutral, TraitLoci, trait_loci, TraitFitness, Stabilizing, Directional, FamilySize, Hierarchical, Monoecious, AvoidRelatives
 
 end # module FisherWright
