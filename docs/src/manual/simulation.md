@@ -278,8 +278,28 @@ males among all parents.
 
 `effective_size(result)` returns the effective size realized by the
 family sizes of the run (see [Census record and effective size](@ref)),
-which for `Hierarchical` equals the value above exactly. Neither
-`FamilySize` nor `Hierarchical` can be combined with selection yet.
+which for `Hierarchical` equals the value above exactly.
+
+**With selection.** `FamilySize` combines with `SiteFitness` and
+`TraitFitness`: the weight of every parent in a split is multiplied by
+its fitness, so with `:random` splits each dam's expected number of
+offspring, each sire's expected number of dams, and so each sire's
+expected number of offspring, are proportional to fitness within the
+sex; with a Gamma shape the weights are Gamma(``k``) × fitness.
+Breeders (`nsires`, `ndams`) are drawn at random, and selection acts
+among them. `:equal` splits, and so `Hierarchical`, cannot be combined
+with selection: equal families leave nothing to select on.
+
+```@example simulation
+using Random
+
+qtl = trait_loci([100_000, 100_000], 100; a=0.2, μ=1e-3, rng=Xoshiro(4))
+sel = fisher_wright(40, 100, [100_000, 100_000], 1.0; result=true,
+                    mating=FamilySize(dams=1.0, nmale=10), rng=Xoshiro(5),
+                    fitness=TraitFitness(qtl; σe=0.5,
+                                         fitness=Directional(1.0)))
+(sel.mean_genotypic[end], effective_size(sel))
+```
 
 ## Selection
 

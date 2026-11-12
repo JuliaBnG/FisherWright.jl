@@ -55,8 +55,17 @@ sampling, as for the presence of both sexes); with `nmale` or `sexratio`,
 every parental cohort must hold them, which is checked before the run.
 [`Hierarchical`](@ref) is the nested design with equal splits.
 
-The census size is not affected. `FamilySize` cannot be combined with
-selection yet. [`effective_size`](@ref) returns the effective size realized
+**Selection.** With a fitness model ([`SiteFitness`](@ref),
+[`TraitFitness`](@ref)), the weight of every parent in a split is multiplied
+by its fitness. With `:random` splits each dam's expected number of
+offspring, and each sire's expected number of dams, is proportional to its
+fitness within its sex, and so is each sire's expected number of offspring;
+with a Gamma shape the weights are Gamma(`k`) × fitness. `:equal` splits, and therefore [`Hierarchical`](@ref), cannot be
+combined with selection, as equal families leave nothing to select on.
+Breeder subsets (`nsires`, `ndams`) are drawn at random, and selection acts
+among the breeders.
+
+The census size is not affected. [`effective_size`](@ref) returns the effective size realized
 by the family sizes of a run, `1/a` per generation.
 
 # Examples
@@ -197,7 +206,36 @@ function _split!(cnt::Vector{Int}, n::Int, total::Int, mode::Symbol, k::Float64,
     return cnt
 end
 
-function _mate!(m::FamilySize, ::Neutral, st::SimState, no::Int, rng::AbstractRNG)
+# As `_split!` among the parents `members`, with the weight of parent i
+# multiplied by its fitness `fit[members[i]]`: `:random` splits in proportion
+# to fitness, Gamma splits in proportion to Gamma(k) × fitness.
+function _split_selected!(cnt::Vector{Int}, members::Vector{Int}, total::Int, mode::Symbol, k::Float64,
+    fit::Vector{Float64}, sw::Vector{Float64}, t::AliasTable, idx::Vector{Int}, rng::AbstractRNG, what)
+    n = length(members)
+    resize!(cnt, n)
+    fill!(cnt, 0)
+    g = Gamma(mode === :gamma ? k : 1.0)
+    @inbounds for i = 1:n
+        sw[i] = (mode === :gamma ? rand(rng, g) : 1.0) * fit[members[i]]
+    end
+    any(i -> sw[i] > 0, 1:n) ||
+        error("no $what with positive fitness: the population cannot reproduce")
+    resize!(idx, n)
+    @inbounds for i = 1:n
+        idx[i] = i
+    end
+    _alias_build!(t, sw, idx)
+    @inbounds for _ = 1:total
+        cnt[_alias_draw(t, rng)] += 1
+    end
+    return cnt
+end
+
+_mate!(m::FamilySize, f::Neutral, st::SimState, no::Int, rng::AbstractRNG) = _family_mate!(m, f, st, no, rng)
+_mate!(m::FamilySize, f::AbstractFitness, st::SimState, no::Int, rng::AbstractRNG) =
+    _family_mate!(m, f, st, no, rng)
+
+function _family_mate!(m::FamilySize, f::AbstractFitness, st::SimState, no::Int, rng::AbstractRNG)
     resize!(st.sex, st.n)
     nm = _nmale(m.sex, st.n)
     if nm == 0
@@ -210,9 +248,16 @@ function _mate!(m::FamilySize, ::Neutral, st::SimState, no::Int, rng::AbstractRN
     sires = _breeders!(st.bsires, st.sires, m.nsires, rng)
     dams = _breeders!(st.bdams, st.dams, m.ndams, rng)
     Nm, Nf = length(sires), length(dams)
-    # Offspring per dam, then dams per sire.
-    nd = _split!(st.fcnt, Nf, no, m.dams, m.kd, st.w, st.tf, st.fidx, rng)
-    ms = _split!(st.mcnt, Nm, Nf, m.sires, m.km, st.w, st.tm, st.fidx, rng)
+    # Offspring per dam, then dams per sire; under selection in proportion
+    # to fitness as well.
+    f isa Neutral || _check_selection(m, f)
+    if f isa Neutral
+        nd = _split!(st.fcnt, Nf, no, m.dams, m.kd, st.w, st.tf, st.fidx, rng)
+        ms = _split!(st.mcnt, Nm, Nf, m.sires, m.km, st.w, st.tm, st.fidx, rng)
+    else
+        nd = _split_selected!(st.fcnt, dams, no, m.dams, m.kd, st.w, st.swt, st.tf, st.fidx, rng, "dam")
+        ms = _split_selected!(st.mcnt, sires, Nf, m.sires, m.km, st.w, st.swt, st.tm, st.fidx, rng, "sire")
+    end
     # The sire of each dam: the slots of the sires, in a uniformly random
     # order (Fisher-Yates).
     sod = st.fidx
@@ -235,5 +280,10 @@ function _mate!(m::FamilySize, ::Neutral, st::SimState, no::Int, rng::AbstractRN
     return nothing
 end
 
-_mate!(::FamilySize, ::AbstractFitness, ::SimState, ::Int, ::AbstractRNG) =
-    throw(ArgumentError("FamilySize cannot be combined with selection yet"))
+# Selection needs a split that can follow fitness.
+function _check_selection(m::FamilySize, f::AbstractFitness)
+    (f isa Neutral || (m.dams !== :equal && m.sires !== :equal)) || throw(ArgumentError(
+        "FamilySize with :equal splits (and Hierarchical) cannot be combined with selection: " *
+        "equal families leave nothing to select on; use :random or a Gamma shape"))
+    return nothing
+end
