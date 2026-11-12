@@ -8,21 +8,11 @@ FisherWright.FisherWright
 
 ## Simulation and results
 
+Mating schemes, demographic trajectories and fitness models are on
+[API reference: population models](@ref).
+
 ```@docs
 fisher_wright
-RandomMating
-FamilySize
-bottleneck
-growth
-SiteFitness
-FitnessLoci
-fitness_loci
-Neutral
-TraitFitness
-TraitLoci
-trait_loci
-Stabilizing
-Directional
 FisherWrightResult
 effective_size
 to_haplotype

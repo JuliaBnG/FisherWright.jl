@@ -57,6 +57,7 @@ Pages = [
     "manual/validation-demography.md",
     "manual/validation-selection.md",
     "api.md",
+    "api-models.md",
 ]
 Depth = 2
 ```

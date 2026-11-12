@@ -116,15 +116,19 @@ function _random_mate!(
     return pm, sex
 end
 
-# Sex of each parent as Bernoulli(½), redrawn until both sexes are present;
+# Sex of each parent as Bernoulli(½), redrawn until there are at least
+# `minm` males and `minf` females (by default, both sexes present; the
+# draws are the same for any minimum that the first draw satisfies);
 # `sires` and `dams` receive the sorted indices of the males and females.
-function _draw_sex!(sex::Vector{Bool}, sires::Vector{Int}, dams::Vector{Int}, rng, max_tries::Int)
+function _draw_sex!(sex::Vector{Bool}, sires::Vector{Int}, dams::Vector{Int}, rng, max_tries::Int,
+    minm::Int=1, minf::Int=1)
     n1 = length(sex)
     tries = 0
     while true
         rand!(rng, sex)
         tries += 1
-        (any(sex) && !all(sex)) && break
+        nm = count(sex)
+        (nm >= minm && n1 - nm >= minf) && break
         tries >= max_tries &&
             error("Failed to generate both sexes in $max_tries tries")
     end
