@@ -11,6 +11,8 @@ FamilySize
 Hierarchical
 Monoecious
 AvoidRelatives
+CustomMating
+MatingContext
 ```
 
 ## Census size

@@ -9,7 +9,7 @@ using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_s
     AbstractFitness, AliasTable, _alias_build!, _alias_draw, _alias_probabilities,
     _draw_parents!, _mate!, FitnessLoci, fitness_loci, SiteFitness, _log_fitness, _selected,
     _meiosis!, _meiosis_selected!, _sel_mutation!, TraitLoci, trait_loci, TraitFitness, Stabilizing,
-    Directional, _genotypic_value, FamilySize, Hierarchical, Monoecious, AvoidRelatives,
+    Directional, _genotypic_value, FamilySize, Hierarchical, Monoecious, AvoidRelatives, CustomMating,
     _record_families!, _related
 using Distributions: Gamma, Exponential, Normal, Chisq, quantile
 import FisherWright: _fitness!
@@ -1971,6 +1971,100 @@ end
         run!(st, m, 50)
         @test @allocated(run!(st, m, 50)) / 50 < 2^14
     end
+end
+
+@testset "Custom mating" begin
+    chr = [100_000]
+    # Callbacks that draw as the built-in schemes do give their realizations.
+    mono = CustomMating() do ctx
+        for i in 1:ctx.noffspring
+            ctx.pm[i, 1] = rand(ctx.rng, 1:ctx.n)
+            ctx.pm[i, 2] = rand(ctx.rng, 1:ctx.n)
+        end
+    end
+    sires, dams = Int[], Int[]
+    twosex = CustomMating(; sexes=true) do ctx
+        while true
+            rand!(ctx.rng, ctx.sex)
+            0 < count(ctx.sex) < ctx.n && break
+        end
+        empty!(sires), empty!(dams)
+        for k in 1:ctx.n
+            push!(ctx.sex[k] ? sires : dams, k)
+        end
+        for i in 1:ctx.noffspring
+            ctx.pm[i, 1] = rand(ctx.rng, sires)
+            ctx.pm[i, 2] = rand(ctx.rng, dams)
+        end
+    end
+    for (builtin, custom) in ((Monoecious(), mono), (RandomMating(), twosex))
+        a = fisher_wright(30, 30, chr, 1.0; mating=builtin, result=true, pedigree=2, rng=Xoshiro(3))
+        b = fisher_wright(30, 30, chr, 1.0; mating=custom, result=true, pedigree=2, rng=Xoshiro(3))
+        @test a.active_haplotypes == b.active_haplotypes
+        @test (a.males, a.selfing, a.paternal_pairs) == (b.males, b.selfing, b.paternal_pairs)
+        @test isequal(a.pedigree, b.pedigree)
+    end
+
+    # The context: generation numbers continued through init, IDs, parents
+    # and grandparents as in the pedigree, haplotypes, fitness and phenotype.
+    seen = []
+    record = CustomMating() do ctx
+        push!(seen, (ctx.generation, ctx.n, ctx.noffspring, collect(ctx.ids), copy(ctx.relatives),
+            copy(ctx.haplotypes), copy(ctx.fitness), copy(ctx.phenotypic), copy(ctx.genotypic)))
+        for i in 1:ctx.noffspring
+            ctx.pm[i, 1] = rand(ctx.rng, 1:ctx.n)
+            ctx.pm[i, 2] = rand(ctx.rng, 1:ctx.n)
+        end
+    end
+    rng = Xoshiro(51)
+    first = fisher_wright(20, 3, chr, 1.0; mating=record, popsize=[20, 25, 22], result=true,
+        pedigree=typemax(Int), rng=rng)
+    @test [s[1] for s in seen] == 1:3 && [s[2] for s in seen] == [20, 20, 25] && [s[3] for s in seen] == [20, 25, 22]
+    ped = first.pedigree
+    for (g, s) in enumerate(seen)
+        @test s[4] == ped.id[ped.generation .== g-1]
+        @test all(s[7] .== 1) && all(iszero, s[8])
+    end
+    # Parents (rows 1-2) of the cohort of generation 2, as indices into
+    # generation 1, and their grandparents (rows 3-6) into generation 0.
+    idx(id, g) = id - minimum(ped.id[ped.generation .== g]) + 1
+    gen2 = ped[ped.generation .== 2, :]
+    @test seen[3][5][1, :] == idx.(gen2.sire, 1) && seen[3][5][2, :] == idx.(gen2.dam, 1)
+    par1 = Dict(r.id => (r.sire, r.dam) for r in eachrow(ped[ped.generation .== 1, :]))
+    @test seen[3][5][3, :] == [idx(par1[s][1], 0) for s in gen2.sire]
+    @test seen[3][5][6, :] == [idx(par1[d][2], 0) for d in gen2.dam]
+    @test all(iszero, seen[1][5]) && all(iszero, seen[2][5][3:6, :])
+    empty!(seen)
+    more = fisher_wright(22, 2, chr, 1.0; init=first, mating=record, result=true, rng=rng)
+    @test [s[1] for s in seen] == [4, 5] && seen[1][4] == first.first_id .+ (0:21)
+    @test seen[1][6] == first.active_haplotypes
+
+    empty!(seen)
+    qtl = TraitLoci([10_000, 60_000], [1.0, -0.5])
+    tf = TraitFitness(qtl; σe=1.0, fitness=Stabilizing(0.0, 4.0))
+    sel = fisher_wright(20, 3, chr, 1.0; mating=record, fitness=tf, result=true, rng=rng)
+    @test [mean(s[8]) for s in seen] ≈ sel.mean_phenotypic
+    # Relative fitness: scaled by its largest value in the cohort.
+    @test all(s -> s[7] ≈ exp.(-s[8] .^ 2 ./ 8) ./ maximum(exp.(-s[8] .^ 2 ./ 8)), seen)
+
+    # Checks of the table.
+    bad = CustomMating(ctx -> (ctx.pm[1:ctx.noffspring, :] .= 1; ctx.pm[2, 2] = ctx.n + 1))
+    @test_throws ArgumentError fisher_wright(10, 2, chr, 1.0; mating=bad)
+    wrongsex = CustomMating(ctx -> (ctx.sex .= true; ctx.pm[1:ctx.noffspring, :] .= 1); sexes=true)
+    @test_throws ArgumentError fisher_wright(10, 2, chr, 1.0; mating=wrongsex)
+    # Without sexes, selfing is allowed and recorded.
+    selfer = CustomMating(ctx -> (for i in 1:ctx.noffspring; ctx.pm[i, :] .= rand(ctx.rng, 1:ctx.n); end))
+    r = fisher_wright(10, 4, chr, 1.0; mating=selfer, result=true, rng=rng)
+    @test r.selfing == ones(4) && r.males == zeros(Int, 4)
+    @test effective_size(r) ≈ 1 / mean((r.paternal_pairs .+ r.maternal_pairs) ./ (4 * 10 * 9) .* 2)
+
+    # A generation of an allocation-free callback allocates task overhead only.
+    rmap = uniform_recombination_map([1_000, 1_000]; M=1e3)
+    st = SimState([UInt32.(findall(rand(rng, Bool, 2_000))) for _ = 1:80], UInt32[], 40, rng)
+    run!(st, m, nt) = _simulate!(st, ConstantSize(40), m, Neutral(), nt, rmap, Poisson(1.0), UInt32(1):UInt32(2_000);
+        mutate=false, track=false, fixation_interval=1, verbose=false, progress_interval=100, rng=rng)
+    run!(st, mono, 50)
+    @test @allocated(run!(st, mono, 50)) / 50 < 2^14
 end
 
 @testset "Pedigree" begin
