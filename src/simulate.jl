@@ -274,6 +274,7 @@ current cohort occupies the leading entries.
   keeps selected alleles.
 - `fmean`, `flmean`, `flvar`: per generation, the arithmetic mean of the
   fitness of the parents and the mean and variance of its logarithm.
+- `fcnt`, `mcnt`, `fidx`: scratch of mating schemes with family sizes.
 - `gval`, `pval`: genotypic value and phenotype of each parent under a
   trait model; `gmean`, `gvar`, `pmean`, `pvar`: their mean and variance per
   generation (NaN without a trait).
@@ -313,6 +314,9 @@ mutable struct SimState
     const gvar::Vector{Float64}
     const pmean::Vector{Float64}
     const pvar::Vector{Float64}
+    const fcnt::Vector{Int}
+    const mcnt::Vector{Int}
+    const fidx::Vector{Int}
 end
 
 # State for the starting cohort `prt` (two haplotypes per individual), with
@@ -345,6 +349,7 @@ function SimState(
         sel, bufs(nh), ssubs, bufs(nh), bufs(nh),
         Float64[], Float64[], Float64[],
         zeros(nmax), zeros(nmax), Float64[], Float64[], Float64[], Float64[],
+        sizehint!(Int[], nmax), sizehint!(Int[], nmax), sizehint!(Int[], nmax),
     )
 end
 

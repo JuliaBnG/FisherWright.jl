@@ -211,6 +211,51 @@ of males and follows the census size. The fixed schemes draw sex
 differently from `rng`, so for the same seed they share no realization
 with the default scheme.
 
+## Family sizes
+
+`RandomMating` lets every offspring choose its sire and its dam
+independently, so family sizes are binomial, close to Poisson.
+`mating = FamilySize(; dams, sires, nmale, sexratio)` controls them
+instead. The census size of each generation stays as given; its
+offspring are split among the dams, and every dam is mated to one sire,
+so all her offspring are full sibs. The dams are split among the sires.
+Sex is assigned as by `RandomMating` with the same `nmale` or
+`sexratio`.
+
+| `dams`, `sires` | Split |
+|---|---|
+| `:equal` | as equal as possible; the parents that get one more are drawn at random |
+| `:random` | uniform multinomial (the default) |
+| `k > 0` | multinomial with Gamma(``k``, 1) weights per parent and generation: Dirichlet-multinomial, close to negative binomial; smaller ``k``, more variable |
+
+```@example simulation
+# 5 sires with 7 dams each, and equal dam families
+equal = FamilySize(dams=:equal, sires=:equal, nmale=5)
+haplotypes, _ = fisher_wright(40, 50, [100_000, 100_000], 1.0;
+                              mating=equal)
+length(haplotypes)
+```
+
+Two offspring share their dam with probability
+``P_f = E[\sum n_d(n_d - 1)]/(N(N - 1))``. They share their sire if they
+share their dam, or else if their dams share a sire, which happens with
+probability ``\pi = E[\sum c_s(c_s - 1)]/(N_f(N_f - 1))`` for ``c_s``
+dams per sire. Two genes in different offspring therefore come from the
+same parent with probability ``a = (P_f + P_m)/4``, with
+``P_m = P_f + (1 - P_f)\pi``, and the recursion of
+[Effective size](@ref) applies with this ``a``; the effective size is
+about ``1/(2a) + 1/2``. For the three splits of ``n`` items among ``m``
+parents, the probability that two items share a parent is
+``(r(q + 1)q + (m - r)q(q - 1))/(n(n - 1))`` with ``n = qm + r`` for
+`:equal`, ``1/m`` for `:random`, and ``(k + 1)/(mk + 1)`` for Gamma
+weights. In the example above this gives ``N_e \approx 11.1``,
+against ``9.3`` for `RandomMating(nmale=5)`: equal dam families raise
+it, and a few sires keep it low.
+
+`effective_size(result)` assumes random mating and does not apply to
+runs with `FamilySize`. `FamilySize` cannot be combined with selection
+yet.
+
 ## Selection
 
 By default the model is neutral. `fitness = SiteFitness(loci)` puts the

@@ -9,7 +9,7 @@ using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_s
     AbstractFitness, AliasTable, _alias_build!, _alias_draw, _alias_probabilities,
     _draw_parents!, _mate!, FitnessLoci, fitness_loci, SiteFitness, _log_fitness, _selected,
     _meiosis!, _meiosis_selected!, _sel_mutation!, TraitLoci, trait_loci, TraitFitness, Stabilizing,
-    Directional, _genotypic_value
+    Directional, _genotypic_value, FamilySize
 using Distributions: Gamma, Exponential, Normal
 import FisherWright: _fitness!
 using BnGStructs
@@ -1488,6 +1488,98 @@ end
     @test parse(UInt, read(cmd, String)) == hash((here.selected_haplotypes, here.mean_phenotypic))
 end
 
+# Probability that two distinct items of `total` fall to the same one of `n`
+# parents under the splits of FamilySize: E[Σ c(c-1)] / (total(total-1)).
+function same_parent(mode, k, total, n)
+    total < 2 && return 0.0
+    if mode === :equal
+        q, r = divrem(total, n)
+        return (r * (q + 1) * q + (n - r) * q * (q - 1)) / (total * (total - 1))
+    end
+    return mode === :random ? 1 / n : (k + 1) / (n * k + 1)
+end
+
+# Coalescence term a = (P_f + P_m)/4 of FamilySize for N parents with Nm
+# males and `no` offspring.
+function family_a(m::FamilySize, N, Nm, no)
+    Nf = N - Nm
+    Pf = same_parent(m.dams, m.kd, no, Nf)
+    π = same_parent(m.sires, m.km, Nf, Nm)
+    return (Pf + (Pf + (1 - Pf) * π)) / 4
+end
+
+@testset "Mating with family sizes" begin
+    @test_throws ArgumentError FamilySize(dams=:poisson)
+    @test_throws ArgumentError FamilySize(sires=0)
+    @test_throws ArgumentError FamilySize(dams=Inf)
+    @test_throws ArgumentError FamilySize(nmale=2, sexratio=0.5)
+    m = FamilySize(dams=0.5, sires=:equal, nmale=4)
+    @test (m.dams, m.kd, m.sires, m.km, m.sex.nmale) == (:gamma, 0.5, :equal, 0.0, 4)
+
+    # The mating table: every dam has one sire, and families add up.
+    rng = Xoshiro(1)
+    N = 40
+    st = SimState([UInt32[] for _ = 1:2N], UInt32[], 60, rng)
+    families(st, no) = (pm = st.pm[1:no, :]; [count(==(d), pm[:, 2]) for d in st.dams])
+    for m in (FamilySize(dams=:equal, sires=:equal, nmale=7), FamilySize(dams=0.3, sires=0.8),
+        FamilySize(dams=:random, sires=:equal, sexratio=0.5)), no in (40, 57, 13)
+        _mate!(m, Neutral(), st, no, rng)
+        pm = st.pm[1:no, :]
+        @test all(st.sex[pm[:, 1]]) && !any(st.sex[pm[:, 2]])
+        @test all(length(unique(pm[pm[:, 2] .== d, 1])) <= 1 for d in st.dams)   # one sire per dam
+        nd = families(st, no)
+        @test sum(nd) == no
+        m.dams === :equal && @test maximum(nd) - minimum(nd) <= 1
+        if m.sires === :equal
+            dps = [length(unique(pm[pm[:, 1] .== s, 2])) for s in st.sires]
+            # dams with offspring per sire; with all dams assigned, at most
+            # one apart (dams without offspring are not visible here)
+            m.dams === :equal && no >= length(st.dams) && @test maximum(dps) - minimum(dps) <= 1
+        end
+    end
+    @test_throws ArgumentError _mate!(FamilySize(), SiteFitness(FitnessLoci([5], 0.1)), st, 10, rng)
+
+    # Moments of dam family sizes: binomial under :random, and
+    # Dirichlet-multinomial under Gamma(k): Var = μ(1 - 1/Nf)(no + Nf k)/(1 + Nf k).
+    for (m, k) in ((FamilySize(dams=:random, nmale=10), Inf), (FamilySize(dams=0.5, nmale=10), 0.5))
+        R, no, Nf = 4_000, 60, 30
+        v = Float64[]
+        for _ = 1:R
+            _mate!(m, Neutral(), st, no, rng)
+            append!(v, families(st, no))
+        end
+        μ = no / Nf
+        expect = isinf(k) ? no * (1 / Nf) * (1 - 1 / Nf) : μ * (1 - 1 / Nf) * (no + Nf * k) / (1 + Nf * k)
+        # Mean square about the known mean no/Nf (the counts sum to no), per
+        # replicate; its expectation is Var(n_d). SE over replicates.
+        per = [mean(abs2, v[(r-1)*Nf+1:r*Nf] .- μ) for r = 1:R]
+        @test abs(mean(per) - expect) / (std(per) / sqrt(R)) < 3.5
+    end
+
+    # Within the reserved capacity, a generation allocates task overhead only.
+    # Without mutation, so that growing haplotypes do not reallocate their
+    # buffers (whose growth depends on drift, and so on the scheme).
+    chr, cbp = [1_000, 1_000], UInt32[1_000, 2_000]
+    rmap = uniform_recombination_map(chr; M=1e3)
+    run!(st, m, nt) = _simulate!(st, ConstantSize(40), m, Neutral(), nt, rmap, Poisson(1.0), UInt32(1):UInt32(2_000);
+        mutate=false, track=false, fixation_interval=1, verbose=false, progress_interval=100, rng=rng)
+    st = SimState([UInt32.(findall(rand(rng, Bool, 2_000))) for _ = 1:80], UInt32[], 40, rng)
+    for m in (FamilySize(dams=:equal, sires=:equal, nmale=8), FamilySize(dams=0.5, sires=2.0))
+        run!(st, m, 50)
+        @test @allocated(run!(st, m, 50)) / 50 < 2^14
+    end
+
+    # Through fisher_wright: valid output, census and males recorded,
+    # nmale checked against every parental cohort, no selection.
+    sizes = [fill(12, 5); fill(30, 5)]
+    r = fisher_wright(20, 10, [100_000], 1.0; result=true, popsize=sizes,
+        mating=FamilySize(dams=:equal, sires=:equal, nmale=5), rng=Xoshiro(2))
+    @test r.census == [20; sizes] && r.males == fill(5, 10) && length(r.active_haplotypes) == 60
+    @test_throws ArgumentError fisher_wright(20, 10, [100_000], 1.0; popsize=sizes, mating=FamilySize(nmale=12))
+    @test_throws ArgumentError fisher_wright(20, 10, [100_000], 1.0; result=true, mating=FamilySize(),
+        fitness=SiteFitness(FitnessLoci([5], 0.1)))
+end
+
 @testset "Simulation invariants at scale" begin
     Random.seed!(31)
     res = fisher_wright(60, 80, [5_000_000, 5_000_000, 5_000_000], 4.0;
@@ -1950,6 +2042,47 @@ end
 end
 
 # END population genetics validation
+
+@testset "Heterozygosity decay under family-size mating" begin
+    # Drift alone from a polymorphic start, under three FamilySize schemes,
+    # against the exact recursion with a = (P_f + P_m)/4 from the closed
+    # forms of the splits (`family_a`): 20 parents, 15 generations, 400
+    # replicates of 1,000 sites on 20 chromosomes of 1 Morgan. Each scheme
+    # is also separated from RandomMating with the same sexes.
+    N, chr, reps, t = 20, fill(50, 20), 400, 15
+    L = sum(chr)
+    rng = Xoshiro(20261116)
+    cases = (
+        (FamilySize(dams=:equal, sires=:equal, nmale=5), RandomMating(nmale=5)),
+        (FamilySize(dams=0.5, sires=:random, nmale=10), RandomMating(nmale=10)),
+        (FamilySize(dams=:random, sires=:random), RandomMating()),
+    )
+    binom = [Float64(binomial(big(N), k)) for k = 1:N-1]
+    function expected(a)
+        hB = hW = 0.5
+        for _ = 1:t
+            hB, hW = (1 - a) * hB + a / 2 * hW, hB
+        end
+        return hW / 2N + (1 - 1 / N) * hB
+    end
+    function coalescence(m, N)
+        nm = m isa FamilySize ? m.sex.nmale : m.nmale
+        f(k) = m isa FamilySize ? family_a(m, N, k, N) : 1 / 4k + 1 / 4(N - k)
+        nm > 0 && return f(nm)
+        return sum(binom[k] * f(k) for k = 1:N-1) / sum(binom)
+    end
+    for (m, alt) in cases
+        H = zeros(reps)
+        for r = 1:reps
+            start = [UInt32.(findall(rand(rng, Bool, L))) for _ = 1:2N]
+            haps, _ = fisher_wright(N, t, chr, 1.0; M=50, init=start, mutate=false, mating=m, rng=rng)
+            H[r] = site_heterozygosity(haps, L)
+        end
+        se = sqrt(var(H) / reps)
+        @test abs(mean(H) - expected(coalescence(m, N))) / se < 3.5
+        @test abs(mean(H) - expected(coalescence(alt, N))) / se > 3.5
+    end
+end
 
 # Fixation of one new copy of a selected allele in the engine: `reps`
 # replicates of N individuals, each run to loss or fixation.

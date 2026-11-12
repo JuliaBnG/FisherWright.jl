@@ -14,11 +14,24 @@ variance of G and P per generation in the result; export with
 against the dense sum, P − G against σe², fitness against the function
 of P, unbiasedness of one generation of selection given the parents
 (additive loci), invariance to `fixation_interval` under stabilizing
-selection, thread independence. Next in 0.7.0: the mating schemes
-(`FamilySize`, `Hierarchical`, `WeightedParents`), density regulation
-and the extinction policy, and their validation; a theory-level
-validation of `TraitFitness` (response to selection and Bulmer effect,
-mutation–stabilizing selection balance) is still open.
+selection, thread independence.
+
+`FamilySize` (2026-11-12), decided with the census size fixed: the N_g
+offspring are split among the dams and the dams among the sires,
+`:equal`, `:random` (multinomial) or Dirichlet-multinomial with
+Gamma(k) weights, and every dam has one sire (full-sib families).
+Validated by the exact recursion with a = (P_f + P_m)/4,
+P_m = P_f + (1 − P_f)π, from closed forms of the splits (CI test
+"Heterozygosity decay under family-size mating", three schemes, each
+also separated from RandomMating; the binomial-sex case rechecked at
+20,000 replicates on four seeds, |z| ≤ 1.1). Not yet with selection;
+`effective_size` assumes random mating and says so.
+
+Next in 0.7.0: `Hierarchical` and `WeightedParents`, density regulation
+and the extinction policy; `FamilySize` with selection; a
+scheme-aware `effective_size` (needs the scheme in the result); a
+theory-level validation of `TraitFitness` (response to selection and
+Bulmer effect, mutation–stabilizing selection balance).
 v0.4.0 shipped without the refactor below, so the staging is renumbered
 from 0.5.0. The 0.5.0 row is complete: the golden-output regression
 test and the `_recombine!` kernel (v0.4.2); the `mutate` and `init`
