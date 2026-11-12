@@ -48,9 +48,10 @@ quantitative-genetics simulation in Julia.
 
 ## Scope
 
-FisherWright.jl generates neutral founder populations, at constant size
-or along a given trajectory of census sizes (since v0.5.0). Selection,
-population structure and spatial models are out of scope.
+FisherWright.jl generates founder populations, at constant size or along
+a given trajectory of census sizes (since v0.5.0), neutrally or with soft
+selection at given sites (since v0.6.0). Population structure and
+spatial models are out of scope.
 SLiM, fwdpy11 and msprime cover these well. Proposals that extend the model
 are welcome for discussion, but each addition must come with validation
 against theory or an independent simulator.

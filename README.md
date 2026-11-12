@@ -1,10 +1,10 @@
 # FisherWright.jl
 
-FisherWright.jl simulates neutral, diploid Wright-Fisher populations forward in
-time, to generate whole-genome founder populations for breeding and
-quantitative-genetics simulations. Starting from no variation, it applies random
-mating between two sexes, Poisson crossovers and recurrent mutation for a chosen
-number of generations. Run long enough (see [Recommended Use](#recommended-use)),
+FisherWright.jl simulates diploid Wright-Fisher populations forward in time, to
+generate whole-genome founder populations for breeding and quantitative-genetics
+simulations. Starting from no variation, it applies random mating between two
+sexes, Poisson crossovers and recurrent mutation for a chosen number of
+generations, neutrally or with selection at given sites. Run long enough (see [Recommended Use](#recommended-use)),
 the population reaches mutation-drift equilibrium. The segregating variants are
 exported as a `BitMatrix` with a linkage map, as a targeted SNP-chip panel, or as
 [BnGStructs.jl](https://github.com/JuliaBnG/BnGStructs.jl) haplotypes.
@@ -37,13 +37,18 @@ The generated site is in `docs/build/`.
   between chromosomes, and recurrent neutral mutation
 - Optional extraction of fixed mutations during the run, which keeps memory
   bounded over long burn-ins
+- Selection at an explicit table of sites with given effects (`s`, `h`,
+  or drawn from a distribution of fitness effects), soft and within each
+  sex; the causal variants and their effects can be exported
 - Export to a 1-bit-per-allele `BitArray` with a linkage map (`DataFrame`), to a
   targeted SNP-chip panel, or to `BnGStructs.Haplotype`
-- Validated against neutral theory and msprime (see the manual)
+- Validated against neutral theory, msprime, and independent simulations
+  of the same model under selection (see the manual)
 
-Not modelled: selection, overlapping generations, mating schemes other
-than random mating between the sexes, population structure or migration,
-and non-uniform recombination maps in `fisher_wright`.
+Not modelled: hard selection and quantitative traits (selection acts on
+the fitness of given sites only), overlapping generations, mating schemes
+other than random mating between the sexes, population structure or
+migration, and non-uniform recombination maps in `fisher_wright`.
 
 ## Main Functions
 
@@ -65,6 +70,7 @@ Keyword arguments:
 | `init` | `nothing` | starting population: `2ne` haplotypes or a `FisherWrightResult` to continue from |
 | `popsize` | `nothing` | census size per generation: a vector of `nt` sizes or a function of the generation, for example `bottleneck(100, 10, 21, 5)` or `growth(50, 0.05)` |
 | `mating` | `RandomMating()` | `RandomMating(nmale = m)` or `RandomMating(sexratio = p)` fixes the number or proportion of males |
+| `fitness` | `Neutral()` | `SiteFitness(loci)` selects on the sites of a `FitnessLoci` table; needs `result = true` |
 | `verbose` | `false` | report progress (mean muts/hap, substitutions, elapsed, ETA) to `stderr` |
 | `progress_interval` | `100` | generations between progress reports, when `verbose = true` |
 | `rng` | `Random.default_rng()` | random number generator; the realization depends only on its state |
@@ -356,6 +362,68 @@ threads, AMD Ryzen 9 5950X), simulation time was 57.15 s for v0.4.2 and
 over 0.1 s and 0.4 s), with the same output for the same seed. Peak
 resident memory fell from 2,484 to 2,328 MiB. The log is
 `docs/src/validation/benchmark-v0.5.0-vs-v0.4.2.txt`.
+
+## Changes in v0.6.0
+
+**Selection.** Selection on an explicit table of sites. The model stays
+discrete-generation, dioecious and soft: fitness is evaluated on the
+adults, and every offspring draws its sire among the males and its dam
+among the females with probability proportional to fitness, with
+replacement, so the census size is not affected.
+
+- `FitnessLoci(pos, s; h, μ)`: the selected sites, with the selection
+  coefficient and dominance of each derived allele (genotype fitness 1,
+  1 + hs, 1 + s, multiplicative over sites) and a mutation rate per
+  site. `fitness_loci(chr, nsites; s, h, μ, rng)` draws the sites and,
+  if `s` is a distribution, their effects.
+- `fitness = SiteFitness(loci)` in `fisher_wright`; `Neutral()` is the
+  default. Selection requires `result = true`.
+- The derived alleles at the fitness loci are kept apart from the
+  neutral mutations, in the new fields `selected_haplotypes` and
+  `selected_substitutions`, and pass through meiosis with the same
+  crossovers. A starting population with selected alleles is given
+  through `init`.
+- `to_haplotype(result, loci)` exports the genotypes at the fitness loci
+  with their effects; `selected = true` on the other `to_haplotype`
+  methods adds the selected alleles to the neutral export.
+- `FisherWrightResult` records, per generation, the mean fitness of the
+  parents and the mean and variance of log fitness.
+
+**Breaking changes.** `FisherWrightResult` has five new fields
+(`selected_haplotypes`, `selected_substitutions`, `mean_fitness`,
+`mean_log_fitness`, `var_log_fitness`); the three- and five-argument
+constructors still work. New exported names: `FitnessLoci`,
+`fitness_loci`, `SiteFitness`, `Neutral`.
+
+**Seeded output is unchanged** for neutral runs: the golden-output
+digests of v0.4.0 pass. Under selection, parents are drawn with a Vose
+alias table.
+
+**Relation to theory.** The fixation probability of a new allele in
+this two-sex model is below that of an ideal Wright-Fisher population of
+the same size by terms of order 1/N (5% at N = 50 and 2Ns = 10), from
+the binomial sex ratio and from competition within the sex of the
+carrier. With many selected sites, selection at unlinked sites lowers
+the effective size at each site by about 1/(1 + 4C²), C² the variance of
+relative fitness.
+
+**Validation.** The engine is compared with independent naive
+simulations of the same model: the fixation probability of one new copy
+(eight cases, 200,000 replicates each, |z| ≤ 1.64), and the distribution
+of the derived-allele count at selected sites under recurrent mutation,
+for deleterious, neutral and beneficial sites (28 comparisons,
+|z| ≤ 1.57). Two new CI tests use their reference values (manual,
+"Validation: selection").
+
+**Performance.** Neutral runs are as fast as in v0.5.0: on the 1 Gb
+benchmark (`ne = 2000`, `nt = 2000`, 10 × 100 Mbp, 8 threads, idle AMD
+Ryzen 9 3900X), 63.26 s for v0.5.0 and 63.25 s for v0.6.0 (means of
+three interleaved runs; single runs within 0.2 s). Selection costs 4 to
+15% more over 500 generations of the same genome, increasing with the
+number of selected sites (10³ to 10⁵) and the rate of new selected
+alleles (0.01 to 0.1 per haplotype per generation;
+`bench/benchmark-selection.jl`). The log is
+`docs/src/validation/benchmark-v0.6.0-vs-v0.5.0.txt`.
 
 ## Contributing and support
 

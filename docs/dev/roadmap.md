@@ -1,8 +1,8 @@
 # Roadmap: variable population size, non-random mating, and selection
 
-Status: 0.5.0 released and registered 2026-11-11; 0.6.0 in progress
-(drafted 2026-10-07 against v0.3.8; selection added 2026-11-02 against
-v0.4.0).
+Status: 0.5.0 released and registered 2026-11-11; 0.6.0 complete,
+release prepared 2026-11-12; 0.7.0 onwards not started (drafted
+2026-10-07 against v0.3.8; selection added 2026-11-02 against v0.4.0).
 v0.4.0 shipped without the refactor below, so the staging is renumbered
 from 0.5.0. The 0.5.0 row is complete: the golden-output regression
 test and the `_recombine!` kernel (v0.4.2); the `mutate` and `init`
@@ -27,8 +27,10 @@ fitness loci with a table of chr, pos, s, h and frequency, and
 the neutral export. Fitness record (2026-11-12): `mean_fitness`,
 `mean_log_fitness` and `var_log_fitness` per generation, for the
 parents, absolute (substituted sites included), appended through
-`init`. Validation 6 completed 2026-11-12 (see below). The 0.6.0 row is
-complete apart from the release itself.
+`init`. Validation 6 completed 2026-11-12 (see below). Release
+benchmark (validation 8): neutral runs 63.26 s (v0.5.0) and 63.25 s
+(v0.6.0) on the 1 Gb run; selection adds 4 to 15% for 10³ to 10⁵ sites
+and 0.01 to 0.1 new selected alleles per haplotype per generation.
 
 The refactor (`src/simulate.jl`): a `SimState` struct holds the
 haplotypes, buffers and per-slot streams; `fisher_wright` builds it and
