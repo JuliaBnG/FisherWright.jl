@@ -276,9 +276,10 @@ sires and dams, as they are redrawn until both sexes are present; with
 which is checked before the run. `males` still records the number of
 males among all parents.
 
-`effective_size(result)` assumes random mating and does not apply to
-runs with `FamilySize` or `Hierarchical`. Neither can be combined with
-selection yet.
+`effective_size(result)` returns the effective size realized by the
+family sizes of the run (see [Census record and effective size](@ref)),
+which for `Hierarchical` equals the value above exactly. Neither
+`FamilySize` nor `Hierarchical` can be combined with selection yet.
 
 ## Selection
 

@@ -95,23 +95,47 @@ run = fisher_wright(40, 20, [100_000], 1.0; popsize=sizes, result=true)
 (run.census[1:8], run.males[1:8])
 ```
 
-`effective_size` turns the record into the effective size realized by
-those sex numbers. Each offspring draws its sire and its dam uniformly
-with replacement, so generation ``g`` has
-``N_{e,g} = 4N_mN_f/(N_m + N_f)`` (Wright 1931), and several generations
-combine as the harmonic mean:
+The record also holds the realized family sizes of every generation:
+`paternal_pairs[g]` and `maternal_pairs[g]` are the numbers of ordered
+pairs of offspring of generation `g` that share their sire,
+``\sum_s m_s(m_s - 1)``, and that share their dam,
+``\sum_d n_d(n_d - 1)``. Two genes in different offspring therefore
+derive from the same parent with probability
+
+```math
+a_g = \frac{\sum_s m_s(m_s - 1) + \sum_d n_d(n_d - 1)}{4N_g(N_g - 1)},
+```
+
+``N_g`` the number of offspring, and `effective_size` returns
+``1/a_g`` for a generation and the harmonic mean ``1/\bar{a}`` for
+several:
 
 ```@example results
 (effective_size(run), effective_size(run, 2:6), effective_size(run, 7:20))
 ```
 
-The value follows from the census record, not from the genetic data, and
-depends on the parents only: generation 6 above has 40 offspring but the
-effective size of its 10 parents. It is conditional on the realized sex
-numbers; under the default binomial sex its expectation is close to
-``N - 1``. At constant sex numbers the asymptotic rate of loss of
-heterozygosity, ``1/(2N_e)``, corresponds to this value plus ½ (see
-[Effective size](@ref)).
+This holds for every mating scheme and includes the variance of family
+size that selection adds within a generation. It is the value realized
+by the pedigree of the run, not an estimate from the genetic data, and
+it varies from run to run as family sizes do. It depends on the
+parents: generation 6 above has 40 offspring but the effective size of
+its 10 parents.
+
+`effective_size(run; from=:sexes)` uses the numbers of male and female
+parents only, ``a_g = 1/(4N_m) + 1/(4N_f)``, which is the expectation of
+the realized value under random mating and gives Wright's (1931)
+``4N_mN_f/(N_m + N_f)``; it does not apply to other mating schemes or
+to selection. Until version 0.6 this was the only form.
+
+```@example results
+(effective_size(run, 7:20), effective_size(run, 7:20; from=:sexes))
+```
+
+At constant numbers the asymptotic rate of loss of heterozygosity,
+``1/(2N_e)``, corresponds to this value plus ½ (see
+[Effective size](@ref)). Selection that is heritable lowers the
+effective size further over generations (Robertson 1961), which a
+record of one generation at a time does not include.
 
 ## Selected alleles
 

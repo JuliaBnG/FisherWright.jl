@@ -791,7 +791,8 @@ end
     end
     # The bottleneck cohorts are the parents of the following generations.
     res = fisher_wright(30, 25, chr, 5.0; kw..., popsize=bottleneck(30, 4, 6, 5), rng=Xoshiro(2))
-    @test all(<(4), res.males[7:11]) && effective_size(res, 7:11) < 4 < effective_size(res, 1:6)
+    @test all(<(4), res.males[7:11]) && effective_size(res, 7:11; from=:sexes) < 4 < effective_size(res, 1:6; from=:sexes)
+    @test effective_size(res, 7:11) < effective_size(res, 1:6)
     # A decline without a floor is stopped by fisher_wright at the first
     # generation whose size is below 2: 20·0.5^4 = 1.25.
     @test_throws "generation 4" fisher_wright(20, 10, chr, 5.0; popsize=growth(20, -0.5))
@@ -818,7 +819,7 @@ end
     @test 0.9 < var(long.males) / 12.5 < 1.1
     # Ne from the record: Jensen's inequality puts it below 4·25·25/50 = 50,
     # at E[1/4Nm + 1/4Nf]⁻¹ = 48.96 for N = 50.
-    @test 48.7 < effective_size(long) < 49.3
+    @test 48.7 < effective_size(long; from=:sexes) < 49.3
 
     # Fixed sexes and a changing size: the record is the request.
     sizes = [fill(10, 5); fill(40, 4); 7]
@@ -828,20 +829,37 @@ end
     rat = fisher_wright(20, 10, chr, 5.0; kw..., popsize=sizes, mating=RandomMating(sexratio=0.2), rng=Xoshiro(4))
     @test rat.males == [4; fill(2, 5); fill(8, 4)]   # parents: 20, 10 × 5, 40 × 4
 
-    # effective_size: Wright's formula per generation, harmonic mean over
+    # effective_size(; from = :sexes): Wright's formula per generation, harmonic mean over
     # several, parents only (the last cohort of 7 does not enter).
     ne(m, n) = 4m * (n - m) / n
-    @test effective_size(fix, 1) ≈ ne(3, 20) ≈ 10.2
-    @test effective_size(fix, 2) ≈ ne(3, 10)
-    @test effective_size(fix, 7:10) ≈ ne(3, 40)
-    @test effective_size(fix) ≈ 10 / (1 / ne(3, 20) + 5 / ne(3, 10) + 4 / ne(3, 40))
-    @test effective_size(fix, [1, 10]) ≈ 2 / (1 / ne(3, 20) + 1 / ne(3, 40))
-    @test effective_size(rat, 2:6) ≈ ne(2, 10) && effective_size(rat, 10) ≈ ne(8, 40)
-    @test effective_size(fisher_wright(20, 5, chr, 5.0; kw..., mating=RandomMating(sexratio=0.5))) ≈ 20
+    @test effective_size(fix, 1; from=:sexes) ≈ ne(3, 20) ≈ 10.2
+    @test effective_size(fix, 2; from=:sexes) ≈ ne(3, 10)
+    @test effective_size(fix, 7:10; from=:sexes) ≈ ne(3, 40)
+    @test effective_size(fix; from=:sexes) ≈ 10 / (1 / ne(3, 20) + 5 / ne(3, 10) + 4 / ne(3, 40))
+    @test effective_size(fix, [1, 10]; from=:sexes) ≈ 2 / (1 / ne(3, 20) + 1 / ne(3, 40))
+    @test effective_size(rat, 2:6; from=:sexes) ≈ ne(2, 10) && effective_size(rat, 10; from=:sexes) ≈ ne(8, 40)
+    @test effective_size(fisher_wright(20, 5, chr, 5.0; kw..., mating=RandomMating(sexratio=0.5)); from=:sexes) ≈ 20
     @test (@inferred effective_size(fix)) isa Float64
+    @test (@inferred effective_size(fix; from=:sexes)) isa Float64
     @test_throws BoundsError effective_size(fix, 11)
     @test_throws BoundsError effective_size(fix, 0)
     @test_throws ArgumentError effective_size(fix, 1:0)
+    @test_throws ArgumentError effective_size(fix; from=:pedigree)
+
+    # The realized family sizes: the recorded pairs are those of the mating
+    # table, and under random mating their expectation is the sex-count
+    # formula, so the two agree over a long run.
+    @test length(fix.paternal_pairs) == length(fix.maternal_pairs) == 10
+    rng = Xoshiro(13)
+    rmap = uniform_recombination_map(chr; M=5e4)
+    st = SimState([UInt32[] for _ = 1:40], UInt32[], 20, rng)
+    for _ = 1:20
+        _simulate!(st, ConstantSize(20), RandomMating(), Neutral(), 1, rmap, Poisson(1.0), UInt32(1):UInt32(300_000);
+            mutate=false, track=false, fixation_interval=1, verbose=false, progress_interval=100, rng=rng)
+        pairs(col) = (c = [count(==(k), st.pm[1:20, col]) for k = 1:20]; sum(c .* (c .- 1)))
+        @test (st.ppairs[end], st.mpairs[end]) == (pairs(1), pairs(2))
+    end
+    @test abs(effective_size(long) / effective_size(long; from=:sexes) - 1) < 0.02
 
     # A run continued from a result appends to its record; from plain
     # haplotypes, or in a result built by hand, the record starts anew.
@@ -849,6 +867,7 @@ end
     @test cont.census == [20; sizes; 9; 9; 12] && cont.males[1:10] == fix.males
     @test length(cont.males) == 13 && all(m -> 1 <= m <= 8, cont.males[12:13])
     @test effective_size(cont, 1:10) == effective_size(fix)
+    @test cont.paternal_pairs[1:10] == fix.paternal_pairs && length(cont.maternal_pairs) == 13
     @test fix.census == [20; sizes] && fix.males == fill(3, 10)   # init left untouched
     plain = fisher_wright(7, 3, chr, 5.0; kw..., init=_with_fixed(fix), rng=Xoshiro(5))
     @test plain.census == fill(7, 4) && length(plain.males) == 3
@@ -863,6 +882,9 @@ end
     manual = FisherWrightResult([UInt32[1, 3], UInt32[2], UInt32[], UInt32[1, 2, 3]], UInt32[5], UInt32[5])
     @test manual.census == [2] && isempty(manual.males)
     @test_throws ArgumentError effective_size(manual)
+    five = FisherWrightResult(manual.active_haplotypes, UInt32[5], UInt32[5], [2, 2], [1])
+    @test all(isnan, five.paternal_pairs) && effective_size(five; from=:sexes) ≈ 2   # 1 male, 1 female
+    @test_throws "not recorded" effective_size(five)
     kept = _extract_fixed(FisherWrightResult(copy.(fix.active_haplotypes), fix.chromosome_ends,
         fix.substitutions, fix.census, fix.males))
     @test (kept.census, kept.males) == (fix.census, fix.males)
@@ -1149,6 +1171,12 @@ end
     one = fisher_wright(N, 1, chr, 2.0; kw..., init=start, mutate=false, rng=Xoshiro(9))
     @test all(h -> h == UInt32[] || h == [loci.pos[7]], one.selected_haplotypes)
     @test isempty(sel[1]) && sel[3] == [loci.pos[7]]
+
+    # Selection adds variance in family size: the realized effective size is
+    # below the sex-count value, which ignores it.
+    strong = SiteFitness(FitnessLoci(loci.pos, 0.5; μ=2e-3))
+    sres = fisher_wright(N, 200, chr, 2.0; kw..., fitness=strong, rng=Xoshiro(12))
+    @test effective_size(sres, 50:200) < 0.9 * effective_size(sres, 50:200; from=:sexes)
 
     # Errors.
     @test_throws ArgumentError fisher_wright(N, 5, chr, 2.0; fitness=f)                 # result = false
@@ -1612,6 +1640,17 @@ end
     @test sum(use) == 2 * 5_000
     e = sum(use) / N
     @test sum((use .- e) .^ 2 ./ e) < N - 1 + 3.5 * sqrt(2(N - 1))
+
+    # effective_size from the realized family sizes is exact for equal
+    # splits, which are deterministic: Hierarchical(4, 5) in 100, with any
+    # sexes.
+    r = fisher_wright(100, 30, [100_000], 1.0; result=true, mating=Hierarchical(4, 5), rng=Xoshiro(4))
+    @test effective_size(r) ≈ 1 / family_a(Hierarchical(4, 5), 100, 50, 100)
+    @test effective_size(r) < 15 < 90 < effective_size(r; from=:sexes)
+    # Under FamilySize with Gamma weights it varies around the closed form.
+    m = FamilySize(dams=0.5, sires=:random, nmale=10)
+    r = fisher_wright(40, 2_000, [1_000], 1.0; result=true, mating=m, mutate=false, rng=Xoshiro(5))
+    @test abs(effective_size(r) * family_a(m, 40, 10, 40) - 1) < 0.03
 
     # Binomial sex is redrawn until the breeders fit: 12 parents, 2 sires
     # and 8 dams.

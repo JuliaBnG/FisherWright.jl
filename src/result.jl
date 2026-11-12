@@ -2,7 +2,8 @@
     FisherWrightResult(active_haplotypes, chromosome_ends, substitutions, census, males,
                        selected_haplotypes, selected_substitutions,
                        mean_fitness, mean_log_fitness, var_log_fitness,
-                       mean_genotypic, var_genotypic, mean_phenotypic, var_phenotypic)
+                       mean_genotypic, var_genotypic, mean_phenotypic, var_phenotypic,
+                       paternal_pairs, maternal_pairs)
     FisherWrightResult(active_haplotypes, chromosome_ends, substitutions;
                        selected_haplotypes, selected_substitutions)
 
@@ -37,6 +38,10 @@ with the census record of the run.
   `var_phenotypic::Vector{Float64}`: under [`TraitFitness`](@ref), the mean and (sample) variance of the genotypic
   value and of the phenotype of the parents of each generation, as for the fitness record; `NaN` for generations
   without a trait model.
+- `paternal_pairs::Vector{Float64}`, `maternal_pairs::Vector{Float64}`: the realized family sizes of each
+  generation, as the number of ordered pairs of its offspring that share their sire, `Σ m(m - 1)` over the sires,
+  and that share their dam, `Σ n(n - 1)` over the dams; [`effective_size`](@ref) uses them. `NaN` in a result
+  built by hand.
 
 A run continued from a `FisherWrightResult` through the `init` keyword of [`fisher_wright`](@ref) appends its
 generations to the record of that result, so generations are numbered from the first call; started from plain
@@ -62,7 +67,20 @@ struct FisherWrightResult
     var_genotypic::Vector{Float64}
     mean_phenotypic::Vector{Float64}
     var_phenotypic::Vector{Float64}
+    paternal_pairs::Vector{Float64}
+    maternal_pairs::Vector{Float64}
 end
+
+# Without a record of family sizes: NaN for every recorded generation.
+FisherWrightResult(
+    active_haplotypes, chromosome_ends, substitutions, census, males,
+    selected_haplotypes, selected_substitutions, mean_fitness, mean_log_fitness, var_log_fitness,
+    mean_genotypic, var_genotypic, mean_phenotypic, var_phenotypic,
+) = FisherWrightResult(
+    active_haplotypes, chromosome_ends, substitutions, census, males,
+    selected_haplotypes, selected_substitutions, mean_fitness, mean_log_fitness, var_log_fitness,
+    mean_genotypic, var_genotypic, mean_phenotypic, var_phenotypic,
+    fill(NaN, length(males)), fill(NaN, length(males)))
 
 # Without a trait record: NaN for every recorded generation.
 FisherWrightResult(
@@ -96,24 +114,34 @@ FisherWrightResult(
     selected_haplotypes, selected_substitutions)
 
 """
-    effective_size(result::FisherWrightResult, generations = eachindex(result.males)) -> Float64
+    effective_size(result::FisherWrightResult, generations = eachindex(result.males); from = :families) -> Float64
 
-Effective population size realized by the sex numbers recorded in `result`, over the given `generations`
-(one generation or a collection of them; all generations of the run by default).
+Effective population size realized in the generations of `result` that are given (one generation or a collection
+of them; all generations of the run by default), from its record.
 
-Generation `g` has ``N_m`` = `result.males[g]` male and ``N_f`` = `result.census[g] - result.males[g]` female
-parents, and each offspring draws its sire and its dam uniformly with replacement, so two genes in different
-offspring derive from the same parent with probability ``a_g = 1/(4N_m) + 1/(4N_f)``. The effective size of that
-generation is ``1/a_g = 4N_mN_f/(N_m + N_f)`` (Wright 1931), and over several generations it is the harmonic mean,
-``1/\\bar{a}``.
+With `from = :families` (the default), from the realized family sizes. Two genes in different offspring of
+generation `g` derive from the same parent with probability
 
-This is the value determined by the realized census record, not an estimate from the genetic data. It assumes [`RandomMating`](@ref): the result does not record the mating scheme, and under [`FamilySize`](@ref), whose families are not those of random mating, the value is not the effective size (see the docstring of `FamilySize` for its coalescence probability). Selection, which also changes the variance of family size, is not accounted for either. It depends
-on the parents only, not on the number of offspring. At constant sex numbers the asymptotic rate of loss of
-heterozygosity, ``1/(2N_e)``, corresponds to ``N_e \\approx 1/a + 1/2``, because the two genes of one individual
-come from different parents.
+``a_g = \\frac{\\sum_s m_s(m_s - 1) + \\sum_d n_d(n_d - 1)}{4 N_g (N_g - 1)}``,
+
+where `m_s` and `n_d` are the numbers of offspring of sire `s` and dam `d` (`result.paternal_pairs[g]` and
+`result.maternal_pairs[g]`) and `N_g = result.census[g + 1]`. The effective size of the generation is `1/a_g`, and
+over several generations it is the harmonic mean, `1/ā`. This holds for every mating scheme
+([`RandomMating`](@ref), [`FamilySize`](@ref), [`Hierarchical`](@ref)) and includes the variance of family size
+that selection adds within a generation; it does not include the cumulative effect of heritable fitness over
+generations (Robertson 1961). It is the value realized by the pedigree of the run, not an estimate from the
+genetic data, and it varies from run to run as family sizes do.
+
+With `from = :sexes`, from the recorded numbers of male and female parents only, as in version 0.5 and 0.6:
+`a_g = 1/(4N_m) + 1/(4N_f)`, the expectation under random mating, which gives Wright's (1931)
+`4N_mN_f/(N_m + N_f)`. It does not apply to other mating schemes or to selection.
+
+Under random mating the two agree on average. At constant numbers the asymptotic rate of loss of heterozygosity,
+`1/(2N_e)`, corresponds to `N_e ≈ 1/a + 1/2`, because the two genes of one individual come from different parents.
 
 # Errors
-- Throws an `ArgumentError` if `generations` is empty, as for a result built without a census record, and a
+- Throws an `ArgumentError` if `generations` is empty, as for a result built without a census record, or if the
+  family sizes of a generation are not recorded (`NaN`, a result built by hand) with `from = :families`; and a
   `BoundsError` for a generation outside the run.
 
 # Examples
@@ -121,17 +149,27 @@ come from different parents.
 using FisherWright
 
 res = fisher_wright(50, 20, [100_000], 1.0; mating = RandomMating(nmale = 5), result = true)
-effective_size(res)        # 4 * 5 * 45 / 50 = 18.0
-effective_size(res, 1:10)  # the first ten generations
+effective_size(res)                 # realized, about 18
+effective_size(res; from = :sexes)  # 4 * 5 * 45 / 50 = 18.0
+effective_size(res, 1:10)           # the first ten generations
 ```
 """
-function effective_size(result::FisherWrightResult, generations=eachindex(result.males))
+function effective_size(result::FisherWrightResult, generations=eachindex(result.males); from::Symbol=:families)
     isempty(generations) && throw(ArgumentError("no generation to average over"))
+    from in (:families, :sexes) || throw(ArgumentError("from must be :families or :sexes"))
     a = 0.0
     for g in generations
-        m = result.males[g]
-        f = result.census[g] - m
-        a += 1 / 4m + 1 / 4f
+        if from === :sexes
+            m = result.males[g]
+            f = result.census[g] - m
+            a += 1 / 4m + 1 / 4f
+        else
+            pp, mp = result.paternal_pairs[g], result.maternal_pairs[g]
+            (isnan(pp) || isnan(mp)) &&
+                throw(ArgumentError("the family sizes of generation $g are not recorded; use from = :sexes"))
+            n = result.census[g+1]
+            a += (pp + mp) / (4n * (n - 1))
+        end
     end
     return length(generations) / a
 end
@@ -351,7 +389,8 @@ function _extract_fixed(result::FisherWrightResult)
     return FisherWrightResult(cleaned, result.chromosome_ends, substitutions, result.census, result.males,
         result.selected_haplotypes, result.selected_substitutions,
         result.mean_fitness, result.mean_log_fitness, result.var_log_fitness,
-        result.mean_genotypic, result.var_genotypic, result.mean_phenotypic, result.var_phenotypic)
+        result.mean_genotypic, result.var_genotypic, result.mean_phenotypic, result.var_phenotypic,
+        result.paternal_pairs, result.maternal_pairs)
 end
 
 

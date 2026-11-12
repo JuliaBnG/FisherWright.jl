@@ -197,9 +197,9 @@ function fisher_wright(
     # Drop the spare buffers beyond the final cohort.
     haps = resize!(st.prt, 2 * st.n)
     result || return (haps, cbp)
-    census, males, fmean, flmean, flvar, gmean, gvar, pmean, pvar = _record(init, st)
+    census, males, fmean, flmean, flvar, gmean, gvar, pmean, pvar, ppairs, mpairs = _record(init, st)
     return FisherWrightResult(haps, cbp, st.substitutions, census, males,
-        resize!(st.sel, 2 * st.n), st.ssubs, fmean, flmean, flvar, gmean, gvar, pmean, pvar)
+        resize!(st.sel, 2 * st.n), st.ssubs, fmean, flmean, flvar, gmean, gvar, pmean, pvar, ppairs, mpairs)
 end
 
 """
