@@ -1,8 +1,24 @@
 # Roadmap: variable population size, non-random mating, and selection
 
-Status: 0.5.0 released and registered 2026-11-11; 0.6.0 complete,
-release prepared 2026-11-12; 0.7.0 onwards not started (drafted
-2026-10-07 against v0.3.8; selection added 2026-11-02 against v0.4.0).
+Status: 0.5.0 released 2026-11-11, 0.6.0 released 2026-11-12; 0.7.0 in
+progress (drafted 2026-10-07 against v0.3.8; selection added
+2026-11-02 against v0.4.0).
+
+0.7.0 so far (2026-11-12): `TraitFitness` (`src/trait.jl`), with its own
+table `TraitLoci(pos, a; h, μ)`, since trait effects are not bounded as
+selection coefficients are (genotype values 0, h·a, a);
+`Stabilizing(θ, ω²)`, `Directional(β)` or any function of P; σe draws
+serial from `rng`; substituted sites kept as an offset of G; mean and
+variance of G and P per generation in the result; export with
+`to_haplotype(result, loci::TraitLoci)`. Tested: G from the merge-walk
+against the dense sum, P − G against σe², fitness against the function
+of P, unbiasedness of one generation of selection given the parents
+(additive loci), invariance to `fixation_interval` under stabilizing
+selection, thread independence. Next in 0.7.0: the mating schemes
+(`FamilySize`, `Hierarchical`, `WeightedParents`), density regulation
+and the extinction policy, and their validation; a theory-level
+validation of `TraitFitness` (response to selection and Bulmer effect,
+mutation–stabilizing selection balance) is still open.
 v0.4.0 shipped without the refactor below, so the staging is renumbered
 from 0.5.0. The 0.5.0 row is complete: the golden-output regression
 test and the `_recombine!` kernel (v0.4.2); the `mutate` and `init`

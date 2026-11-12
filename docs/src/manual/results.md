@@ -63,6 +63,7 @@ simulations. The result fields are:
 | `selected_haplotypes` | Derived alleles each haplotype carries at the fitness loci; empty in a neutral run. |
 | `selected_substitutions` | Fitness loci whose derived allele was fixed and removed. |
 | `mean_fitness`, `mean_log_fitness`, `var_log_fitness` | Fitness of the parents of each generation: mean, and mean and variance of its logarithm. |
+| `mean_genotypic`, `var_genotypic`, `mean_phenotypic`, `var_phenotypic` | Under `TraitFitness`, the mean and variance of the genotypic value and of the phenotype of the parents of each generation; `NaN` otherwise. |
 
 Convert a structured result to `BnGStructs.Haplotype` and a linkage map:
 

@@ -1,7 +1,8 @@
 """
     FisherWrightResult(active_haplotypes, chromosome_ends, substitutions, census, males,
                        selected_haplotypes, selected_substitutions,
-                       mean_fitness, mean_log_fitness, var_log_fitness)
+                       mean_fitness, mean_log_fitness, var_log_fitness,
+                       mean_genotypic, var_genotypic, mean_phenotypic, var_phenotypic)
     FisherWrightResult(active_haplotypes, chromosome_ends, substitutions;
                        selected_haplotypes, selected_substitutions)
 
@@ -32,6 +33,10 @@ with the census record of the run.
   relative to an individual without any derived allele at the fitness loci, so substituted sites are included.
   In a neutral run these are `1`, `0` and `0`. If an adult has zero fitness (a lethal genotype), the mean of the
   logarithm is `-Inf` and its variance `NaN`.
+- `mean_genotypic::Vector{Float64}`, `var_genotypic::Vector{Float64}`, `mean_phenotypic::Vector{Float64}`,
+  `var_phenotypic::Vector{Float64}`: under [`TraitFitness`](@ref), the mean and (sample) variance of the genotypic
+  value and of the phenotype of the parents of each generation, as for the fitness record; `NaN` for generations
+  without a trait model.
 
 A run continued from a `FisherWrightResult` through the `init` keyword of [`fisher_wright`](@ref) appends its
 generations to the record of that result, so generations are numbered from the first call; started from plain
@@ -53,7 +58,20 @@ struct FisherWrightResult
     mean_fitness::Vector{Float64}
     mean_log_fitness::Vector{Float64}
     var_log_fitness::Vector{Float64}
+    mean_genotypic::Vector{Float64}
+    var_genotypic::Vector{Float64}
+    mean_phenotypic::Vector{Float64}
+    var_phenotypic::Vector{Float64}
 end
+
+# Without a trait record: NaN for every recorded generation.
+FisherWrightResult(
+    active_haplotypes, chromosome_ends, substitutions, census, males,
+    selected_haplotypes, selected_substitutions, mean_fitness, mean_log_fitness, var_log_fitness,
+) = FisherWrightResult(
+    active_haplotypes, chromosome_ends, substitutions, census, males,
+    selected_haplotypes, selected_substitutions, mean_fitness, mean_log_fitness, var_log_fitness,
+    (fill(NaN, length(males)) for _ = 1:4)...)
 
 # Without a fitness record: that of a neutral population, one entry per
 # recorded generation.
@@ -332,7 +350,8 @@ function _extract_fixed(result::FisherWrightResult)
     cleaned, substitutions = _fixation_step(result.active_haplotypes, result.substitutions)
     return FisherWrightResult(cleaned, result.chromosome_ends, substitutions, result.census, result.males,
         result.selected_haplotypes, result.selected_substitutions,
-        result.mean_fitness, result.mean_log_fitness, result.var_log_fitness)
+        result.mean_fitness, result.mean_log_fitness, result.var_log_fitness,
+        result.mean_genotypic, result.var_genotypic, result.mean_phenotypic, result.var_phenotypic)
 end
 
 
