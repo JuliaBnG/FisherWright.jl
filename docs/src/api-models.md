@@ -9,6 +9,7 @@ The models passed to [`fisher_wright`](@ref) through its `mating`,
 RandomMating
 FamilySize
 Hierarchical
+Monoecious
 ```
 
 ## Census size

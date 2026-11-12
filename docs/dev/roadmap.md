@@ -14,7 +14,21 @@ generation as founders. Tested against the transmission itself
 (private markers of the start found only in the recorded founder
 ancestors), the census and family records, the window, continuation,
 `FamilySize` and the `Species` method; recording does not change the
-run. Next in 0.8.0: `Monoecious(selfing)`, `AvoidRelatives`,
+run.
+
+`Monoecious` (2026-11-12): hermaphrodites, the second parent drawn from
+the whole cohort (`Monoecious()`, random selfing at 1/N, the DTWF
+model) or the first parent itself with probability s and otherwise one
+of the others (`selfing = s`); under selection both parents ∝ fitness,
+the second among the others by rejection. The result records the
+proportion of selfed offspring (`selfing`), `males` is 0, family pairs
+count a parent shared through either role, and `effective_size` gives
+(2 − σ_g)/(2a_g) (Nordborg and Donnelly 1997), 1/a_g with separate
+sexes. Validated by the exact recursion h_B' = (1 − 1/N)h_B + h_W/2N,
+h_W' = (1 − σ)h_B + σh_W/2, for Σ2pq and observed heterozygosity
+(CI test, four cases; rechecked at 1,000 replicates on four seeds,
+|z| ≤ 1.95, and at 8,000 on two seeds, |z| ≤ 0.83), E[a_g] = 1/N, and
+parent usage ∝ fitness. Next in 0.8.0: `AvoidRelatives`,
 `CustomMating`, and the SLiM comparison (validation 7).
 
 0.7.0 so far (2026-11-12): `TraitFitness` (`src/trait.jl`), with its own
@@ -213,7 +227,7 @@ fitnesses (all ones, and ignored, under `Neutral()`).
 | `FamilySize(dist_f; dist_m)` | Offspring counts per dam (and sire usage) from Poisson, NegBinomial(r, p), or a constant (equal family size) | 8N/(V_m+V_f+4) (Hill 1972); equal families ≈ 2N |
 | `Hierarchical(nsire, dams_per_sire, offspring_per_dam)` | Livestock-style nested design | Hill/Gowe formulas; compare against SLiM |
 | ~~`WeightedParents(w_m, w_f)`~~ | Dropped 2026-11-12: skewed usage is covered by `FamilySize` with Gamma weights | Through V_k |
-| `Monoecious(; selfing = s)` | Hermaphrodite mode with selfing rate s | N/(1+F), F = s/(2−s) |
+| `Monoecious(; selfing = s)` | Hermaphrodite mode with selfing rate s (done 2026-11-12; `Monoecious()` selfs at random) | N/(1+F), F = s/(2−s) |
 | `AvoidRelatives(inner; level = :fullsib/:halfsib)` | Rejection sampling over a 1–2 generation pedigree | Design-dependent; empirical |
 | `CustomMating(f)` | User callback `(g, sex, pedigree, rng) -> pm` | User's responsibility |
 

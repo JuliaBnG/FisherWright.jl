@@ -59,12 +59,13 @@ simulations. The result fields are:
 | `chromosome_ends` | Cumulative chromosome endpoints. |
 | `substitutions` | Sorted fixed mutation positions. |
 | `census` | Census sizes ``N_0, N_1, …, N_{nt}`` of the run. |
-| `males` | Number of males among the parents of each generation. |
+| `males` | Number of males among the parents of each generation; 0 for hermaphrodites. |
 | `selected_haplotypes` | Derived alleles each haplotype carries at the fitness loci; empty in a neutral run. |
 | `selected_substitutions` | Fitness loci whose derived allele was fixed and removed. |
 | `mean_fitness`, `mean_log_fitness`, `var_log_fitness` | Fitness of the parents of each generation: mean, and mean and variance of its logarithm. |
 | `mean_genotypic`, `var_genotypic`, `mean_phenotypic`, `var_phenotypic` | Under `TraitFitness`, the mean and variance of the genotypic value and of the phenotype of the parents of each generation; `NaN` otherwise. |
 | `paternal_pairs`, `maternal_pairs` | Ordered pairs of offspring sharing a sire, and sharing a dam, in each generation. |
+| `selfing` | Proportion of selfed offspring in each generation; 0 with separate sexes. |
 | `first_id` | ID of individual 1 of `active_haplotypes`. |
 | `pedigree` | With `pedigree = k`, the matings of the last `k` generations (a `DataFrame`). |
 
@@ -124,11 +125,21 @@ it varies from run to run as family sizes do. It depends on the
 parents: generation 6 above has 40 offspring but the effective size of
 its 10 parents.
 
+With hermaphrodites ([`Monoecious`](@ref)) a parent is shared through
+either role, so `paternal_pairs[g]` counts the ordered pairs ``(i, j)``
+of distinct offspring in which the first parent of ``i`` is a parent of
+``j``, once for each role it has in ``j``, and `maternal_pairs[g]` the
+same for the second parent; ``a_g`` keeps its meaning. A proportion
+``\sigma_g`` (`selfing[g]`) of the offspring are selfed, and the
+effective size of the generation is ``(2 - \sigma_g)/(2a_g)``, which is
+``1/a_g`` with separate sexes (see [Hermaphrodites](@ref)).
+
 `effective_size(run; from=:sexes)` uses the numbers of male and female
 parents only, ``a_g = 1/(4N_m) + 1/(4N_f)``, which is the expectation of
 the realized value under random mating and gives Wright's (1931)
 ``4N_mN_f/(N_m + N_f)``; it does not apply to other mating schemes or
-to selection. Until version 0.6 this was the only form.
+to selection, nor to hermaphrodites. Until version 0.6 this was the
+only form.
 
 ```@example results
 (effective_size(run, 7:20), effective_size(run, 7:20; from=:sexes))
@@ -158,7 +169,9 @@ Each row is an individual: its `sire` and `dam` (IDs; 0 for the
 founders of the record, which are the parents of the oldest recorded
 generation, or the starting population), its `sex` (`true` for male, as
 assigned when its generation reproduced; `missing` for the last
-generation) and its `generation` of birth, numbered as in `census`.
+generation and for hermaphrodites, whose first and second parent are
+listed as `sire` and `dam`) and its `generation` of birth, numbered as
+in `census`.
 Every parent that is referred to has a row, so the table is a complete
 pedigree for software that reads one, and `run.first_id` links it to
 the haplotypes:
