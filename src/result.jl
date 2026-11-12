@@ -3,7 +3,7 @@
                        selected_haplotypes, selected_substitutions,
                        mean_fitness, mean_log_fitness, var_log_fitness,
                        mean_genotypic, var_genotypic, mean_phenotypic, var_phenotypic,
-                       paternal_pairs, maternal_pairs, selfing, first_id, pedigree)
+                       paternal_pairs, maternal_pairs, selfing, related_matings, first_id, pedigree)
     FisherWrightResult(active_haplotypes, chromosome_ends, substitutions;
                        selected_haplotypes, selected_substitutions)
 
@@ -46,6 +46,9 @@ with the census record of the run.
   `maternal_pairs` the same for the second parent of `i`; with separate sexes these are the sums above.
 - `selfing::Vector{Float64}`: the proportion of the offspring of each generation that are selfed (one parent in
   both roles); 0 with separate sexes.
+- `related_matings::Vector{Int}`: under [`AvoidRelatives`](@ref), the number of offspring of each generation whose
+  parents are relatives at the level avoided, kept because no unrelated mate was found within `max_tries` draws;
+  0 under other schemes, which do not check relationships.
 - `first_id::Int`: the ID of individual 1 of `active_haplotypes`; individual `i` (haplotypes `2i - 1` and `2i`)
   has ID `first_id + i - 1`. Individuals are numbered in birth order across the run, the starting population
   first, and a run continued through `init` continues the numbering. 1 in a result built by hand.
@@ -83,6 +86,7 @@ struct FisherWrightResult
     paternal_pairs::Vector{Float64}
     maternal_pairs::Vector{Float64}
     selfing::Vector{Float64}
+    related_matings::Vector{Int}
     first_id::Int
     pedigree::DataFrame
 end
@@ -98,7 +102,7 @@ FisherWrightResult(
     active_haplotypes, chromosome_ends, substitutions, census, males,
     selected_haplotypes, selected_substitutions, mean_fitness, mean_log_fitness, var_log_fitness,
     mean_genotypic, var_genotypic, mean_phenotypic, var_phenotypic, paternal_pairs, maternal_pairs, selfing,
-    1, _empty_pedigree())
+    zeros(Int, length(males)), 1, _empty_pedigree())
 
 # Without a record of selfing: separate sexes in every recorded generation.
 FisherWrightResult(
@@ -440,7 +444,8 @@ function _extract_fixed(result::FisherWrightResult)
         result.selected_haplotypes, result.selected_substitutions,
         result.mean_fitness, result.mean_log_fitness, result.var_log_fitness,
         result.mean_genotypic, result.var_genotypic, result.mean_phenotypic, result.var_phenotypic,
-        result.paternal_pairs, result.maternal_pairs, result.selfing, result.first_id, result.pedigree)
+        result.paternal_pairs, result.maternal_pairs, result.selfing, result.related_matings, result.first_id,
+        result.pedigree)
 end
 
 

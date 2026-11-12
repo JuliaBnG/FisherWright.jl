@@ -219,6 +219,13 @@ struct RandomMating <: AbstractMating
     end
 end
 
+function Base.show(io::IO, m::RandomMating)
+    print(io, "RandomMating(")
+    m.nmale > 0 && print(io, "nmale = ", m.nmale)
+    m.sexratio > 0 && print(io, "sexratio = ", m.sexratio)
+    print(io, ")")
+end
+
 # Number of males among `n` parents; 0 stands for binomial sex.
 function _nmale(m::RandomMating, n::Int)
     m.nmale > 0 && return m.nmale
@@ -285,6 +292,11 @@ current cohort occupies the leading entries.
   offspring that share their sire and that share their dam (with
   hermaphrodites, a parent of one shared through either role).
 - `selfing`: per generation, the proportion of selfed offspring.
+- `forced`: per generation, the offspring of relatives that `AvoidRelatives`
+  accepted after its retry limit (0 for other schemes).
+- `rel`, `rnew`: under `AvoidRelatives`, the parents and grandparents of
+  every member of the cohort (6 × nmax) and the buffer for the next one;
+  empty otherwise.
 - `ped`: IDs of the current cohort and the pedigree record.
 - `census`, `males`: record of the run. `census` starts with the size of the
   starting cohort and gains the number of offspring of every generation;
@@ -332,6 +344,9 @@ mutable struct SimState
     const ppairs::Vector{Float64}
     const mpairs::Vector{Float64}
     const selfing::Vector{Float64}
+    const forced::Vector{Int}
+    rel::Matrix{Int}
+    rnew::Matrix{Int}
     const ped::PedRecord
 end
 
@@ -367,7 +382,8 @@ function SimState(
         zeros(nmax), zeros(nmax), Float64[], Float64[], Float64[], Float64[],
         sizehint!(Int[], nmax), sizehint!(Int[], nmax), sizehint!(Int[], nmax),
         sizehint!(Int[], nmax), sizehint!(Int[], nmax),
-        zeros(Int, nmax), zeros(nmax), Float64[], Float64[], Float64[], PedRecord(n),
+        zeros(Int, nmax), zeros(nmax), Float64[], Float64[], Float64[], Int[],
+        zeros(Int, 6, 0), zeros(Int, 6, 0), PedRecord(n),
     )
 end
 
@@ -419,7 +435,8 @@ function _initial_state(init::FisherWrightResult, nh::Int, cbp::Vector{UInt32}, 
         throw(ArgumentError("init.census and init.males do not describe the $(nh ÷ 2) individuals of init"))
     all(v -> length(v) == length(init.males), (init.mean_fitness, init.mean_log_fitness,
         init.var_log_fitness, init.mean_genotypic, init.var_genotypic, init.mean_phenotypic,
-        init.var_phenotypic, init.paternal_pairs, init.maternal_pairs, init.selfing)) ||
+        init.var_phenotypic, init.paternal_pairs, init.maternal_pairs, init.selfing,
+        init.related_matings)) ||
         throw(ArgumentError("the fitness and trait records of init must have one entry per generation"))
     # A substitution is carried by every haplotype: kept apart when the run
     # tracks substitutions, merged back into the haplotypes when it does not.
@@ -431,14 +448,15 @@ end
 # a FisherWrightResult the run was continued from.
 _record(::Any, st::SimState) =
     (st.census, st.males, st.fmean, st.flmean, st.flvar, st.gmean, st.gvar, st.pmean, st.pvar,
-        st.ppairs, st.mpairs, st.selfing)
+        st.ppairs, st.mpairs, st.selfing, st.forced)
 _record(init::FisherWrightResult, st::SimState) = (
     vcat(init.census, view(st.census, 2:length(st.census))), vcat(init.males, st.males),
     vcat(init.mean_fitness, st.fmean), vcat(init.mean_log_fitness, st.flmean),
     vcat(init.var_log_fitness, st.flvar), vcat(init.mean_genotypic, st.gmean),
     vcat(init.var_genotypic, st.gvar), vcat(init.mean_phenotypic, st.pmean),
     vcat(init.var_phenotypic, st.pvar), vcat(init.paternal_pairs, st.ppairs),
-    vcat(init.maternal_pairs, st.mpairs), vcat(init.selfing, st.selfing))
+    vcat(init.maternal_pairs, st.mpairs), vcat(init.selfing, st.selfing),
+    vcat(init.related_matings, st.forced))
 
 # Realized family sizes of one generation, from the mating table: for the
 # first (sire) and the second (dam) parent of an offspring i, the number of
@@ -643,12 +661,19 @@ function _simulate!(
     t0 = time()
     selected = _selected(fitness)
     p_sel = _sel_poisson(fitness)
+    # Parents and grandparents, unknown (0) for the starting cohort.
+    if _track_relatives(mating) && size(st.rel, 2) < size(st.pm, 1)
+        st.rel = zeros(Int, 6, size(st.pm, 1))
+        st.rnew = zeros(Int, 6, size(st.pm, 1))
+    end
     for g = 1:nt
         no = _popsize(demog, g)
         _fitness!(fitness, st, rng)
         _record_fitness!(fitness, st)
         _record_trait!(fitness, st)
+        push!(st.forced, 0)
         _mate!(mating, fitness, st, no, rng)
+        _track_relatives(mating) && _update_relatives!(st, no)
         push!(st.males, length(st.sires))
         _record_families!(st, no)
         _record_pedigree!(st.ped, st, no, _monoecious(mating))

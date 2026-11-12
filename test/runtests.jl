@@ -9,9 +9,9 @@ using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_s
     AbstractFitness, AliasTable, _alias_build!, _alias_draw, _alias_probabilities,
     _draw_parents!, _mate!, FitnessLoci, fitness_loci, SiteFitness, _log_fitness, _selected,
     _meiosis!, _meiosis_selected!, _sel_mutation!, TraitLoci, trait_loci, TraitFitness, Stabilizing,
-    Directional, _genotypic_value, FamilySize, Hierarchical, Monoecious,
-    _record_families!
-using Distributions: Gamma, Exponential, Normal
+    Directional, _genotypic_value, FamilySize, Hierarchical, Monoecious, AvoidRelatives,
+    _record_families!, _related
+using Distributions: Gamma, Exponential, Normal, Chisq, quantile
 import FisherWright: _fitness!
 using BnGStructs
 using DataFrames: nrow, names
@@ -1867,6 +1867,107 @@ end
     run!(st, m, nt) = _simulate!(st, ConstantSize(40), m, Neutral(), nt, rmap, Poisson(1.0), UInt32(1):UInt32(2_000);
         mutate=false, track=false, fixation_interval=1, verbose=false, progress_interval=100, rng=rng)
     for m in (Monoecious(), Monoecious(selfing=0.3))
+        run!(st, m, 50)
+        @test @allocated(run!(st, m, 50)) / 50 < 2^14
+    end
+end
+
+# Whether the parents `x` and `y` (IDs) are related at `level` (1 full sibs,
+# 2 sibs, 3 sibs or first cousins), from a pedigree DataFrame; 0 is an
+# unknown parent.
+function related_by_pedigree(par, x, y, level)
+    px = filter(!=(0), collect(get(par, x, (0, 0))))
+    py = filter(!=(0), collect(get(par, y, (0, 0))))
+    level == 1 && return length(px) == 2 && sort(px) == sort(py)
+    isempty(intersect(px, py)) || return true
+    level == 2 && return false
+    gp(ps) = filter(!=(0), reduce(vcat, [collect(get(par, p, (0, 0))) for p in ps]; init=Int[]))
+    return !isempty(intersect(gp(px), gp(py)))
+end
+
+@testset "Avoidance of relatives" begin
+    @test_throws ArgumentError AvoidRelatives(FamilySize())
+    @test_throws ArgumentError AvoidRelatives(; level=:sibs)
+    @test_throws ArgumentError AvoidRelatives(; max_tries=0)
+    @test sprint(show, AvoidRelatives(RandomMating(nmale=3); level=:cousin)) ==
+          "AvoidRelatives(RandomMating(nmale = 3); level = :cousin, max_tries = 100)"
+
+    # The relationship test on a hand-made record: columns are individuals,
+    # rows the two parents and four grandparents (0 unknown).
+    rel = zeros(Int, 6, 6)
+    rel[:, 1] = [1, 2, 5, 6, 7, 8]
+    rel[:, 2] = [2, 1, 7, 8, 5, 6]     # full sib of 1, roles swapped
+    rel[:, 3] = [1, 3, 5, 6, 9, 9]     # half sib of 1
+    rel[:, 4] = [4, 9, 6, 0, 0, 0]     # first cousin of 1 through grandparent 6
+    rel[:, 5] = [0, 0, 0, 0, 0, 0]     # unknown
+    rel[:, 6] = [4, 9, 6, 0, 0, 0]     # full sib of 4
+    @test [_related(rel, 1, y, l) for y = 2:5, l = 1:3] ==
+          Bool[1 1 1; 0 1 1; 0 0 1; 0 0 0]
+    @test _related(rel, 4, 6, 1) && !_related(rel, 5, 5, 1)
+
+    # The second parent, given the first: uniform among the unrelated others,
+    # or in proportion to fitness among them. Monoecious without selfing,
+    # 8 individuals, individual 1 a half sib of 2 and 3; 40,000 offspring.
+    rng = Xoshiro(41)
+    N, no = 8, 40_000
+    st = SimState([UInt32[] for _ = 1:2N], UInt32[], no, rng)
+    st.rel = zeros(Int, 6, no)
+    st.rnew = zeros(Int, 6, no)
+    st.rel[1:2, 1:3] = [1 1 1; 2 3 4]
+    push!(st.forced, 0)
+    w = [1.0, 1.0, 1.0, 0.5, 1.0, 2.0, 3.0, 0.0]
+    for (f, p) in ((Neutral(), [0, 0, 0, 1, 1, 1, 1, 1] / 5), (IndexFitness(w), [0, 0, 0, 0.5, 1, 2, 3, 0] / 6.5))
+        f isa Neutral || (st.w[1:N] .= w)
+        _mate!(AvoidRelatives(Monoecious(selfing=0)), f, st, no, rng)
+        pm = st.pm[1:no, :]
+        q = pm[pm[:, 1] .== 1, 2]
+        c = [count(==(k), q) for k = 1:N]
+        @test all(c[p .== 0] .== 0)
+        e = length(q) .* p
+        @test sum((c[p .> 0] .- e[p .> 0]) .^ 2 ./ e[p .> 0]) < quantile(Chisq(count(p .> 0) - 1), 0.999)
+        @test st.forced[end] == 0
+    end
+
+    # With max_tries = 1 nothing is redrawn: the realization of the inner
+    # scheme, with its matings of relatives counted.
+    chr = [100_000]
+    for inner in (RandomMating(nmale=5), Monoecious(selfing=0.2))
+        a = fisher_wright(30, 30, chr, 1.0; mating=inner, result=true, rng=Xoshiro(5))
+        b = fisher_wright(30, 30, chr, 1.0; mating=AvoidRelatives(inner; max_tries=1), result=true, rng=Xoshiro(5))
+        @test a.active_haplotypes == b.active_haplotypes
+        @test sum(b.related_matings) > 0 && sum(a.related_matings) == 0
+    end
+
+    # Against the pedigree: in every generation, the matings of relatives
+    # at the level avoided are exactly those counted, and none with ample
+    # retries where unrelated mates abound.
+    for (m, some) in ((AvoidRelatives(RandomMating(nmale=5); level=:cousin), true),
+        (AvoidRelatives(RandomMating(); level=:halfsib), false),
+        (AvoidRelatives(Monoecious(); level=:cousin), false),
+        (AvoidRelatives(Monoecious(selfing=0.0); level=:fullsib, max_tries=1), true))
+        res = fisher_wright(30, 25, chr, 1.0; mating=m, result=true, pedigree=typemax(Int), rng=rng)
+        ped = res.pedigree
+        par = Dict(r.id => (r.sire, r.dam) for r in eachrow(ped))
+        counts = [count(r -> r.sire != r.dam && related_by_pedigree(par, r.sire, r.dam, m.level),
+            eachrow(ped[ped.generation .== g, :])) for g = 1:25]
+        @test counts == res.related_matings
+        @test (sum(counts) > 0) == some
+    end
+
+    # Selfing is decided as without avoidance: random selfing stays at 1/N.
+    res = fisher_wright(20, 400, chr, 1.0; mating=AvoidRelatives(Monoecious(); level=:cousin), result=true, rng=rng)
+    @test abs(mean(res.selfing) - 1 / 20) / sqrt(1 / 20 * 19 / 20 / (20 * 400)) < 3.5
+
+    # A continuation starts the pedigree anew and appends to the record.
+    more = fisher_wright(20, 5, chr, 1.0; init=res, mating=AvoidRelatives(), result=true, rng=rng)
+    @test length(more.related_matings) == 405
+
+    # Within the reserved capacity, a generation allocates task overhead only.
+    rmap = uniform_recombination_map([1_000, 1_000]; M=1e3)
+    st = SimState([UInt32.(findall(rand(rng, Bool, 2_000))) for _ = 1:80], UInt32[], 40, rng)
+    run!(st, m, nt) = _simulate!(st, ConstantSize(40), m, Neutral(), nt, rmap, Poisson(1.0), UInt32(1):UInt32(2_000);
+        mutate=false, track=false, fixation_interval=1, verbose=false, progress_interval=100, rng=rng)
+    for m in (AvoidRelatives(; level=:cousin), AvoidRelatives(Monoecious(); level=:halfsib))
         run!(st, m, 50)
         @test @allocated(run!(st, m, 50)) / 50 < 2^14
     end

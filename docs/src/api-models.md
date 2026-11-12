@@ -10,6 +10,7 @@ RandomMating
 FamilySize
 Hierarchical
 Monoecious
+AvoidRelatives
 ```
 
 ## Census size

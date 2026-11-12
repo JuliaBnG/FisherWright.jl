@@ -23,7 +23,7 @@ new mutations per `mut_base` base pairs per haplotype per meiosis.
 | `mutate` | `true` | Generate new mutations; `false` leaves drift and recombination only. |
 | `init` | `nothing` | Starting population: `2ne` haplotypes or a `FisherWrightResult`; `nothing` starts monomorphic. |
 | `popsize` | `nothing` | Census size per generation: a vector of `nt` sizes or a function of the generation; `nothing` keeps `ne`. |
-| `mating` | `RandomMating()` | Mating scheme; `RandomMating(nmale=m)` or `RandomMating(sexratio=p)` fixes the number or the proportion of males; `FamilySize`, `Hierarchical` and `Monoecious` are described below. |
+| `mating` | `RandomMating()` | Mating scheme; `RandomMating(nmale=m)` or `RandomMating(sexratio=p)` fixes the number or the proportion of males; `FamilySize`, `Hierarchical`, `Monoecious` and `AvoidRelatives` are described below. |
 | `fitness` | `Neutral()` | Fitness model; `SiteFitness(loci)` selects on the sites of a `FitnessLoci` table (needs `result=true`). |
 | `pedigree` | `0` | Generations of matings to record as a pedigree (needs `result=true`); see [Pedigree](@ref). |
 | `verbose` | `false` | Report progress (mean mutations per haplotype, substitutions, elapsed time, ETA) to `stderr`. |
@@ -347,6 +347,45 @@ pedigree the first parent is listed as `sire`, the second as `dam` (the
 same for a selfed individual), and the sex is `missing`. With a fitness
 model both parents are drawn with probability proportional to fitness,
 the second among the others when the offspring is not selfed.
+
+## Avoiding relatives
+
+`mating = AvoidRelatives(inner; level, max_tries)` wraps a
+`RandomMating` or `Monoecious` scheme and keeps relatives from mating.
+Each offspring draws its sire (first parent) as `inner` does; a dam
+(second parent) related to the sire is rejected and redrawn as `inner`
+draws it. The relationship is read from the pedigree of the run at one
+of three nested levels:
+
+| `level` | Rejected pairs |
+|---|---|
+| `:fullsib` | the same two parents |
+| `:halfsib` | at least one parent in common (the default) |
+| `:cousin` | at least one parent or grandparent in common |
+
+The starting population has unknown parents and is unrelated, and its
+offspring have unknown grandparents; a run continued through `init`
+starts the pedigree anew in the same way. When `max_tries` draws of
+the dam (100 by default) find no unrelated one, the last pair is kept
+and counted in `related_matings` of the result, so a population too
+small or too related for the level shows in the record rather than
+stopping the run:
+
+```@example simulation
+avoid = AvoidRelatives(RandomMating(nmale=5); level=:cousin)
+kin = fisher_wright(40, 50, [100_000, 100_000], 1.0; mating=avoid,
+                    result=true)
+(sum(kin.related_matings), effective_size(kin))
+```
+
+With 5 sires, first cousins soon cannot be avoided. Rejecting the dam
+keeps the use of sires as under `inner`, but dams related to many males
+have fewer offspring, which can lower the realized effective size; with
+selection, every draw of the dam is in proportion to fitness among the
+unrelated females. With `Monoecious`, whether an offspring is selfed
+is decided as without avoidance, and only an outcrossed second parent
+is redrawn. `FamilySize` and `Hierarchical` assign sires to dams as a
+whole and are not supported.
 
 ## Selection
 

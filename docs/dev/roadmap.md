@@ -28,8 +28,22 @@ sexes. Validated by the exact recursion h_B' = (1 − 1/N)h_B + h_W/2N,
 h_W' = (1 − σ)h_B + σh_W/2, for Σ2pq and observed heterozygosity
 (CI test, four cases; rechecked at 1,000 replicates on four seeds,
 |z| ≤ 1.95, and at 8,000 on two seeds, |z| ≤ 0.83), E[a_g] = 1/N, and
-parent usage ∝ fitness. Next in 0.8.0: `AvoidRelatives`,
-`CustomMating`, and the SLiM comparison (validation 7).
+parent usage ∝ fitness.
+
+`AvoidRelatives` (2026-11-12), decided: three nested levels
+(`:fullsib`, `:halfsib`, `:cousin`, the last from grandparents kept for
+the cohort), wrapping `RandomMating` or `Monoecious` only (`FamilySize`
+pairs sires to dams as a whole, which rejection cannot do), and after
+`max_tries` draws of the dam the related pair is kept and counted
+(`related_matings`). The sire is drawn as by the inner scheme and the
+dam is redrawn; the starting population is unrelated. Tested: the
+relationship test on a hand-made record, the conditional law of the
+mate (uniform, or ∝ fitness, among the unrelated; χ²), identity with
+the inner scheme at `max_tries = 1`, the counted matings against a
+brute-force reading of the pedigree at every level, the selfing rate
+unchanged. No population-genetic reference yet: the effect on Ne and F
+is design-dependent and goes to the SLiM comparison (validation 4).
+Next in 0.8.0: `CustomMating`, and the SLiM comparison (validation 7).
 
 0.7.0 so far (2026-11-12): `TraitFitness` (`src/trait.jl`), with its own
 table `TraitLoci(pos, a; h, μ)`, since trait effects are not bounded as
@@ -228,7 +242,7 @@ fitnesses (all ones, and ignored, under `Neutral()`).
 | `Hierarchical(nsire, dams_per_sire, offspring_per_dam)` | Livestock-style nested design | Hill/Gowe formulas; compare against SLiM |
 | ~~`WeightedParents(w_m, w_f)`~~ | Dropped 2026-11-12: skewed usage is covered by `FamilySize` with Gamma weights | Through V_k |
 | `Monoecious(; selfing = s)` | Hermaphrodite mode with selfing rate s (done 2026-11-12; `Monoecious()` selfs at random) | N/(1+F), F = s/(2−s) |
-| `AvoidRelatives(inner; level = :fullsib/:halfsib)` | Rejection sampling over a 1–2 generation pedigree | Design-dependent; empirical |
+| `AvoidRelatives(inner; level = :fullsib/:halfsib/:cousin)` | Rejection sampling over a 1–2 generation pedigree (done 2026-11-12; `RandomMating` and `Monoecious`) | Design-dependent; empirical |
 | `CustomMating(f)` | User callback `(g, sex, pedigree, rng) -> pm` | User's responsibility |
 
 `WeightedParents` and selection share one sampler: a preallocated Vose

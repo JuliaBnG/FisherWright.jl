@@ -66,6 +66,7 @@ simulations. The result fields are:
 | `mean_genotypic`, `var_genotypic`, `mean_phenotypic`, `var_phenotypic` | Under `TraitFitness`, the mean and variance of the genotypic value and of the phenotype of the parents of each generation; `NaN` otherwise. |
 | `paternal_pairs`, `maternal_pairs` | Ordered pairs of offspring sharing a sire, and sharing a dam, in each generation. |
 | `selfing` | Proportion of selfed offspring in each generation; 0 with separate sexes. |
+| `related_matings` | Under `AvoidRelatives`, offspring of relatives that could not be avoided, per generation; 0 otherwise. |
 | `first_id` | ID of individual 1 of `active_haplotypes`. |
 | `pedigree` | With `pedigree = k`, the matings of the last `k` generations (a `DataFrame`). |
 
