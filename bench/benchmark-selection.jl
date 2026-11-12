@@ -1,5 +1,6 @@
 # Cost of selection in fisher_wright as a function of the number of
-# selected sites K and the rate of new selected alleles per haplotype.
+# selected sites K and the rate of new selected alleles per haplotype, and
+# of the trait model and the family-size mating scheme.
 #
 #   julia -t 8 --project=. bench/benchmark-selection.jl [ne = 2000] [nt = 500] [reps = 2] [seed = 42]
 #
@@ -9,30 +10,41 @@
 # that K·μ_sel new selected alleles arise per haplotype per generation. Each
 # configuration is timed `reps` times, interleaved with the neutral run, and
 # the table reports the median wall time and its ratio to the neutral median.
+# The last rows: TraitFitness with 10,000 additive loci (a ~ ±0.05, rate 0.1)
+# under Directional(0.1); FamilySize(dams = 1.0) without and with SiteFitness
+# (K = 10,000, Kμ = 0.1).
 
 using FisherWright, Random, Printf, Statistics
 
-function run(ne, nt, fitness, seed)
+function run(ne, nt, (mating, fitness), seed)
     GC.gc()
     return @elapsed fisher_wright(ne, nt, fill(100_000_000, 10), 1.0; M = 1e8, mut_base = 1e8,
-        result = true, fixation_interval = 10, fitness = fitness, rng = Xoshiro(seed))
+        result = true, fixation_interval = 10, mating = mating, fitness = fitness, rng = Xoshiro(seed))
 end
 
 function main(ne = 2000, nt = 500, reps = 2, seed = 42)
     chr = fill(100_000_000, 10)
     grid = [(K, u) for K in (1_000, 10_000, 100_000) for u in (0.01, 0.1)]
-    models = Pair{String,Any}["neutral" => Neutral()]
+    rm = RandomMating()
+    models = Pair{String,Any}["neutral" => (rm, Neutral())]
     for (K, u) in grid
         loci = fitness_loci(chr, K; s = -0.01, h = 0.5, μ = u / K, rng = Xoshiro(seed))
-        push!(models, @sprintf("K = %6d, Kμ = %4.2f", K, u) => SiteFitness(loci))
+        push!(models, @sprintf("K = %6d, Kμ = %4.2f", K, u) => (rm, SiteFitness(loci)))
     end
+    qtl = trait_loci(chr, 10_000; a = 0.05, μ = 0.1 / 10_000, rng = Xoshiro(seed))
+    push!(models, "trait, Directional(0.1)" => (rm, TraitFitness(qtl; σe = 1.0, fitness = Directional(0.1))))
+    fs = FamilySize(dams = 1.0)
+    push!(models, "FamilySize, neutral" => (fs, Neutral()))
+    sel = SiteFitness(fitness_loci(chr, 10_000; s = -0.01, h = 0.5, μ = 0.1 / 10_000, rng = Xoshiro(seed)))
+    push!(models, "FamilySize, K = 10000" => (fs, sel))
     # Compile every method on a small run first.
-    for (_, f) in models
-        fisher_wright(10, 2, [10_000], 1.0; result = true, fitness = f isa SiteFitness ?
-            SiteFitness(FitnessLoci([5_000], -0.01; μ = 1e-3)) : f)
+    for (_, (m, f)) in models
+        f2 = f isa SiteFitness ? SiteFitness(FitnessLoci([5_000], -0.01; μ = 1e-3)) :
+             f isa TraitFitness ? TraitFitness(TraitLoci([5_000], 0.1; μ = 1e-3); fitness = Directional(0.1)) : f
+        fisher_wright(10, 2, [10_000], 1.0; result = true, mating = m, fitness = f2)
     end
     println("="^72)
-    println(" Selection overhead: ne = $ne, nt = $nt, 10 × 100 Mb, threads = $(Threads.nthreads()), reps = $reps")
+    println(" Selection and mating overhead: ne = $ne, nt = $nt, 10 × 100 Mb, threads = $(Threads.nthreads()), reps = $reps")
     println("="^72)
     t = Dict(name => Float64[] for (name, _) in models)
     for r = 1:reps, (name, f) in models

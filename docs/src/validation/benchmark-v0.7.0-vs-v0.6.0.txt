@@ -1,0 +1,34 @@
+# Date: 2026-11-12T15:10Z  Commits: v0.6.0 (tag) and ae07efd (main; package source identical to v0.7.0), both from git archive
+# CPU: AMD Ryzen 9 3900X 12-Core Processor, otherwise idle; julia version 1.13.3; deps: BnGStructs v0.2.7 DataFrames v1.8.3 Distributions v0.25.134
+# Three interleaved runs of each version (summary lines):
+# $ julia --startup-file=no -t 8 --project=<dir> <dir>/bench/simulate-fisher-wright.jl 2000 2000 10 100000000 1.0 42
+
+Default path, simulation runtime (s); every run: 571686 polymorphic SNPs, 4 substitutions
+  run   v0.6.0    v0.7.0
+  1     63.362    63.415
+  2     63.286    63.245
+  3     63.228    63.177
+  mean  63.292    63.279
+Peak RSS: 2315-2392 MiB (v0.6.0), 2322-2392 MiB (v0.7.0)
+
+Selection and mating overhead (v0.7.0)
+# $ julia --startup-file=no -t 8 --project=. bench/benchmark-selection.jl 2000 500 3 42
+========================================================================
+ Selection and mating overhead: ne = 2000, nt = 500, 10 × 100 Mb, threads = 8, reps = 3
+========================================================================
+  model                      median (s)      ratio   runs (s)
+  neutral                          4.25      1.000   4.38, 4.22, 4.25
+  K =   1000, Kμ = 0.01            4.56      1.071   4.60, 4.56, 4.53
+  K =   1000, Kμ = 0.10            4.62      1.085   4.63, 4.60, 4.62
+  K =  10000, Kμ = 0.01            4.54      1.067   4.54, 4.54, 4.57
+  K =  10000, Kμ = 0.10            4.66      1.097   4.68, 4.66, 4.66
+  K = 100000, Kμ = 0.01            4.62      1.085   4.61, 4.62, 4.63
+  K = 100000, Kμ = 0.10            4.87      1.146   5.02, 4.87, 4.87
+  trait, Directional(0.1)          4.95      1.164   4.95, 4.91, 4.99
+  FamilySize, neutral              3.88      0.912   3.89, 3.88, 3.88
+  FamilySize, K = 10000            4.31      1.013   4.38, 4.30, 4.31
+========================================================================
+Note: FamilySize(dams = 1.0) is faster than random mating because its
+variable dam families lower the effective size, so fewer mutations
+segregate and less is recombined per generation; it is not a faster
+engine path.

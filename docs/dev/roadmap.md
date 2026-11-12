@@ -1,8 +1,10 @@
 # Roadmap: variable population size, non-random mating, and selection
 
-Status: 0.5.0 released 2026-11-11, 0.6.0 released 2026-11-12; 0.7.0 in
-progress (drafted 2026-10-07 against v0.3.8; selection added
-2026-11-02 against v0.4.0).
+Status: 0.5.0 released 2026-11-11, 0.6.0 released 2026-11-12; 0.7.0
+complete, release prepared 2026-11-12 (release benchmark: 63.29 s for
+v0.6.0 and 63.28 s for v0.7.0 on the 1 Gb run); 0.8.0 not started
+(drafted 2026-10-07 against v0.3.8; selection added 2026-11-02 against
+v0.4.0).
 
 0.7.0 so far (2026-11-12): `TraitFitness` (`src/trait.jl`), with its own
 table `TraitLoci(pos, a; h, μ)`, since trait effects are not bounded as
@@ -68,7 +70,7 @@ predicts 0.943). CI test "Neutral genetic variance of a trait".
 Stabilizing selection against theory (Gaussian or house-of-cards
 equilibria) is not compared.
 
-The 0.7.0 row is complete apart from the release itself.
+The 0.7.0 row is complete.
 v0.4.0 shipped without the refactor below, so the staging is renumbered
 from 0.5.0. The 0.5.0 row is complete: the golden-output regression
 test and the `_recombine!` kernel (v0.4.2); the `mutate` and `init`
