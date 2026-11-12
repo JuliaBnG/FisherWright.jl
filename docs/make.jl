@@ -28,6 +28,7 @@ makedocs(
             "Validation: selection" => "manual/validation-selection.md",
         ],
         "API reference" => "api.md",
+        "API reference: population models" => "api-models.md",
     ],
 )
 

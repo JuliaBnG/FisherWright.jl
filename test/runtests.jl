@@ -9,7 +9,7 @@ using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_s
     AbstractFitness, AliasTable, _alias_build!, _alias_draw, _alias_probabilities,
     _draw_parents!, _mate!, FitnessLoci, fitness_loci, SiteFitness, _log_fitness, _selected,
     _meiosis!, _meiosis_selected!, _sel_mutation!, TraitLoci, trait_loci, TraitFitness, Stabilizing,
-    Directional, _genotypic_value, FamilySize
+    Directional, _genotypic_value, FamilySize, Hierarchical
 using Distributions: Gamma, Exponential, Normal
 import FisherWright: _fitness!
 using BnGStructs
@@ -1503,6 +1503,9 @@ end
 # males and `no` offspring.
 function family_a(m::FamilySize, N, Nm, no)
     Nf = N - Nm
+    # Breeders: random subsets of the given sizes, if any.
+    m.nsires > 0 && (Nm = m.nsires)
+    m.ndams > 0 && (Nf = m.ndams)
     Pf = same_parent(m.dams, m.kd, no, Nf)
     π = same_parent(m.sires, m.km, Nf, Nm)
     return (Pf + (Pf + (1 - Pf) * π)) / 4
@@ -1568,6 +1571,58 @@ end
         run!(st, m, 50)
         @test @allocated(run!(st, m, 50)) / 50 < 2^14
     end
+
+    # Breeder subsets: exactly nsires sires and ndams dams breed, each sire
+    # with dams_per_sire dams, equal families, and the sexes of all parents
+    # are kept for the record.
+    @test_throws ArgumentError FamilySize(nsires=0)
+    @test_throws ArgumentError Hierarchical(0, 3)
+    h = Hierarchical(4, 3; sexratio=0.5)
+    @test (h.dams, h.sires, h.nsires, h.ndams, h.sex.sexratio) == (:equal, :equal, 4, 12, 0.5)
+    st = SimState([UInt32[] for _ = 1:2N], UInt32[], 60, rng)
+    for m in (Hierarchical(4, 3), Hierarchical(4, 3; nmale=10), FamilySize(dams=0.7, sires=:random, nsires=5, ndams=9)),
+        no in (40, 50)
+        _mate!(m, Neutral(), st, no, rng)
+        pm = st.pm[1:no, :]
+        used_s, used_d = unique(pm[:, 1]), unique(pm[:, 2])
+        @test length(used_s) <= m.nsires && length(used_d) <= m.ndams
+        @test issubset(used_s, st.sires) && issubset(used_d, st.dams)
+        @test all(length(unique(pm[pm[:, 2] .== d, 1])) == 1 for d in used_d)
+        if m.dams === :equal
+            @test length(used_s) == 4 && length(used_d) == 12
+            nd = [count(==(d), pm[:, 2]) for d in used_d]
+            @test maximum(nd) - minimum(nd) <= 1
+            @test all(length(unique(pm[pm[:, 1] .== s, 2])) == 3 for s in used_s)
+        end
+        @test length(st.sires) + length(st.dams) == N          # every parent has a sex
+        m.sex.nmale > 0 && @test length(st.sires) == 10
+    end
+    # The sires are a uniform subset: 2 of the 10 males per generation, and
+    # the males are a uniform subset of the 40 parents, so every parent is a
+    # sire with probability 1/20 per generation. Pearson χ² over the 40
+    # parents, 5,000 generations.
+    m = Hierarchical(2, 3; nmale=10)
+    use = zeros(Int, N)
+    for _ = 1:5_000
+        _mate!(m, Neutral(), st, 40, rng)
+        for s in unique(st.pm[1:40, 1])
+            use[s] += 1
+        end
+    end
+    @test sum(use) == 2 * 5_000
+    e = sum(use) / N
+    @test sum((use .- e) .^ 2 ./ e) < N - 1 + 3.5 * sqrt(2(N - 1))
+
+    # Binomial sex is redrawn until the breeders fit: 12 parents, 2 sires
+    # and 8 dams.
+    r = fisher_wright(12, 200, [100_000], 1.0; result=true, mating=Hierarchical(2, 4), rng=Xoshiro(3))
+    @test all(m -> 2 <= m <= 4, r.males) && length(unique(r.males)) == 3
+    # Infeasible designs are rejected before the run.
+    @test_throws "generation 1" fisher_wright(20, 5, [1_000], 1.0; mating=Hierarchical(3, 4; nmale=2))
+    @test_throws "generation 1" fisher_wright(20, 5, [1_000], 1.0; mating=Hierarchical(2, 5; nmale=12))
+    @test_throws "generation 3" fisher_wright(20, 5, [1_000], 1.0; popsize=[20, 9, 20, 20, 20],
+        mating=Hierarchical(3, 3))
+    @test_throws ArgumentError fisher_wright(20, 5, [1_000], 1.0; mating=FamilySize(nsires=3, sexratio=0.1))
 
     # Through fisher_wright: valid output, census and males recorded,
     # nmale checked against every parental cohort, no selection.
@@ -2044,7 +2099,8 @@ end
 # END population genetics validation
 
 @testset "Heterozygosity decay under family-size mating" begin
-    # Drift alone from a polymorphic start, under three FamilySize schemes,
+    # Drift alone from a polymorphic start, under five FamilySize schemes
+    # (two with breeder subsets),
     # against the exact recursion with a = (P_f + P_m)/4 from the closed
     # forms of the splits (`family_a`): 20 parents, 15 generations, 400
     # replicates of 1,000 sites on 20 chromosomes of 1 Morgan. Each scheme
@@ -2056,6 +2112,8 @@ end
         (FamilySize(dams=:equal, sires=:equal, nmale=5), RandomMating(nmale=5)),
         (FamilySize(dams=0.5, sires=:random, nmale=10), RandomMating(nmale=10)),
         (FamilySize(dams=:random, sires=:random), RandomMating()),
+        (Hierarchical(3, 2), RandomMating()),
+        (FamilySize(dams=1.0, sires=:random, nsires=4, ndams=8, nmale=8), RandomMating(nmale=8)),
     )
     binom = [Float64(binomial(big(N), k)) for k = 1:N-1]
     function expected(a)
@@ -2069,7 +2127,9 @@ end
         nm = m isa FamilySize ? m.sex.nmale : m.nmale
         f(k) = m isa FamilySize ? family_a(m, N, k, N) : 1 / 4k + 1 / 4(N - k)
         nm > 0 && return f(nm)
-        return sum(binom[k] * f(k) for k = 1:N-1) / sum(binom)
+        # Binomial sex conditioned on enough of each sex for the breeders.
+        lo, hi = m isa FamilySize ? (max(m.nsires, 1), N - max(m.ndams, 1)) : (1, N - 1)
+        return sum(binom[k] * f(k) for k = lo:hi) / sum(binom[lo:hi])
     end
     for (m, alt) in cases
         H = zeros(reps)

@@ -244,17 +244,41 @@ dams per sire. Two genes in different offspring therefore come from the
 same parent with probability ``a = (P_f + P_m)/4``, with
 ``P_m = P_f + (1 - P_f)\pi``, and the recursion of
 [Effective size](@ref) applies with this ``a``; the effective size is
-about ``1/(2a) + 1/2``. For the three splits of ``n`` items among ``m``
+about ``1/a + 1/2`` (``1/a = N`` for ``N/2`` males and ``N/2`` females
+under random mating). For the three splits of ``n`` items among ``m``
 parents, the probability that two items share a parent is
 ``(r(q + 1)q + (m - r)q(q - 1))/(n(n - 1))`` with ``n = qm + r`` for
 `:equal`, ``1/m`` for `:random`, and ``(k + 1)/(mk + 1)`` for Gamma
-weights. In the example above this gives ``N_e \approx 11.1``,
-against ``9.3`` for `RandomMating(nmale=5)`: equal dam families raise
+weights. In the example above this gives ``N_e \approx 21.8``,
+against ``18.0`` for `RandomMating(nmale=5)`: equal dam families raise
 it, and a few sires keep it low.
 
+**Breeders.** `nsires` and `ndams` restrict breeding to random subsets
+of the cohort: in every generation `nsires` of the males and `ndams` of
+the females are the sires and dams, and the others have no offspring.
+`Hierarchical(s, d)` is the nested design of livestock breeding, ``s``
+sires each mated to ``d`` dams with equal families; it is
+`FamilySize(dams=:equal, sires=:equal, nsires=s, ndams=s*d)`. The
+coalescence probabilities above then use the numbers of breeders.
+
+```@example simulation
+# 4 sires × 5 dams out of 100 individuals per generation
+design = Hierarchical(4, 5)
+run = fisher_wright(100, 30, [100_000, 100_000], 1.0; mating=design,
+                    result=true)
+(run.census[end], run.males[end])
+```
+
+Here ``N_e \approx 14.6``, against ``99.5`` for random mating of all
+100. With binomial sex the sexes are redrawn until there are enough
+sires and dams, as they are redrawn until both sexes are present; with
+`nmale` or `sexratio`, every parental cohort must hold the breeders,
+which is checked before the run. `males` still records the number of
+males among all parents.
+
 `effective_size(result)` assumes random mating and does not apply to
-runs with `FamilySize`. `FamilySize` cannot be combined with selection
-yet.
+runs with `FamilySize` or `Hierarchical`. Neither can be combined with
+selection yet.
 
 ## Selection
 

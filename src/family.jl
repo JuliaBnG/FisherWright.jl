@@ -14,7 +14,8 @@ function _split_mode(x, what)
 end
 
 """
-    FamilySize(; dams = :random, sires = :random, nmale = nothing, sexratio = nothing)
+    FamilySize(; dams = :random, sires = :random, nsires = nothing, ndams = nothing,
+               nmale = nothing, sexratio = nothing)
 
 Mating with controlled family sizes. In every generation the `N_g` offspring
 are split among the dams, and every dam is mated to one sire, so all her
@@ -40,7 +41,19 @@ with probability `P_f = E[Σ n_d(n_d-1)] / (N(N-1))`; they share their sire
 when they share their dam, or else when their dams share a sire. Two genes in
 different offspring then come from the same parent with probability
 `a = (P_f + P_m)/4`, and the effective size of the generation is about
-`1/(2a) + 1/2`, which Hill's (1972) `8N/(V_m + V_f + 4)` approximates.
+`1/a + 1/2` (`1/a = N` for `N/2` males and `N/2` females under random mating),
+which Hill's (1972) `8N/(V_m + V_f + 4)` approximates.
+
+`nsires` and `ndams` restrict breeding to a subset of the parental cohort:
+in every generation, `nsires` of the males and `ndams` of the females, each
+a uniformly random subset, are the sires and dams, and the other individuals
+have no offspring. The splits are then among these breeders, and the
+coalescence probabilities above use `nsires` and `ndams` in place of the
+numbers of males and females. With binomial sex, the sexes are redrawn until
+there are at least `nsires` males and `ndams` females (exact rejection
+sampling, as for the presence of both sexes); with `nmale` or `sexratio`,
+every parental cohort must hold them, which is checked before the run.
+[`Hierarchical`](@ref) is the nested design with equal splits.
 
 The census size is not affected. `FamilySize` cannot be combined with
 selection yet. [`effective_size`](@ref) assumes random mating and does not
@@ -63,15 +76,84 @@ struct FamilySize <: AbstractMating
     kd::Float64
     sires::Symbol
     km::Float64
+    nsires::Int   # breeding sires per generation; 0 for all males
+    ndams::Int    # breeding dams per generation; 0 for all females
 end
 
-function FamilySize(; dams=:random, sires=:random, nmale=nothing, sexratio=nothing)
+function FamilySize(; dams=:random, sires=:random, nsires::Union{Nothing,Integer}=nothing,
+    ndams::Union{Nothing,Integer}=nothing, nmale=nothing, sexratio=nothing)
     d, kd = _split_mode(dams, "dams")
     s, km = _split_mode(sires, "sires")
-    return FamilySize(RandomMating(nmale=nmale, sexratio=sexratio), d, kd, s, km)
+    nsires === nothing || nsires > 0 || throw(ArgumentError("nsires must be positive"))
+    ndams === nothing || ndams > 0 || throw(ArgumentError("ndams must be positive"))
+    return FamilySize(RandomMating(nmale=nmale, sexratio=sexratio), d, kd, s, km,
+        something(nsires, 0), something(ndams, 0))
 end
 
-_check_mating(m::FamilySize, demog::AbstractDemography, n0::Int, nt::Int) = _check_mating(m.sex, demog, n0, nt)
+"""
+    Hierarchical(sires, dams_per_sire; nmale = nothing, sexratio = nothing)
+
+Nested mating design: in every generation `sires` males and
+`sires * dams_per_sire` females, uniformly random subsets of the parental
+cohort, are the breeders; each sire is mated to `dams_per_sire` of the dams,
+and the offspring are split equally among the dams (the dams that receive
+one more, when the split is not exact, are drawn at random). The other
+individuals have no offspring.
+
+The same as `FamilySize(dams = :equal, sires = :equal, nsires = sires,
+ndams = sires * dams_per_sire; nmale, sexratio)`; see [`FamilySize`](@ref)
+for sex assignment and the effective size.
+
+# Examples
+```julia
+using FisherWright
+
+# 4 sires with 5 dams each out of 100 individuals per generation
+haps, _ = fisher_wright(100, 20, [100_000], 1.0; mating = Hierarchical(4, 5))
+```
+"""
+function Hierarchical(sires::Integer, dams_per_sire::Integer; nmale=nothing, sexratio=nothing)
+    (sires > 0 && dams_per_sire > 0) ||
+        throw(ArgumentError("sires and dams_per_sire must be positive"))
+    return FamilySize(dams=:equal, sires=:equal, nsires=sires, ndams=sires * dams_per_sire,
+        nmale=nmale, sexratio=sexratio)
+end
+
+# Fixed sex numbers must hold the breeders in every parental cohort; with
+# binomial sex, every parental cohort must be large enough for them.
+function _check_mating(m::FamilySize, demog::AbstractDemography, n0::Int, nt::Int)
+    _check_mating(m.sex, demog, n0, nt)
+    (m.nsires == 0 && m.ndams == 0) && return nothing
+    n = n0
+    for g = 1:nt
+        nm = _nmale(m.sex, n)
+        if nm > 0
+            m.nsires <= nm || throw(ArgumentError(
+                "nsires = $(m.nsires) exceeds the $nm males among the parents of generation $g"))
+            m.ndams <= n - nm || throw(ArgumentError(
+                "ndams = $(m.ndams) exceeds the $(n - nm) females among the parents of generation $g"))
+        else
+            max(m.nsires, 1) + max(m.ndams, 1) <= n || throw(ArgumentError(
+                "the $n parents of generation $g cannot hold $(m.nsires) sires and $(m.ndams) dams"))
+        end
+        n = _popsize(demog, g)
+    end
+    return nothing
+end
+
+# The first `k` of `v` become a uniformly random subset of size k, sorted
+# (partial Fisher-Yates), copied into `out`; all of `v` when k is 0.
+function _breeders!(out::Vector{Int}, v::Vector{Int}, k::Int, rng::AbstractRNG)
+    resize!(out, length(v))
+    copyto!(out, v)
+    k == 0 && return out
+    @inbounds for i = 1:k
+        j = rand(rng, i:length(out))
+        out[i], out[j] = out[j], out[i]
+    end
+    resize!(out, k)
+    return sort!(out)
+end
 
 # Counts of a split of `total` among `n` parents into `cnt[1:n]`; `w` and `t`
 # are scratch for the Gamma weights and their alias table.
@@ -119,11 +201,14 @@ function _mate!(m::FamilySize, ::Neutral, st::SimState, no::Int, rng::AbstractRN
     resize!(st.sex, st.n)
     nm = _nmale(m.sex, st.n)
     if nm == 0
-        _draw_sex!(st.sex, st.sires, st.dams, rng, typemax(Int))
+        _draw_sex!(st.sex, st.sires, st.dams, rng, typemax(Int), max(m.nsires, 1), max(m.ndams, 1))
     else
         _draw_fixed_sex!(st.sex, st.sires, st.dams, nm, rng)
     end
-    sires, dams = st.sires, st.dams
+    # The breeders: all males and females, or random subsets of them. The
+    # record of males (st.sires) is left as it is.
+    sires = _breeders!(st.bsires, st.sires, m.nsires, rng)
+    dams = _breeders!(st.bdams, st.dams, m.ndams, rng)
     Nm, Nf = length(sires), length(dams)
     # Offspring per dam, then dams per sire.
     nd = _split!(st.fcnt, Nf, no, m.dams, m.kd, st.w, st.tf, st.fidx, rng)

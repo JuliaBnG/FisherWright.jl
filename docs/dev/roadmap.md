@@ -27,11 +27,22 @@ also separated from RandomMating; the binomial-sex case rechecked at
 20,000 replicates on four seeds, |z| ≤ 1.1). Not yet with selection;
 `effective_size` assumes random mating and says so.
 
-Next in 0.7.0: `Hierarchical` and `WeightedParents`, density regulation
-and the extinction policy; `FamilySize` with selection; a
-scheme-aware `effective_size` (needs the scheme in the result); a
-theory-level validation of `TraitFitness` (response to selection and
-Bulmer effect, mutation–stabilizing selection balance).
+`Hierarchical` (2026-11-12): breeder subsets `nsires`, `ndams` in
+`FamilySize` (random subsets of the cohort each generation, the rest
+without offspring; binomial sex redrawn until they fit, fixed sexes
+checked before the run), and `Hierarchical(s, d)` as equal splits over
+s sires and s·d dams. The recursion holds with the subset sizes; two
+more cases in the drift test (|z| ≤ 1.73 over six seeds, two at 10,000
+replicates).
+
+Next in 0.7.0: `FamilySize` with selection; a scheme-aware
+`effective_size` (needs the scheme in the result); a theory-level
+validation of `TraitFitness` (response to selection and Bulmer effect,
+mutation–stabilizing selection balance). Open: whether
+`WeightedParents` (skewed usage with a sire drawn per offspring) is
+still needed next to `FamilySize` with Gamma weights; density
+regulation and the extinction policy belong to an emergent census
+size, which was not chosen (2026-11-12: the census stays fixed).
 v0.4.0 shipped without the refactor below, so the staging is renumbered
 from 0.5.0. The 0.5.0 row is complete: the golden-output regression
 test and the `_recombine!` kernel (v0.4.2); the `mutate` and `init`
