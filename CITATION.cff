@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using these metadata."
+title: "FisherWright.jl"
+abstract: >-
+  Forward-time Wright–Fisher simulation of whole-genome sequence founder
+  populations in Julia: diploid individuals, infinite-sites mutation,
+  crossover recombination, changing population size, non-random mating
+  schemes and selection on fitness loci or traits.
+type: software
+authors:
+  - family-names: "Yu"
+    given-names: "Xijiang"
+    orcid: "https://orcid.org/0000-0001-6508-9251"
+    # ROR: https://ror.org/04a1mvv97 (CFF 1.2.0 has no ROR field)
+    affiliation: "Norwegian University of Life Sciences"
+version: "0.7.0"
+license: MIT
+repository-code: "https://github.com/JuliaBnG/FisherWright.jl"
+url: "https://juliabng.github.io/FisherWright/"
+keywords:
+  - population genetics
+  - forward simulation
+  - Wright-Fisher model
+  - breeding simulation
+  - Julia

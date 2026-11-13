@@ -2870,3 +2870,4 @@ end
 
 include("properties.jl")
 include("golden.jl")
+include("aqua.jl")
