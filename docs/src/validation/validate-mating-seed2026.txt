@@ -1,0 +1,41 @@
+commit a3a7317, SLiM version 5.2, built Nov 12 2026 21:02:44, svr.xijiang.org, 2026-11-12T20:06Z
+FisherWright 0.7.0, Julia 1.13.3, threads 8
+N = 40, 30 generations, L = 1000 sites on 20 chromosomes of 1 Morgan, R = 4000 replicates per simulator, seed 2026
+
+scheme         stat             FisherWright                 SLiM       z     theory   z(FW)
+# RandomMating()  (SLiM replicates: 4000)
+rm             Σ2pq/L      0.33686 ± 0.00013    0.33684 ± 0.00012    0.11    0.33676    0.74
+rm             H_obs       0.34548 ± 0.00015    0.34563 ± 0.00014   -0.72    0.34535    0.95
+rm             forced                      0                    0
+# RandomMating(nmale=5)  (SLiM replicates: 4000)
+rm5            Σ2pq/L      0.21202 ± 0.00020    0.21197 ± 0.00020    0.17    0.21212   -0.47
+rm5            H_obs       0.22086 ± 0.00021    0.22067 ± 0.00021    0.61    0.22085    0.02
+rm5            forced                      0                    0
+# FamilySize(dams=1.0, sires=:random, nmale=10)  (SLiM replicates: 4000)
+fsgamma        Σ2pq/L      0.21655 ± 0.00028    0.21684 ± 0.00027   -0.74    0.21680   -0.90
+fsgamma        H_obs       0.22511 ± 0.00030    0.22574 ± 0.00030   -1.50    0.22556   -1.52
+fsgamma        forced                      0                    0
+# Hierarchical(4, 3)  (SLiM replicates: 4000)
+hier           Σ2pq/L      0.16719 ± 0.00022    0.16735 ± 0.00021   -0.53    0.16749   -1.38
+hier           H_obs       0.17548 ± 0.00024    0.17557 ± 0.00023   -0.28    0.17575   -1.11
+hier           forced                      0                    0
+# Monoecious()  (SLiM replicates: 4000)
+mono           Σ2pq/L      0.33849 ± 0.00013    0.33827 ± 0.00013    1.17    0.33855   -0.48
+mono           H_obs       0.34274 ± 0.00016    0.34264 ± 0.00016    0.47    0.34283   -0.58
+mono           forced                      0                    0
+# Monoecious(selfing=0.5)  (SLiM replicates: 4000)
+self           Σ2pq/L      0.29990 ± 0.00028    0.30025 ± 0.00028   -0.88    0.30032   -1.49
+self           H_obs       0.20818 ± 0.00035    0.20786 ± 0.00035    0.64    0.20814    0.11
+self           forced                      0                    0
+# AvoidRelatives(RandomMating(); level=:halfsib)  (SLiM replicates: 4000)
+avoid_half     Σ2pq/L      0.34108 ± 0.00012    0.34118 ± 0.00012   -0.59                   
+avoid_half     H_obs       0.35374 ± 0.00013    0.35392 ± 0.00013   -0.98                   
+avoid_half     forced                      0                    0
+# AvoidRelatives(RandomMating(nmale=5); level=:cousin)  (SLiM replicates: 4000)
+avoid_cousin5  Σ2pq/L      0.20727 ± 0.00021    0.20694 ± 0.00021    1.14                   
+avoid_cousin5  H_obs       0.22547 ± 0.00024    0.22495 ± 0.00024    1.55                   
+avoid_cousin5  forced    237.07225 ± 0.77637  238.29950 ± 0.78498   -1.11                   
+# AvoidRelatives(Monoecious(selfing=0); level=:fullsib)  (SLiM replicates: 4000)
+avoid_mono     Σ2pq/L      0.34027 ± 0.00012    0.34034 ± 0.00012   -0.43                   
+avoid_mono     H_obs       0.34889 ± 0.00014    0.34900 ± 0.00014   -0.58                   
+avoid_mono     forced                      0                    0

@@ -1,0 +1,233 @@
+// Matched SLiM model for the mating schemes of FisherWright
+// (docs/dev/roadmap.md, validation 4). An independent implementation of
+// each scheme in Eidos, with SLiM's own meiosis and pedigree: K replicate
+// populations of N individuals, discrete generations (nonWF, parents die
+// after reproducing), sex not inherited (a sexless model; the roles of
+// sire and dam are assigned anew in every generation, as in FisherWright),
+// no mutation. The start is polymorphic: each of the L = 1,000 sites, on 20
+// chromosomes of 50 bp and 1 Morgan, is carried by each haplosome with
+// probability 1/2. After NT generations each population reports Σ2pq / L,
+// the observed heterozygosity and the number of offspring of relatives
+// that could not be avoided.
+//
+// Constants (slim -d): SCHEME (string), N, NT (generations), K, and the
+// seed with -s.
+// Schemes: "rm" RandomMating(); "rm5" RandomMating(nmale = 5);
+// "fsgamma" FamilySize(dams = 1.0, sires = :random, nmale = 10);
+// "hier" Hierarchical(4, 3); "mono" Monoecious(); "self" Monoecious(selfing
+// = 0.5); "avoid_half" AvoidRelatives(RandomMating(); level = :halfsib);
+// "avoid_cousin5" AvoidRelatives(RandomMating(nmale = 5); level = :cousin);
+// "avoid_mono" AvoidRelatives(Monoecious(selfing = 0); level = :fullsib).
+
+initialize() {
+    initializeSLiMModelType("nonWF");
+    initializeSLiMOptions(keepPedigrees = T);
+    defineConstant("L", 1000);
+    defineConstant("MAXTRIES", 100);
+    initializeMutationRate(0.0);
+    initializeMutationType("m1", 0.5, "f", 0.0);
+    m1.convertToSubstitution = F;
+    initializeGenomicElementType("g1", m1, 1.0);
+    initializeGenomicElement(g1, 0, L - 1);
+    // 49 gaps per chromosome at 1/49 each (1 Morgan), 0.5 between them.
+    ends = integer(0);
+    rates = float(0);
+    for (c in 0:19) {
+        ends = c(ends, (c < 19) ? 50 * c + 48 else 50 * c + 49);
+        rates = c(rates, 1 / 49);
+        if (c < 19) {
+            ends = c(ends, 50 * c + 49);
+            rates = c(rates, 0.5);
+        }
+    }
+    initializeRecombinationRate(rates, ends);
+    defineGlobal("FORCED", integer(K));
+}
+
+// Sex of n parents: Bernoulli(1/2), redrawn until there are at least minm
+// males and minf females; or exactly nm males, a random subset (nm > 0).
+function (integer)drawSex(integer$ n, integer$ nm, integer$ minm, integer$ minf) {
+    if (nm > 0) {
+        sex = integer(n);
+        sex[sample(0:(n - 1), nm)] = 1;
+        return sex;
+    }
+    do sex = rbinom(n, 1, 0.5);
+    while (sum(sex) < minm | n - sum(sex) < minf);
+    return sex;
+}
+
+// Whether two individuals are related at level 1 (the same two parents),
+// 2 (a parent in common) or 3 (a parent or grandparent in common); unknown
+// parents (-1) match nothing.
+function (logical$)related(object<Individual>$ a, object<Individual>$ b, integer$ level) {
+    pa = a.pedigreeParentIDs;
+    pb = b.pedigreeParentIDs;
+    pa = pa[pa >= 0];
+    pb = pb[pb >= 0];
+    if (level == 1)
+        return (size(pa) == 2 & size(pb) == 2 & all(sort(pa) == sort(pb)));
+    if (size(setIntersection(pa, pb)) > 0)
+        return T;
+    if (level == 2)
+        return F;
+    ga = a.pedigreeGrandparentIDs;
+    gb = b.pedigreeGrandparentIDs;
+    ga = ga[ga >= 0];
+    gb = gb[gb >= 0];
+    return size(setIntersection(ga, gb)) > 0;
+}
+
+// One of 0:(n-1) other than p, uniformly.
+function (integer$)other(integer$ p, integer$ n) {
+    q = sample(0:(n - 2), 1);
+    return (q >= p) ? q + 1 else q;
+}
+
+// Sire and dam (indices into the parents) of each of no offspring.
+function (integer)matings(object<Subpopulation>$ pop, integer$ no, integer$ k) {
+    inds = pop.individuals;
+    n = size(inds);
+    sire = integer(no);
+    dam = integer(no);
+    forced = 0;
+    if (SCHEME == "rm" | SCHEME == "rm5" | SCHEME == "avoid_half" | SCHEME == "avoid_cousin5") {
+        nm = (SCHEME == "rm5" | SCHEME == "avoid_cousin5") ? 5 else 0;
+        level = (SCHEME == "avoid_half") ? 2 else ((SCHEME == "avoid_cousin5") ? 3 else 0);
+        sex = drawSex(n, nm, 1, 1);
+        males = which(sex == 1);
+        females = which(sex == 0);
+        for (i in 0:(no - 1)) {
+            s = sample(males, 1);
+            d = sample(females, 1);
+            if (level > 0) {
+                tries = 1;
+                while (related(inds[s], inds[d], level)) {
+                    if (tries >= MAXTRIES) {
+                        forced = forced + 1;
+                        break;
+                    }
+                    d = sample(females, 1);
+                    tries = tries + 1;
+                }
+            }
+            sire[i] = s;
+            dam[i] = d;
+        }
+    } else if (SCHEME == "fsgamma") {
+        sex = drawSex(n, 10, 1, 1);
+        males = which(sex == 1);
+        females = which(sex == 0);
+        // Offspring among the dams: multinomial with Gamma(1) weights.
+        w = rgamma(size(females), 1.0, 1.0);
+        dam = sample(females, no, replace = T, weights = w);
+        // The sire of every dam: uniform among the males.
+        sireof = integer(n);
+        sireof[females] = sample(males, size(females), replace = T);
+        sire = sireof[dam];
+    } else if (SCHEME == "hier") {
+        // 4 sires, 12 dams, 3 dams per sire, equal dam families.
+        sex = drawSex(n, 0, 4, 12);
+        sires = sample(which(sex == 1), 4);
+        dams = sample(which(sex == 0), 12);
+        q = asInteger(floor(no / 12));
+        cnt = rep(q, 12);
+        r = no - 12 * q;
+        if (r > 0)
+            cnt[sample(0:11, r)] = q + 1;
+        slot = sample(rep(0:3, 3), 12);   // the sire of each dam
+        j = 0;
+        for (d in 0:11) {
+            if (cnt[d] > 0) {
+                for (c in 1:cnt[d]) {
+                    sire[j] = sires[slot[d]];
+                    dam[j] = dams[d];
+                    j = j + 1;
+                }
+            }
+        }
+    } else if (SCHEME == "mono" | SCHEME == "self" | SCHEME == "avoid_mono") {
+        selfing = (SCHEME == "self") ? 0.5 else ((SCHEME == "avoid_mono") ? 0.0 else -1.0);
+        for (i in 0:(no - 1)) {
+            p = sample(0:(n - 1), 1);
+            if (selfing < 0)
+                q = sample(0:(n - 1), 1);
+            else if (runif(1) < selfing)
+                q = p;
+            else
+                q = other(p, n);
+            if (SCHEME == "avoid_mono" & q != p) {
+                tries = 1;
+                while (related(inds[p], inds[q], 1)) {
+                    if (tries >= MAXTRIES) {
+                        forced = forced + 1;
+                        break;
+                    }
+                    q = other(p, n);
+                    tries = tries + 1;
+                }
+            }
+            sire[i] = p;
+            dam[i] = q;
+        }
+    } else
+        stop("unknown SCHEME " + SCHEME);
+    FORCED[k] = FORCED[k] + forced;
+    return c(sire, dam);
+}
+
+1 early() {
+    community.rescheduleScriptBlock(s1, NT + 1, NT + 1);
+    for (k in 1:K) {
+        pop = sim.addSubpop(k, N);
+        haps = pop.haplosomes;
+        muts = haps[0].addNewDrawnMutation(m1, 0:(L - 1));
+        haps[0].removeMutations(muts);
+        for (h in haps)
+            h.addMutations(muts[runif(L) < 0.5]);
+    }
+}
+
+reproduction() {
+    k = 0;
+    for (pop in sim.subpopulations) {
+        inds = pop.individuals;
+        pm = matings(pop, N, k);
+        sire = pm[0:(N - 1)];
+        dam = pm[N:(2 * N - 1)];
+        for (i in 0:(N - 1)) {
+            if (sire[i] == dam[i])
+                pop.addSelfed(inds[sire[i]]);
+            else
+                pop.addCrossed(inds[sire[i]], inds[dam[i]]);
+        }
+        k = k + 1;
+    }
+    self.active = 0;
+}
+
+// Discrete generations: the parents die.
+early() {
+    inds = sim.subpopulations.individuals;
+    inds[inds.age > 0].fitnessScaling = 0.0;
+}
+
+s1 1000000 late() {
+    {
+        k = 0;
+        for (pop in sim.subpopulations) {
+            f = sim.mutationFrequencies(pop);
+            H = sum(2 * f * (1 - f)) / L;
+            O = 0.0;
+            for (ind in pop.individuals) {
+                a = ind.haploidGenome1.mutations.position;
+                b = ind.haploidGenome2.mutations.position;
+                O = O + size(setSymmetricDifference(a, b));
+            }
+            O = O / (size(pop.individuals) * L);
+            catn(SCHEME + "\t" + k + "\t" + H + "\t" + O + "\t" + FORCED[k]);
+            k = k + 1;
+        }
+        sim.simulationFinished();
+    }
+}
