@@ -53,8 +53,8 @@ Tested: callbacks that draw as `Monoecious()` and `RandomMating()` give
 their realizations bit for bit (haplotypes, record, pedigree); the
 context against the pedigree (generations through `init`, IDs, parents
 and grandparents), haplotypes, fitness and phenotype; the checks;
-selfing; allocations. Next in 0.8.0: the SLiM comparison (validations 4
-and 7).
+selfing; allocations. The SLiM comparison of the mating schemes
+(validation 4) is done; next in 0.8.0: validation 7.
 
 0.7.0 so far (2026-11-12): `TraitFitness` (`src/trait.jl`), with its own
 table `TraitLoci(pos, a; h, μ)`, since trait effects are not bounded as
@@ -415,10 +415,19 @@ replicates and seeds; logs go under `docs/src/validation/`.
    with mutation; 36 checks pass for two seeds at 200 replicates.
    msprime DTWF is monoecious, so each two-sex cohort is mapped to
    N' = Ne(N), drawn as ⌊Ne⌋ or ⌈Ne⌉ per chromosome.
-4. **Non-random schemes, against SLiM:** SLiM WF models with
-   `mateChoice()` and `modifyChild()` callbacks express hierarchical
-   designs, weighted parents and relative avoidance. Build matched
-   scripts in `SLiM/`.
+4. **Non-random schemes, against SLiM:** done 2026-11-13
+   (`docs/src/validation/scripts/validate-mating.{slim,jl,sh}`, results
+   in the manual). A nonWF SLiM 5.2 model with explicit reproduction
+   implements nine schemes anew in Eidos (random mating with 40 and 5
+   males, Gamma dam families, `Hierarchical(4, 3)`, monoecious with
+   random and 50% selfing, half-sib and cousin avoidance, full-sib
+   avoidance among hermaphrodites) on SLiM's meiosis and pedigree.
+   N = 40, 30 generations, 1,000 sites from a polymorphic start;
+   Σ2pq/L, H_obs and forced matings at 4,000 replicates for seeds 2026
+   and 7: all |z| ≤ 1.77 between the simulators and ≤ 1.66 against
+   the exact recursion (first six schemes). Cousin avoidance was above
+   SLiM in both seeds (combined z ≈ 1.9) and was rerun alone at 16,000
+   replicates, seed 11: |z| ≤ 0.61, so noise.
 5. **Selection mechanics (unit and Supposition property tests in CI):**
    fitness from the merge-walk equals a brute-force calculation on dense
    genotypes; realised parent usage matches w/Σw (χ²); `_recombine!` on

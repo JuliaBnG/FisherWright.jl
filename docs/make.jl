@@ -26,6 +26,7 @@ makedocs(
             "Population genetics validation" => "manual/validation.md",
             "Validation: changing population size" => "manual/validation-demography.md",
             "Validation: selection" => "manual/validation-selection.md",
+            "Validation: mating schemes" => "manual/validation-mating.md",
         ],
         "API reference" => "api.md",
         "API reference: population models" => "api-models.md",

@@ -1,0 +1,9 @@
+commit a3a7317, SLiM version 5.2, built Nov 12 2026 21:02:44, svr.xijiang.org, 2026-11-12T20:52Z
+FisherWright 0.7.0, Julia 1.13.3, threads 8
+N = 40, 30 generations, L = 1000 sites on 20 chromosomes of 1 Morgan, R = 16000 replicates per simulator, seed 11
+
+scheme         stat             FisherWright                 SLiM       z     theory   z(FW)
+# AvoidRelatives(RandomMating(nmale=5); level=:cousin)  (SLiM replicates: 16000)
+avoid_cousin5  Σ2pq/L      0.20687 ± 0.00010    0.20696 ± 0.00010   -0.61                   
+avoid_cousin5  H_obs       0.22502 ± 0.00012    0.22508 ± 0.00012   -0.38                   
+avoid_cousin5  forced    237.58181 ± 0.39020  237.48575 ± 0.39074    0.17                   
