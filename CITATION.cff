@@ -13,7 +13,7 @@ authors:
     orcid: "https://orcid.org/0000-0001-6508-9251"
     # ROR: https://ror.org/04a1mvv97 (CFF 1.2.0 has no ROR field)
     affiliation: "Norwegian University of Life Sciences"
-version: "0.7.0"
+version: "0.7.1"
 license: MIT
 repository-code: "https://github.com/JuliaBnG/FisherWright.jl"
 url: "https://juliabng.github.io/FisherWright/"
