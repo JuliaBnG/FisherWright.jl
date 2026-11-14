@@ -497,6 +497,14 @@ costs 7 to 15% more, selection on a trait with 10,000 loci 16%, and
 are variable, because the effective size and so the diversity are
 lower). The log is `docs/src/validation/benchmark-v0.7.0-vs-v0.6.0.txt`.
 
+## Changes in v0.7.1
+
+A maintenance release of v0.7.0, with no change to the source or to
+seeded output. BnGStructs 0.3 is allowed (`BnGStructs = "0.2.5, 0.3"`),
+so that packages on BnGStructs 0.3 can resolve with FisherWright. The
+standard libraries have compat entries, the test suite runs Aqua, and
+the repository has a `CITATION.cff`.
+
 ## Contributing and support
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and questions go to the
