@@ -3,10 +3,10 @@
 Status: 0.5.0 released 2026-11-11, 0.6.0 and 0.7.0 released
 2026-11-12 (release benchmark of 0.7.0: 63.29 s for v0.6.0 and 63.28 s
 on the 1 Gb run), 0.7.1 (BnGStructs 0.3 allowed, from the v0.7.0
-tag) released 2026-11-14; 0.8.0 complete, release prepared 2026-11-15
-(release benchmark: 57.60 s for v0.7.1 and 57.72 s for the 0.8.0 code
-on the 1 Gb run). Drafted 2026-10-07 against v0.3.8; selection added
-2026-11-02 against v0.4.0.
+tag) released 2026-11-14, 0.8.0 released 2026-11-15 (release
+benchmark: 57.60 s for v0.7.1 and 57.72 s for v0.8.0 on the 1 Gb run).
+Every row of the staging below is released. Drafted 2026-10-07 against
+v0.3.8; selection added 2026-11-02 against v0.4.0.
 
 0.8.0 so far (2026-11-12): pedigree recording, as decided: `pedigree =
 k` keeps the matings of the last k generations, individuals have
