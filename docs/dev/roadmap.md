@@ -2,8 +2,11 @@
 
 Status: 0.5.0 released 2026-11-11, 0.6.0 and 0.7.0 released
 2026-11-12 (release benchmark of 0.7.0: 63.29 s for v0.6.0 and 63.28 s
-on the 1 Gb run); 0.8.0 in progress (drafted 2026-10-07 against v0.3.8;
-selection added 2026-11-02 against v0.4.0).
+on the 1 Gb run), 0.7.1 (BnGStructs 0.3 allowed, from the v0.7.0
+tag) released 2026-11-14; 0.8.0 complete, release prepared 2026-11-15
+(release benchmark: 57.60 s for v0.7.1 and 57.72 s for the 0.8.0 code
+on the 1 Gb run). Drafted 2026-10-07 against v0.3.8; selection added
+2026-11-02 against v0.4.0.
 
 0.8.0 so far (2026-11-12): pedigree recording, as decided: `pedigree =
 k` keeps the matings of the last k generations, individuals have
@@ -54,7 +57,8 @@ their realizations bit for bit (haplotypes, record, pedigree); the
 context against the pedigree (generations through `init`, IDs, parents
 and grandparents), haplotypes, fitness and phenotype; the checks;
 selfing; allocations. The SLiM comparison of the mating schemes
-(validation 4) is done; next in 0.8.0: validation 7.
+(validation 4) and of linked selection (validation 7) are done. The
+0.8.0 row is complete.
 
 0.7.0 so far (2026-11-12): `TraitFitness` (`src/trait.jl`), with its own
 table `TraitLoci(pos, a; h, μ)`, since trait effects are not bounded as
@@ -480,10 +484,35 @@ replicates and seeds; logs go under `docs/src/validation/`.
    sites are negligible, and report that rate. Under selection,
    offspring-number variance is no longer Poisson; report Ne estimated
    from neutral sites rather than reusing the neutral validation.
+   Done (2026-11-14), as `validate-linked.{jl,slim,sh}` with its own
+   SLiM model rather than an extension of `bench/simulate-slim.slim`
+   (manual page "Validation: linked selection"): N = 200, 4 Mb of
+   0.1 Morgan per Mb, 2,000 selected sites in 20 genes; scenarios
+   neutral (s = 0), background selection (−Gamma(0.5, 0.04), h = ¼),
+   and sweeps (40 sites s = 0.05) on top of it, with the beneficial
+   sites alone, linked and unlinked, to split the sweeps. Instead of
+   choosing K to make recurrent hits negligible, the SLiM model fixes s
+   per site (a `mutation()` callback reuses the allele of the site,
+   about 9% of hits); neutral sites are biallelic in both (SLiM's allele
+   objects pooled by position, no substitutions), since the
+   infinite-sites accounting of SLiM differs by 0.2% in π, more under
+   sweeps. Neutral π against the biallelic expectation (7.837e-4) and
+   SLiM: pooled z 0.06; background selection: z −0.24 and 0.04; sweeps
+   alone: −0.08 (linked), −1.40 (unlinked). Sweeps with background
+   selection: FisherWright 0.23% below SLiM in π over four seeds and
+   14,000 replicates (pooled z −2.79, not significant over about 60
+   comparisons; no cause found in a review of meiosis, fitness,
+   sampling of parents and mutation).
 8. **Benchmarks:** re-run the 1 Gb transient benchmark. Release
    criterion: the default path is within run-to-run noise of v0.4.0; any
    regression is reported with numbers. Report selection-path overhead
    as a function of K and U.
+   Done for 0.8.0 (2026-11-15, idle Ryzen 9 5950X, 8 threads): v0.7.1
+   57.60 s and the 0.8.0 code 57.72 s (means of three interleaved
+   runs, overlapping), with the same output. The selection benchmark
+   now also times `Monoecious`, `AvoidRelatives` (:halfsib, :cousin),
+   `CustomMating` and `pedigree = nt`: at most 2% over random mating
+   (`docs/src/validation/benchmark-v0.8.0-vs-v0.7.1.txt`).
 
 ## Release staging
 
