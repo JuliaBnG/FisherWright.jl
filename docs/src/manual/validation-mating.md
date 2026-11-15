@@ -23,6 +23,17 @@ differ slightly: 49 gaps of 1/49 per chromosome in SLiM, a
 Poisson(1) number at uniform positions in FisherWright; this changes
 the linkage between sites, but not the expectations compared.
 
+!!! note "Recombination map of the reported runs"
+    The runs reported below used an earlier version of the map, with
+    the gap of 0.5 one site too early: in SLiM a breakpoint at
+    position ``x`` falls between ``x - 1`` and ``x``, and the interval
+    of rate 0.5 ended at the last site of each chromosome rather than
+    at the first site of the next. The last site of each chromosome
+    was thus unlinked from it and linked at 1/49 to the next one. The
+    statistics compared do not depend on linkage, so the results
+    stand; the script has been corrected since (the 0.5 interval now
+    ends at ``50(c + 1)``, the first site of chromosome ``c + 1``).
+
 **Schemes.**
 
 | Key | FisherWright | SLiM implementation |

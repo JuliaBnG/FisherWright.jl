@@ -29,16 +29,18 @@ initialize() {
     m1.convertToSubstitution = F;
     initializeGenomicElementType("g1", m1, 1.0);
     initializeGenomicElement(g1, 0, L - 1);
-    // 49 gaps per chromosome at 1/49 each (1 Morgan), 0.5 between them.
+    // 49 gaps per chromosome at 1/49 each (1 Morgan), 0.5 between them. A
+    // breakpoint at position x falls between x - 1 and x, so the gap between
+    // chromosomes c and c + 1 is the interval ending at 50 * (c + 1).
     ends = integer(0);
     rates = float(0);
     for (c in 0:19) {
-        ends = c(ends, (c < 19) ? 50 * c + 48 else 50 * c + 49);
-        rates = c(rates, 1 / 49);
-        if (c < 19) {
-            ends = c(ends, 50 * c + 49);
+        if (c > 0) {
+            ends = c(ends, 50 * c);
             rates = c(rates, 0.5);
         }
+        ends = c(ends, 50 * c + 49);
+        rates = c(rates, 1 / 49);
     }
     initializeRecombinationRate(rates, ends);
     defineGlobal("FORCED", integer(K));

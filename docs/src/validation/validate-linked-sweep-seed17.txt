@@ -1,0 +1,27 @@
+commit a3a7317, SLiM version 5.2, built Nov 12 2026 21:02:44, svr.xijiang.org, 2026-11-14T18:26Z
+FisherWright 0.7.0, Julia 1.13.3, threads 16
+N = 200 (100 males), 1600 generations, 4 chromosomes of 1000 kb and 0.1 Morgan, μ = 1.0e-6 per bp, K = 2000 selected sites, μ_sel = 2.5e-5, R = 8000 replicates per simulator, seed 17
+neutral expectation of π per bp at generation 1600: 7.8373e-04 (4Nμ = 8.0000e-04)
+
+scenario stat                       FisherWright                   SLiM       z      theory   z(FW)
+# sweep  (SLiM replicates: 8000; bp per distance bin: 236030, 160000, 600000, 1200000, 1803970)
+sweep    pi/bp <1k         0.00064475 ± 7.56e-07  0.00064729 ± 7.68e-07   -2.35  7.8373e-04        
+sweep    pi/bp 1-5k        0.00065171 ± 7.66e-07  0.00065247 ± 7.79e-07   -0.69  7.8373e-04        
+sweep    pi/bp 5-20k       0.00066356 ± 6.49e-07  0.00066468 ± 6.68e-07   -1.20  7.8373e-04        
+sweep    pi/bp 20-50k      0.00068478 ± 6.01e-07  0.00068563 ± 6.07e-07   -0.99  7.8373e-04        
+sweep    pi/bp >=50k       0.00070301 ± 6.05e-07   0.0007033 ± 6.04e-07   -0.34  7.8373e-04        
+sweep    S <1k                    1149.6 ± 0.638         1150.8 ± 0.642   -1.33                    
+sweep    S 1-5k                   782.41 ± 0.456         783.15 ± 0.462   -1.14                    
+sweep    S 5-20k                   2952.8 ± 1.34          2954.9 ± 1.36   -1.12                    
+sweep    S 20-50k                  5976.8 ± 2.45          5977.5 ± 2.44   -0.20                    
+sweep    S >=50k                   9072.4 ± 3.58          9071.6 ± 3.62    0.16                    
+sweep    pi/bp all         0.00068613 ± 5.34e-07   0.00068686 ± 5.4e-07   -0.97  7.8373e-04        
+sweep    Ne (pi)                  175.09 ± 0.136         175.28 ± 0.138   -0.97       200.0        
+sweep    neutral subs              3695.8 ± 2.15          3694.8 ± 2.17    0.33                    
+sweep    sel segregating          194.16 ± 0.161         194.24 ± 0.162   -0.34                    
+sweep    sel fixed -             19.676 ± 0.0511         19.683 ± 0.051   -0.09                    
+sweep    sel fixed +             16.834 ± 0.0331        16.789 ± 0.0333    0.97                    
+sweep    sum sel freq            55.276 ± 0.0683        55.368 ± 0.0681   -0.95                    
+sweep    mean w                 2.1227 ± 0.00337       2.1176 ± 0.00337    1.06                    
+sweep    mean log w            0.74218 ± 0.00158      0.73972 ± 0.00158    1.10                    
+sweep    SLiM selected mutation events: 255991081; at a segregating site 8.90%, on a carried or fixed site 1.48%
