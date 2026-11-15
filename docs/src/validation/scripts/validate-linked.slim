@@ -1,0 +1,234 @@
+// Matched SLiM model for linked selection in FisherWright
+// (docs/dev/roadmap.md, validation 7; see validate-linked.jl for the model).
+// One population per run: WF, two sexes with exactly N/2 males, parents drawn
+// by fitness within each sex, NT generations from a monomorphic start.
+// Neutral mutations (m1) at MUN per bp; at each selected site, from the table
+// SITES (0-based position, s, h, type 2 deleterious or 3 beneficial), new
+// alleles at MUS per haplosome. The coefficient is fixed per site: a new
+// allele at a site that already has an allele object in the population
+// reuses that object, and a hit on a haplosome that carries it is dropped,
+// as in FisherWright's biallelic sites. Neutral sites are biallelic too: a
+// hit on a haplosome that carries an allele at the position is dropped
+// (stacking policy "f"), and neutral statistics pool the allele objects of a
+// position. No allele is converted to a substitution, so fixed ones stay in
+// the haplosomes and block new hits, as substituted sites do in FisherWright.
+//
+// Constants (slim -d): SCENARIO, N, NT, SITES, BINS (0-based start of each
+// run of one distance bin, and the bin), MUN, MUS, RBP (crossovers per bp),
+// CL (chromosome length), NCHR; the seed with -s. Selected sites at or after
+// CL * NCHR (scenario benfree) are each a chromosome of one bp, unlinked from
+// the rest; neutral statistics are taken over the first CL * NCHR bp.
+
+initialize() {
+    initializeSex();
+    // Site table.
+    lines = readFile(SITES);
+    K = size(lines);
+    spos = integer(K);
+    ss = float(K);
+    st = integer(K);
+    for (k in 0:(K - 1)) {
+        f = strsplit(lines[k], "\t");
+        spos[k] = asInteger(f[0]);
+        ss[k] = asFloat(f[1]);
+        st[k] = asInteger(f[3]);
+    }
+    defineConstant("SPOS", spos);
+    defineConstant("SS", ss);
+    // Distance bins.
+    lines = readFile(BINS);
+    bs = integer(size(lines));
+    bb = integer(size(lines));
+    for (k in 0:(size(lines) - 1)) {
+        f = strsplit(lines[k], "\t");
+        bs[k] = asInteger(f[0]);
+        bb[k] = asInteger(f[1]);
+    }
+    defineConstant("BSTART", bs);
+    defineConstant("BBIN", bb);
+
+    initializeMutationType("m1", 0.5, "f", 0.0);
+    m1.mutationStackPolicy = "f";
+    m1.convertToSubstitution = F;    // a fixed site blocks new hits
+    initializeMutationType("m2", 0.25, "f", 0.0);   // deleterious (or s = 0)
+    initializeMutationType("m3", 0.5, "f", 0.0);    // beneficial
+    for (m in c(m2, m3)) {
+        m.mutationStackPolicy = "f";
+        m.convertToSubstitution = F;
+    }
+    initializeGenomicElementType("g1", m1, 1.0);
+    initializeGenomicElementType("g2", c(m1, m2), c(MUN, MUS));
+    initializeGenomicElementType("g3", c(m1, m3), c(MUN, MUS));
+    // Elements: neutral stretches between the selected sites, and each
+    // selected site alone; the mutation rate is MUN + MUS at selected sites.
+    L = CL * NCHR;
+    NX = sum(spos >= L);    // one-bp chromosomes after the main genome
+    starts = integer(0);
+    ends = integer(0);
+    types = integer(0);
+    rates = float(0);
+    prev = 0;
+    for (k in 0:(K - 1)) {
+        if (spos[k] > prev) {
+            starts = c(starts, prev);
+            ends = c(ends, spos[k] - 1);
+            types = c(types, 1);
+            rates = c(rates, MUN);
+        }
+        starts = c(starts, spos[k]);
+        ends = c(ends, spos[k]);
+        types = c(types, st[k]);
+        rates = c(rates, MUN + MUS);
+        prev = spos[k] + 1;
+    }
+    if (prev < L) {
+        starts = c(starts, prev);
+        ends = c(ends, L - 1);
+        types = c(types, 1);
+        rates = c(rates, MUN);
+    }
+    for (t in 1:3) {
+        w = which(types == t);
+        if (size(w))
+            initializeGenomicElement(t, starts[w], ends[w]);
+    }
+    initializeMutationRate(rates, ends);
+    // Recombination: RBP per bp within a chromosome; 0.5 between chromosome
+    // c and c + 1 (a breakpoint at position x falls between x - 1 and x).
+    rends = integer(0);
+    rrates = float(0);
+    for (c in 0:(NCHR - 1)) {
+        if (c > 0) {
+            rends = c(rends, c * CL);
+            rrates = c(rrates, 0.5);
+        }
+        rends = c(rends, (c + 1) * CL - 1);
+        rrates = c(rrates, RBP);
+    }
+    for (x in seqLen(NX)) {
+        rends = c(rends, L + x);
+        rrates = c(rrates, 0.5);
+    }
+    initializeRecombinationRate(rrates, rends);
+    defineGlobal("NEWM", NULL);
+    defineGlobal("EVENTS", 0);
+    defineGlobal("REUSED", 0);
+    defineGlobal("NOOP", 0);
+}
+
+first() {
+    defineGlobal("NEWM", NULL);
+}
+
+// One allele object per selected site, with the coefficient of the site.
+function (lo)siteAllele(object<Mutation>$ nm, object<Haplosome>$ hap) {
+    defineGlobal("EVENTS", EVENTS + 1);
+    ex = sim.mutationsOfType(nm.mutationType);
+    ex = ex[ex.position == nm.position];
+    if (size(ex) == 0 & size(NEWM) > 0)
+        ex = NEWM[NEWM.position == nm.position];
+    if (size(ex) > 0) {
+        e = ex[0];
+        if (hap.containsMutations(e)) {
+            defineGlobal("NOOP", NOOP + 1);
+            return F;
+        }
+        defineGlobal("REUSED", REUSED + 1);
+        return e;
+    }
+    nm.setSelectionCoeff(SS[match(nm.position, SPOS)]);
+    defineGlobal("NEWM", c(NEWM, nm));
+    return T;
+}
+
+mutation(m2) {
+    return siteAllele(mut, haplosome);
+}
+
+mutation(m3) {
+    return siteAllele(mut, haplosome);
+}
+
+1 early() {
+    sim.addSubpop("p1", N);
+    community.rescheduleScriptBlock(s1, NT, NT);
+}
+
+s1 1000000 late() {
+    inds = p1.individuals;
+    nh = 2 * size(inds);
+    // Neutral sites by distance bin. The frequency of a site is that of all
+    // allele objects at its position (a haplosome carries at most one of
+    // them, by the stacking policy), as for FisherWright's biallelic sites.
+    muts = sim.mutationsOfType(m1);
+    muts = muts[muts.position < CL * NCHR];
+    f = sim.mutationFrequencies(p1, muts);
+    pos = muts.position;
+    o = order(pos);
+    pos = pos[o];
+    f = f[o];
+    n = size(pos);
+    if (n > 1) {
+        for (i in which(pos[1:(n - 1)] == pos[0:(n - 2)]) + 1) {
+            f[i] = f[i] + f[i - 1];
+            f[i - 1] = 0.0;
+        }
+    }
+    nsub = sum(f >= 1.0 - 1e-9);
+    keep = (f > 0) & (f < 1.0 - 1e-9);
+    pos = pos[keep];
+    f = f[keep];
+    bin = BBIN[findInterval(pos, BSTART)];
+    H = float(5);
+    S = float(5);
+    for (b in 1:5) {
+        w = (bin == b);
+        H[b - 1] = sum(2 * f[w] * (1 - f[w]));
+        S[b - 1] = sum(w);
+    }
+    nbp = integer(5);
+    ends = c(BSTART[1:(size(BSTART) - 1)], CL * NCHR);
+    for (b in 1:5)
+        nbp[b - 1] = sum((ends - BSTART)[BBIN == b]);
+    pi = H / nbp;
+    piall = sum(H) / (CL * NCHR);
+    // Selected sites, by position.
+    sm = sim.mutationsOfType(m2);
+    sm = c(sm, sim.mutationsOfType(m3));
+    sf = sim.mutationFrequencies(p1, sm);
+    seg = 0;
+    fneg = 0;
+    fpos = 0;
+    sumf = 0.0;
+    if (size(sm) > 0) {
+        for (p in unique(sm.position, preserveOrder = F)) {
+            w = (sm.position == p);
+            q = sum(sf[w]);
+            sumf = sumf + q;
+            if (q >= 1.0 - 1e-9) {
+                if (sm[w][0].mutationType == m3)
+                    fpos = fpos + 1;
+                else
+                    fneg = fneg + 1;
+            } else if (q > 0)
+                seg = seg + 1;
+        }
+    }
+    // Fitness of each individual from its selected alleles.
+    lw = float(size(inds));
+    for (i in seqAlong(inds)) {
+        a = c(inds[i].haploidGenome1.mutationsOfType(m2), inds[i].haploidGenome1.mutationsOfType(m3));
+        b = c(inds[i].haploidGenome2.mutationsOfType(m2), inds[i].haploidGenome2.mutationsOfType(m3));
+        hom = setIntersection(a, b);
+        het = setSymmetricDifference(a, b);
+        x = 0.0;
+        if (size(hom))
+            x = x + sum(log(1 + hom.selectionCoeff));
+        if (size(het))
+            x = x + sum(log(1 + het.mutationType.dominanceCoeff * het.selectionCoeff));
+        lw[i] = x;
+    }
+    catn(paste(c("LINKED", SCENARIO, pi, S, piall, nsub, seg, fneg, fpos, sumf,
+        mean(exp(lw)), mean(lw), EVENTS, REUSED, NOOP), sep = "\t"));
+    sim.simulationFinished();
+}

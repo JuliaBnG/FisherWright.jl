@@ -1,6 +1,6 @@
 # Cost of selection in fisher_wright as a function of the number of
 # selected sites K and the rate of new selected alleles per haplotype, and
-# of the trait model and the family-size mating scheme.
+# of the trait model, the mating schemes and pedigree recording.
 #
 #   julia -t 8 --project=. bench/benchmark-selection.jl [ne = 2000] [nt = 500] [reps = 2] [seed = 42]
 #
@@ -12,36 +12,56 @@
 # the table reports the median wall time and its ratio to the neutral median.
 # The last rows: TraitFitness with 10,000 additive loci (a ~ ±0.05, rate 0.1)
 # under Directional(0.1); FamilySize(dams = 1.0) without and with SiteFitness
-# (K = 10,000, Kμ = 0.1).
+# (K = 10,000, Kμ = 0.1); Monoecious() and Monoecious(selfing = 0.5);
+# AvoidRelatives(RandomMating()) at :halfsib and :cousin; a CustomMating
+# that draws both parents uniformly; and RandomMating with every
+# generation's matings recorded (pedigree = nt), all neutral.
 
 using FisherWright, Random, Printf, Statistics
 
-function run(ne, nt, (mating, fitness), seed)
+function run(ne, nt, (mating, fitness, kw), seed)
     GC.gc()
     return @elapsed fisher_wright(ne, nt, fill(100_000_000, 10), 1.0; M = 1e8, mut_base = 1e8,
-        result = true, fixation_interval = 10, mating = mating, fitness = fitness, rng = Xoshiro(seed))
+        result = true, fixation_interval = 10, mating = mating, fitness = fitness, rng = Xoshiro(seed),
+        pedigree = get(kw, :pedigree, 0) == :all ? nt : 0)
+end
+
+# Both parents uniform over the cohort, as a user-written scheme.
+function uniform_pairs!(ctx)
+    for i = 1:ctx.noffspring
+        ctx.pm[i, 1] = rand(ctx.rng, 1:ctx.n)
+        ctx.pm[i, 2] = rand(ctx.rng, 1:ctx.n)
+    end
 end
 
 function main(ne = 2000, nt = 500, reps = 2, seed = 42)
     chr = fill(100_000_000, 10)
     grid = [(K, u) for K in (1_000, 10_000, 100_000) for u in (0.01, 0.1)]
     rm = RandomMating()
-    models = Pair{String,Any}["neutral" => (rm, Neutral())]
+    none = (;)
+    models = Pair{String,Any}["neutral" => (rm, Neutral(), none)]
     for (K, u) in grid
         loci = fitness_loci(chr, K; s = -0.01, h = 0.5, μ = u / K, rng = Xoshiro(seed))
-        push!(models, @sprintf("K = %6d, Kμ = %4.2f", K, u) => (rm, SiteFitness(loci)))
+        push!(models, @sprintf("K = %6d, Kμ = %4.2f", K, u) => (rm, SiteFitness(loci), none))
     end
     qtl = trait_loci(chr, 10_000; a = 0.05, μ = 0.1 / 10_000, rng = Xoshiro(seed))
-    push!(models, "trait, Directional(0.1)" => (rm, TraitFitness(qtl; σe = 1.0, fitness = Directional(0.1))))
+    push!(models, "trait, Directional(0.1)" => (rm, TraitFitness(qtl; σe = 1.0, fitness = Directional(0.1)), none))
     fs = FamilySize(dams = 1.0)
-    push!(models, "FamilySize, neutral" => (fs, Neutral()))
+    push!(models, "FamilySize, neutral" => (fs, Neutral(), none))
     sel = SiteFitness(fitness_loci(chr, 10_000; s = -0.01, h = 0.5, μ = 0.1 / 10_000, rng = Xoshiro(seed)))
-    push!(models, "FamilySize, K = 10000" => (fs, sel))
+    push!(models, "FamilySize, K = 10000" => (fs, sel, none))
+    push!(models, "Monoecious()" => (Monoecious(), Neutral(), none))
+    push!(models, "Monoecious(selfing=0.5)" => (Monoecious(selfing = 0.5), Neutral(), none))
+    push!(models, "AvoidRelatives, halfsib" => (AvoidRelatives(rm; level = :halfsib), Neutral(), none))
+    push!(models, "AvoidRelatives, cousin" => (AvoidRelatives(rm; level = :cousin), Neutral(), none))
+    push!(models, "CustomMating, uniform" => (CustomMating(uniform_pairs!), Neutral(), none))
+    push!(models, "pedigree = nt" => (rm, Neutral(), (pedigree = :all,)))
     # Compile every method on a small run first.
-    for (_, (m, f)) in models
+    for (_, (m, f, kw)) in models
         f2 = f isa SiteFitness ? SiteFitness(FitnessLoci([5_000], -0.01; μ = 1e-3)) :
              f isa TraitFitness ? TraitFitness(TraitLoci([5_000], 0.1; μ = 1e-3); fitness = Directional(0.1)) : f
-        fisher_wright(10, 2, [10_000], 1.0; result = true, mating = m, fitness = f2)
+        fisher_wright(10, 2, [10_000], 1.0; result = true, mating = m, fitness = f2,
+            pedigree = isempty(kw) ? 0 : 2)
     end
     println("="^72)
     println(" Selection and mating overhead: ne = $ne, nt = $nt, 10 × 100 Mb, threads = $(Threads.nthreads()), reps = $reps")
