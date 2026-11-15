@@ -51,8 +51,10 @@ quantitative-genetics simulation in Julia.
 FisherWright.jl generates founder populations, at constant size or along
 a given trajectory of census sizes (since v0.5.0), neutrally or with soft
 selection at given sites (since v0.6.0) or on a quantitative trait, and
-with random mating or controlled family sizes (since v0.7.0). Population
-structure and spatial models are out of scope.
+with random mating or controlled family sizes (since v0.7.0), with
+hermaphrodites and selfing, avoidance of relatives, user-defined mating
+and a recorded pedigree (since v0.8.0). Population structure and
+spatial models are out of scope.
 SLiM, fwdpy11 and msprime cover these well. Proposals that extend the model
 are welcome for discussion, but each addition must come with validation
 against theory or an independent simulator.

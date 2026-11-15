@@ -26,11 +26,16 @@ julia --project=docs --startup-file=no docs/make.jl
 The generated site is in `docs/build/`.
 
 ## Features
-- Forward simulation of a diploid population with two sexes, any number
-  of autosomes and genomes up to 2³² − 1 bp
+- Forward simulation of a diploid population with two sexes or of
+  hermaphrodites, any number of autosomes and genomes up to 2³² − 1 bp
 - Random mating, or controlled family sizes with one sire per dam
   (equal, multinomial or overdispersed families; breeder subsets and
-  the nested sire–dam design of livestock breeding)
+  the nested sire–dam design of livestock breeding); hermaphrodites with
+  random or given selfing; avoidance of full-sib, half-sib or cousin
+  matings; or any scheme written as a function of the cohort (IDs,
+  relatives, fitness, phenotypes, haplotypes)
+- Pedigree of the last k generations, with running IDs that continue
+  across runs
 - Constant census size or a given trajectory (bottleneck, growth, any
   vector or function of the generation), and a binomial or fixed sex
   ratio
@@ -48,13 +53,13 @@ The generated site is in `docs/build/`.
 - Effective size realized by the family sizes of a run
 - Export to a 1-bit-per-allele `BitArray` with a linkage map (`DataFrame`), to a
   targeted SNP-chip panel, or to `BnGStructs.Haplotype`
-- Validated against neutral theory, msprime, and independent simulations
-  of the same model under selection (see the manual)
+- Validated against neutral theory, msprime, independent simulations
+  of the same model under selection, and matched SLiM models of the
+  mating schemes and of linked selection (see the manual)
 
 Not modelled: hard selection and an emergent census size, overlapping
-generations, mating by relatedness or phenotype, selfing, population
-structure or migration, and non-uniform recombination maps in
-`fisher_wright`.
+generations, population structure or migration, and non-uniform
+recombination maps in `fisher_wright`.
 
 ## Main Functions
 
@@ -75,8 +80,9 @@ Keyword arguments:
 | `mutate` | `true` | generate new mutations; `false` leaves drift and recombination only |
 | `init` | `nothing` | starting population: `2ne` haplotypes or a `FisherWrightResult` to continue from |
 | `popsize` | `nothing` | census size per generation: a vector of `nt` sizes or a function of the generation, for example `bottleneck(100, 10, 21, 5)` or `growth(50, 0.05)` |
-| `mating` | `RandomMating()` | `RandomMating(nmale = m)` or `RandomMating(sexratio = p)` fixes the number or proportion of males; `FamilySize(...)` and `Hierarchical(s, d)` control family sizes |
+| `mating` | `RandomMating()` | `RandomMating(nmale = m)` or `RandomMating(sexratio = p)` fixes the number or proportion of males; `FamilySize(...)` and `Hierarchical(s, d)` control family sizes; `Monoecious(selfing = s)` for hermaphrodites; `AvoidRelatives(inner; level)` avoids related mates; `CustomMating(f)` leaves the matings to a function |
 | `fitness` | `Neutral()` | `SiteFitness(loci)` selects on the sites of a `FitnessLoci` table, `TraitFitness(loci; σe, fitness)` on a quantitative trait; needs `result = true` |
+| `pedigree` | `0` | generations of matings to record in the result's `pedigree`; needs `result = true` |
 | `verbose` | `false` | report progress (mean muts/hap, substitutions, elapsed, ETA) to `stderr` |
 | `progress_interval` | `100` | generations between progress reports, when `verbose = true` |
 | `rng` | `Random.default_rng()` | random number generator; the realization depends only on its state |
@@ -504,6 +510,71 @@ seeded output. BnGStructs 0.3 is allowed (`BnGStructs = "0.2.5, 0.3"`),
 so that packages on BnGStructs 0.3 can resolve with FisherWright. The
 standard libraries have compat entries, the test suite runs Aqua, and
 the repository has a `CITATION.cff`.
+
+## Changes in v0.8.0
+
+**Pedigree.** `pedigree = k` records the matings of the last k
+generations in the result, as a `DataFrame` of `id`, `sire`, `dam`,
+`sex` and `generation`, with the parents of the oldest recorded
+generation as founders. Individuals are numbered in birth order across
+the run, and a run continued through `init` continues the numbering;
+`first_id` links the haplotypes of the result to the pedigree.
+Recording does not change the run.
+
+**Hermaphrodites.** `mating = Monoecious()` draws both parents from the
+whole cohort, so that an individual selfs at random with probability
+1/N (the discrete-time Wright–Fisher model); `Monoecious(selfing = s)`
+selfs with probability s and otherwise mates with one of the others.
+Under selection both parents are drawn in proportion to fitness. The
+result records the proportion of selfed offspring per generation
+(`selfing`), and `effective_size` allows for it.
+
+**Avoidance of relatives.** `AvoidRelatives(inner; level, max_tries)`
+wraps `RandomMating` or `Monoecious` and redraws the dam while she is a
+full sib (`:fullsib`), shares a parent (`:halfsib`) or a parent or
+grandparent (`:cousin`) with the sire. After `max_tries` draws the
+related pair is kept, and the result counts such offspring per
+generation (`related_matings`).
+
+**User-defined mating.** `CustomMating(f; sexes)` calls `f(ctx)` every
+generation to fill the mating table, with a `MatingContext` holding
+the generation, the cohort's IDs, parents and grandparents, relative
+fitness, genotypic values and phenotypes, haplotypes and the random
+number generator; with `sexes = true` the function also sets the
+sexes. The table is checked after each call.
+
+**Breaking changes.**
+
+- `FisherWrightResult` has four new fields (`selfing`,
+  `related_matings`, `first_id`, `pedigree`); the existing constructors
+  still work.
+- New exported names: `Monoecious`, `AvoidRelatives`, `CustomMating`,
+  `MatingContext`.
+
+**Seeded output is unchanged** for the mating schemes and fitness models
+of v0.7.0 (checked against v0.7.1 for random mating, fixed males,
+`FamilySize`, `Hierarchical`, a bottleneck, site and trait selection),
+and the golden-output digests of v0.4.0 pass.
+
+**Validation.** Drift under `Monoecious`, with and without selfing,
+against the exact recursion of the heterozygosity within and between
+individuals (CI test). Every mating scheme against a matched SLiM model
+written independently in Eidos, on SLiM's meiosis and pedigree (manual,
+"Validation: mating schemes"): 2 × 19 comparisons, largest |z| 1.77.
+Linked selection (background selection and sweeps at 2,000 sites)
+against a matched SLiM model (manual, "Validation: linked
+selection"): neutral sites, background selection and sweeps alone
+agree within noise; with sweeps and background selection together,
+FisherWright's π is 0.23% below SLiM's over 14,000 replicates (pooled
+z = −2.79, not significant over the comparisons made).
+
+**Performance.** Runs with the default mating and no selection are as
+fast as in v0.7.1: on the 1 Gb benchmark (`ne = 2000`, `nt = 2000`,
+10 × 100 Mbp, 8 threads, idle AMD Ryzen 9 5950X), 57.60 s for v0.7.1
+and 57.72 s for v0.8.0 (means of three interleaved runs, which
+overlap), with the same output. The new schemes and pedigree recording
+cost at most 2% over random mating. The log is
+`docs/src/validation/benchmark-v0.8.0-vs-v0.7.1.txt`.
 
 ## Contributing and support
 
