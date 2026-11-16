@@ -138,6 +138,83 @@ Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "s
   alleles above ``\mu/(h|s|)`` (0.065 against 0.040 for case 1) and
   lowers the mean fitness below ``e^{-2K\mu}`` (0.936 against 0.961).
 
+## Weak selection at large N: Poisson random field
+
+The checks above compare the engine with exact simulations of the same
+model at ``N = 30``. `validate-prf.jl` compares it with diffusion
+theory at large ``N`` and weak selection: the stationary site frequency
+spectrum of the Poisson random field (Sawyer and Hartl 1992).
+
+**Design.** ``N = 1{,}000`` (binomial sex,
+``N_e = 1/a + ½ = 999.5``), run for ``T = 20N`` generations from a
+population without variation, so that ``e^{-10}`` of the slowest
+neutral mode is left. There are ``K = 500{,}000`` selected sites,
+evenly spaced on 20 chromosomes of 1 Morgan, in five interleaved
+classes of 100,000 sites with ``\alpha = 2N_e s \in \{-10, -2, 0, 2,
+10\}`` and ``h = ½``. Mutation is ``4N\mu = 10^{-4}`` per site, and
+neutral mutation is off.
+
+**Infinite sites.** The fitness loci are finite: a fixed site stays
+fixed, and a hit on a carried site has no effect. The low per-site
+rate keeps recurrent hits at about ``10^{-4}`` of the spectrum. At most
+0.44% of the sites fix (``\alpha = 10``), so the influx is that of the
+sites not fixed at the end, ``K_a``, to well under 0.1% over the
+lifetime of the variants seen. About 400 sites segregate at a time,
+so interference between them is negligible.
+
+**Statistic and reference.** For each run and class, the expected
+spectrum ``\xi_i`` of a sample of ``n = 20`` genes, drawn without
+replacement from the ``2N``, is computed exactly (hypergeometric) from
+the derived-allele counts. It is divided by ``K_a`` and by
+``\theta = 4N_e\mu``, and summed over bins of ``i``. The reference is
+
+```math
+\frac{\xi_i}{\theta} = \int_0^1 \binom{n}{i} x^i (1 - x)^{n-i}
+\frac{1 - e^{-\alpha(1-x)}}{(1 - e^{-\alpha})\,x(1 - x)}\,dx,
+```
+
+with ``1/i`` for ``\alpha = 0``. This is the diffusion limit for genic
+selection, ``\Delta x = (s/2)x(1 - x)``, with drift variance
+``x(1 - x)/(2N_e)``. Its error at ``N = 1{,}000`` is of order ``1/N``.
+The unit of replication is the run: 1,000 runs per seed, standard
+errors over runs, and failure at ``|z| > 3.5``.
+
+**Results, seed 2026** (64 threads, 2 hours):
+
+```@eval
+using Markdown, FisherWright
+Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "src", "validation", "validate-prf-seed2026.txt"), String)))
+```
+
+**Results, seed 7** (32 threads, 3 hours):
+
+```@eval
+using Markdown, FisherWright
+Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "src", "validation", "validate-prf-seed7.txt"), String)))
+```
+
+- All 60 bins pass, with ``|z| \le 1.72``. The total
+  ``\sum_i \xi_i/\theta`` is within 0.7% of the PRF in every class and seed, at a standard
+  error of 0.4% to 0.7%. Pooled over the two seeds and five classes,
+  the totals are 0.14% below the PRF, at ``z \approx -1.0``. This is
+  within the ``1/N`` error expected of the diffusion.
+- The classes are far apart: the total is 1.19, 2.69, 3.55, 4.40 and
+  5.91 for ``\alpha`` from −10 to 10. Near ``\alpha = 2``, the total
+  changes by about 0.43 per unit of ``\alpha``. So an error of 10% in
+  the effective strength of selection would shift it by 2%, about four
+  standard errors in one seed.
+- The shape is resolved as well. Beneficial alleles shift the spectrum
+  to high frequencies (bin 10–19: 2.46 against 0.72 neutral), and
+  deleterious alleles to singletons (0.70 of a total of 1.19 at
+  ``\alpha = -10``). Every bin matches within its standard error; the
+  largest relative departure, 6% (``z = 0.65``), is in the sparse bin
+  10–19 at ``\alpha = -10``.
+- Selection within each sex at ``N_e = 999.5``, with
+  ``s = \alpha/(2N_e)``, therefore behaves as genic selection in the diffusion limit. The
+  deviations of order ``1/N`` from the ideal Wright–Fisher model that
+  the fixation check shows at small ``N`` are below the resolution
+  here.
+
 ## Selection on a trait
 
 `validate-trait.jl` checks `TraitFitness` against quantitative-genetic
@@ -214,21 +291,19 @@ rate at the fitness loci, and the weighted draw of parents.
   variance under mutation and stabilizing selection depends on the
   regime (Gaussian, house of cards) and is not compared; the mechanism
   is tested exactly, and the mean is held at the optimum in CI.
-- Linked selection: the effect of selected sites on neutral diversity
-  (background selection, sweeps) against SLiM.
-- Large ``N`` and weak selection (``4Nhs`` of order 1 at large ``N``),
-  where the comparison with diffusion theory (Poisson random field)
-  would be the natural reference; and a distribution of fitness
-  effects rather than one ``s`` per run.
-- Strong interference between sites (Hill–Robertson effects,
-  background selection on linked neutral sites).
+- A distribution of fitness effects rather than a few fixed values of
+  ``s``, and dominance other than ½ at large ``N``.
+- Strong interference between selected sites (Hill–Robertson effects).
+  The effect of selected sites on linked neutral diversity is
+  compared with SLiM on [Validation of linked selection](@ref).
 
 ## Scripts
 
 [`fixation-reference.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/fixation-reference.jl),
 [`validate-selection.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-selection.jl)
 and
-[`validate-selection-balance.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-selection-balance.jl)
+[`validate-selection-balance.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-selection-balance.jl),
+[`validate-prf.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-prf.jl)
 and
 [`validate-trait.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-trait.jl).
 Rerun them, and replace the result files and the reference values in
@@ -241,4 +316,6 @@ julia -t 16 $D/scripts/fixation-reference.jl 2000000 2026 > $D/fixation-referenc
 julia -t 8 --project=. $D/scripts/validate-selection.jl 200000 2000000 2026 > $D/validate-selection.txt
 julia -t 16 --project=. $D/scripts/validate-selection-balance.jl 4000 400000 2026 > $D/validate-selection-balance.txt
 julia -t 8 --project=. $D/scripts/validate-trait.jl 1000 2026 > $D/validate-trait.txt
+# about 2 hours on 64 threads
+julia -t 64 --project=. $D/scripts/validate-prf.jl 1000 2026 > $D/validate-prf-seed2026.txt
 ```
