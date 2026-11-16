@@ -80,8 +80,10 @@ Validated by the exact recursion with a = (P_f + P_m)/4,
 P_m = P_f + (1 − P_f)π, from closed forms of the splits (CI test
 "Heterozygosity decay under family-size mating", three schemes, each
 also separated from RandomMating; the binomial-sex case rechecked at
-20,000 replicates on four seeds, |z| ≤ 1.1). Not yet with selection;
-`effective_size` assumes random mating and says so.
+20,000 replicates on four seeds, |z| ≤ 1.1). Selection and the
+realized effective size were added the same day (below): with
+selection the split weights are multiplied by fitness, and
+`effective_size` uses the realized family sizes for every scheme.
 
 `Hierarchical` (2026-11-12): breeder subsets `nsires`, `ndams` in
 `FamilySize` (random subsets of the cohort each generation, the rest
@@ -522,6 +524,24 @@ replicates and seeds; logs go under `docs/src/validation/`.
 | **0.6.0** | `FitnessLoci`, `SiteFitness`, `sel` stream, alias-table weighted mating, selected substitutions; validations 5–6. |
 | **0.7.0** | `TraitFitness` (stabilizing and directional), true-effect export; `FamilySize`, `Hierarchical`, realized effective size; Hill-formula validation. (`WeightedParents` dropped; density regulation and extinction policy not scheduled, the census stays fixed.) |
 | **0.8.0** | Pedigree recording, `Monoecious(selfing)`, `AvoidRelatives`, `CustomMating`; SLiM matched validation, including linked selection (validation 7). |
+
+## Open after 0.8.0
+
+Every row of the staging is released. What remains open, none of it
+scheduled:
+
+- Default sex model (open decision 2 below).
+- Validation: equilibrium π and S against θ = 4Neμ under a skewed sex
+  ratio (the drift part of item 2 is done); the Poisson random field
+  comparison at large N and weak selection (item 6); stabilizing
+  selection against its Gaussian or house-of-cards equilibria; drift
+  under `FamilySize` with selection against a reference (only the
+  unbiasedness of one generation of selection is tested).
+- Extensions named above: pleiotropy (several traits on shared loci),
+  sex-specific fitness, and phenotypic assortative mating as a built-in
+  scheme (possible now through `CustomMating`, with `ctx.phenotypic`).
+- Not scheduled: density regulation and an extinction policy (the
+  census stays fixed).
 
 ## Open decisions
 
