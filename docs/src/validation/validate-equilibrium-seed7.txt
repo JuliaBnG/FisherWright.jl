@@ -1,0 +1,44 @@
+FisherWright 0.8.0, Julia 1.13.4, threads 32
+N = 100, 2000 generations, 10 × 10 Mb, μ = r = 1.0e-8 per bp, 4000 replicates per scheme, seed 7; S in a sample of 20 genes from distinct individuals; 1000000 backward genealogies per scheme and sample size
+
+scheme                          stat                 FisherWright               expected       z
+# RandomMating(): a = 0.010103, σ = 0.000, Ne = h_B/(4μ) = 99.47, Kingman S_20 = 1411.65
+RandomMating()                  Σ2pq/bp     3.9586e-06 ± 3.92e-09             3.9592e-06   -0.16
+RandomMating()                  Hobs/bp     3.9975e-06 ± 4.03e-09             3.9990e-06   -0.37
+RandomMating()                  h_B/bp*     3.9770e-06 ± 3.96e-09             3.9790e-06   -0.50
+RandomMating()                  S_20               1413.55 ± 1.22         1414.06 ± 0.50   -0.39
+# RandomMating(nmale=10): a = 0.027778, σ = 0.000, Ne = h_B/(4μ) = 36.50, Kingman S_20 = 517.97
+RandomMating(nmale=10)          Σ2pq/bp     1.4520e-06 ± 2.16e-09             1.4528e-06   -0.37
+RandomMating(nmale=10)          Hobs/bp     1.4790e-06 ± 2.22e-09             1.4800e-06   -0.47
+RandomMating(nmale=10)          h_B/bp*     1.4567e-06 ± 1.44e-09             1.4600e-06   -2.26
+RandomMating(nmale=10)          S_20                525.61 ± 0.66          525.68 ± 0.18   -0.11
+# RandomMating(sexratio=0.5): a = 0.010000, σ = 0.000, Ne = h_B/(4μ) = 100.50, Kingman S_20 = 1426.12
+RandomMating(sexratio=0.5)      Σ2pq/bp     3.9991e-06 ± 3.94e-09             3.9998e-06   -0.19
+RandomMating(sexratio=0.5)      Hobs/bp     4.0402e-06 ± 4.04e-09             4.0398e-06    0.09
+RandomMating(sexratio=0.5)      h_B/bp*     4.0225e-06 ± 4.01e-09             4.0198e-06    0.66
+RandomMating(sexratio=0.5)      S_20               1429.02 ± 1.23         1427.74 ± 0.50    0.96
+# FamilySize(dams=1.0, nmale=20): a = 0.024537, σ = 0.000, Ne = h_B/(4μ) = 41.25, Kingman S_20 = 585.44
+FamilySize(dams=1.0, nmale=20)  Σ2pq/bp     1.6403e-06 ± 2.33e-09             1.6420e-06   -0.73
+FamilySize(dams=1.0, nmale=20)  Hobs/bp     1.6687e-06 ± 2.43e-09             1.6702e-06   -0.61
+FamilySize(dams=1.0, nmale=20)  h_B/bp*     1.6495e-06 ± 1.64e-09             1.6502e-06   -0.42
+FamilySize(dams=1.0, nmale=20)  S_20                592.49 ± 0.73          592.90 ± 0.21   -0.54
+# FamilySize(equal, nmale=20): a = 0.011476, σ = 0.000, Ne = h_B/(4μ) = 87.64, Kingman S_20 = 1243.71
+FamilySize(equal, nmale=20)     Σ2pq/bp     3.4929e-06 ± 3.63e-09             3.4882e-06    1.30
+FamilySize(equal, nmale=20)     Hobs/bp     3.5303e-06 ± 3.72e-09             3.5256e-06    1.24
+FamilySize(equal, nmale=20)     h_B/bp*     3.5026e-06 ± 3.49e-09             3.5056e-06   -0.89
+FamilySize(equal, nmale=20)     S_20               1249.92 ± 1.12         1249.20 ± 0.44    0.60
+# Monoecious(): a = 0.010000, σ = 0.010, Ne = h_B/(4μ) = 100.00, Kingman S_20 = 1419.03
+Monoecious()                    Σ2pq/bp     3.9771e-06 ± 3.89e-09             3.9798e-06   -0.71
+Monoecious()                    Hobs/bp     3.9958e-06 ± 3.98e-09             3.9998e-06   -1.02
+Monoecious()                    h_B/bp*     4.0064e-06 ± 3.99e-09             3.9998e-06    1.66
+Monoecious()                    S_20               1420.88 ± 1.20         1421.86 ± 0.50   -0.75
+# Monoecious(selfing=0.2): a = 0.010000, σ = 0.200, Ne = h_B/(4μ) = 90.50, Kingman S_20 = 1284.26
+Monoecious(selfing=0.2)         Σ2pq/bp     3.5985e-06 ± 3.77e-09             3.5999e-06   -0.37
+Monoecious(selfing=0.2)         Hobs/bp     3.2403e-06 ± 3.74e-09             3.2400e-06    0.09
+Monoecious(selfing=0.2)         h_B/bp*     3.6174e-06 ± 3.60e-09             3.6199e-06   -0.71
+Monoecious(selfing=0.2)         S_20               1287.66 ± 1.17         1288.14 ± 0.45   -0.38
+# Monoecious(selfing=0.5): a = 0.010000, σ = 0.500, Ne = h_B/(4μ) = 75.50, Kingman S_20 = 1071.42
+Monoecious(selfing=0.5)         Σ2pq/bp     3.0017e-06 ± 3.86e-09             3.0000e-06    0.44
+Monoecious(selfing=0.5)         Hobs/bp     2.0450e-06 ± 3.27e-09             2.0400e-06    1.54
+Monoecious(selfing=0.5)         h_B/bp*     3.0166e-06 ± 3.00e-09             3.0200e-06   -1.12
+Monoecious(selfing=0.5)         S_20               1080.10 ± 1.20         1079.72 ± 0.38    0.30
