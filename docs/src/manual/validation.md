@@ -383,9 +383,10 @@ Markdown.MD(Markdown.Code("bash", read(joinpath(pkgdir(FisherWright), "docs", "s
 - This page covers neutral, panmictic populations at constant size.
   A bottleneck and an expansion are on
   [Validation under a changing population size](@ref), and selection on
-  [Validation of selection](@ref). Fixed sex ratios are checked for
-  heterozygosity decay only, in the CI tests. The package doesn't model
-  subdivision.
+  [Validation of selection](@ref). Skewed sex ratios, family sizes and
+  selfing are checked on [Validation of the mating schemes](@ref): drift
+  against SLiM, and mutation–drift diversity (Σ2pq, ``H_{obs}``, S)
+  against exact references. The package doesn't model subdivision.
 - Benchmark-scale runs (N = 2,000, 1 Gb) are checked only through their SNP
   count against msprime.
 

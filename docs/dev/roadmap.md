@@ -407,8 +407,16 @@ replicates and seeds; logs go under `docs/src/validation/`.
      sizes, equal families, selfing s ∈ {0.2, 0.5}. The sex-ratio case
      is done as a CI test of heterozygosity decay against the exact
      recursion ("Heterozygosity decay under a fixed sex ratio": 3♂/17♀,
-     10♂/10♀, and a proportion of 0.2 males through a change in size);
-     its equilibrium π and S check is still open.
+     10♂/10♀, and a proportion of 0.2 males through a change in size).
+   - **Done 2026-11-16** for all eight cases
+     (`docs/src/validation/scripts/validate-equilibrium.jl`; manual,
+     "Mutation–drift equilibrium"): N = 100, 2,000 generations,
+     4,000 replicates for each of two seeds. Σ2pq and H_obs match the
+     exact drift–mutation recursion in h_B and h_W. S in 20 genes
+     matches an independent backward simulation of the genealogy
+     through each scheme's pedigree; Kingman's θaₙ falls 0.1–1.5% short
+     at this N, so it is not used as the reference. All 64 comparisons
+     have |z| ≤ 2.26.
 3. **Variable N.** Done in two parts. A CI test: heterozygosity
    through a bottleneck and an expansion against the exact two-sex
    recursion (30 → 6 for 8 generations → 60 for 12), which also shows
@@ -530,8 +538,7 @@ replicates and seeds; logs go under `docs/src/validation/`.
 Every row of the staging is released. What remains open, none of it
 scheduled:
 
-- Validation: equilibrium π and S against θ = 4Neμ under a skewed sex
-  ratio (the drift part of item 2 is done); the Poisson random field
+- Validation: the Poisson random field
   comparison at large N and weak selection (item 6); stabilizing
   selection against its Gaussian or house-of-cards equilibria; drift
   under `FamilySize` with selection against a reference (only the
