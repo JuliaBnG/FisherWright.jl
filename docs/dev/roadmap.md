@@ -80,8 +80,10 @@ Validated by the exact recursion with a = (P_f + P_m)/4,
 P_m = P_f + (1 − P_f)π, from closed forms of the splits (CI test
 "Heterozygosity decay under family-size mating", three schemes, each
 also separated from RandomMating; the binomial-sex case rechecked at
-20,000 replicates on four seeds, |z| ≤ 1.1). Not yet with selection;
-`effective_size` assumes random mating and says so.
+20,000 replicates on four seeds, |z| ≤ 1.1). Selection and the
+realized effective size were added the same day (below): with
+selection the split weights are multiplied by fitness, and
+`effective_size` uses the realized family sizes for every scheme.
 
 `Hierarchical` (2026-11-12): breeder subsets `nsires`, `ndams` in
 `FamilySize` (random subsets of the cohort each generation, the rest
@@ -523,6 +525,23 @@ replicates and seeds; logs go under `docs/src/validation/`.
 | **0.7.0** | `TraitFitness` (stabilizing and directional), true-effect export; `FamilySize`, `Hierarchical`, realized effective size; Hill-formula validation. (`WeightedParents` dropped; density regulation and extinction policy not scheduled, the census stays fixed.) |
 | **0.8.0** | Pedigree recording, `Monoecious(selfing)`, `AvoidRelatives`, `CustomMating`; SLiM matched validation, including linked selection (validation 7). |
 
+## Open after 0.8.0
+
+Every row of the staging is released. What remains open, none of it
+scheduled:
+
+- Validation: equilibrium π and S against θ = 4Neμ under a skewed sex
+  ratio (the drift part of item 2 is done); the Poisson random field
+  comparison at large N and weak selection (item 6); stabilizing
+  selection against its Gaussian or house-of-cards equilibria; drift
+  under `FamilySize` with selection against a reference (only the
+  unbiasedness of one generation of selection is tested).
+- Extensions named above: pleiotropy (several traits on shared loci),
+  sex-specific fitness, and phenotypic assortative mating as a built-in
+  scheme (possible now through `CustomMating`, with `ctx.phenotypic`).
+- Not scheduled: density regulation and an extinction policy (the
+  census stays fixed).
+
 ## Open decisions
 
 1. Mutation-free validation: resolved 2026-11-02 in favour of a
@@ -530,9 +549,16 @@ replicates and seeds; logs go under `docs/src/validation/`.
    checked when mutation is off.
 2. Default sex model: keep binomial sex for compatibility, or switch to
    exactly N/2 males (documented breaking change; makes Ne ≈ N exact)?
-   0.5.0 shipped with binomial sex as the default and
-   `RandomMating(sexratio = 0.5)` as the explicit alternative; a switch
-   would now be a breaking change of seeded output.
+   Resolved 2026-11-16: binomial sex stays the default. Sex is random
+   at birth in most species, so it is the natural model; it lowers Ne
+   by about one individual (Ne ≈ N − ½ against N + ½ for even N; 9.2
+   against 10.5 at N = 10, 199.5 against 200.5 at N = 200), which
+   matters only at small N or against theory with Ne = N, and
+   `RandomMating(sexratio = 0.5)` gives exactly half males in one
+   keyword. A switch would change the seeded output of every default
+   run since 0.4.0 and break the golden digests. The manual's mating
+   section shows the difference by N and recommends `sexratio = 0.5`
+   for such comparisons.
 3. JOSS paper: resolved 2026-11-11. The paper is under review and stays
    as submitted, scoped to v0.4.x; it does not mention this roadmap.
 4. Selected-site semantics: resolved 2026-11-11 in favour of a fixed s
