@@ -479,10 +479,16 @@ replicates and seeds; logs go under `docs/src/validation/`.
    against a naive single-site simulation
    (`validate-selection-balance.jl`, CI test "Selection under recurrent
    mutation"). The deterministic values (μ/(hs), e^{−U}) are printed for
-   comparison; the Poisson random field comparison at large N and weak
-   selection remains open. With many sites, interference lowers the
-   per-site Ne by 1/(1 + 4C²) (Robertson; Santiago and Caballero),
-   which the run with 50 sites resolves and matches.
+   comparison. The Poisson random field comparison at large N and weak
+   selection is **done 2026-11-16** (`validate-prf.jl`; manual,
+   "Weak selection at large N"): N = 1,000, 20N generations,
+   500,000 sites at 4Nμ = 10⁻⁴ in classes α = 2Ne·s ∈ {−10, −2, 0, 2,
+   10}, h = ½; the expected spectrum of 20 genes per available site
+   against Sawyer–Hartl, 1,000 runs for each of two seeds: all 60 bins
+   |z| ≤ 1.72, totals within 0.7% (pooled −0.14%, z ≈ −1.0). With
+   many sites, interference lowers the per-site Ne by 1/(1 + 4C²)
+   (Robertson; Santiago and Caballero), which the run with 50 sites
+   resolves and matches.
 7. **Linked selection, against SLiM:** extend `bench/simulate-slim.slim`
    with an `m2` mutation type and genomic elements at the same sites,
    the same DFE, and `mutationStackPolicy = "f"`. Compare neutral π and
@@ -538,11 +544,10 @@ replicates and seeds; logs go under `docs/src/validation/`.
 Every row of the staging is released. What remains open, none of it
 scheduled:
 
-- Validation: the Poisson random field
-  comparison at large N and weak selection (item 6); stabilizing
-  selection against its Gaussian or house-of-cards equilibria; drift
-  under `FamilySize` with selection against a reference (only the
-  unbiasedness of one generation of selection is tested).
+- Validation: stabilizing selection against its Gaussian or
+  house-of-cards equilibria; drift under `FamilySize` with selection
+  against a reference (only the unbiasedness of one generation of
+  selection is tested).
 - Extensions named above: pleiotropy (several traits on shared loci),
   sex-specific fitness, and phenotypic assortative mating as a built-in
   scheme (possible now through `CustomMating`, with `ctx.phenotypic`).
