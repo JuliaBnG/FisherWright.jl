@@ -530,7 +530,6 @@ replicates and seeds; logs go under `docs/src/validation/`.
 Every row of the staging is released. What remains open, none of it
 scheduled:
 
-- Default sex model (open decision 2 below).
 - Validation: equilibrium π and S against θ = 4Neμ under a skewed sex
   ratio (the drift part of item 2 is done); the Poisson random field
   comparison at large N and weak selection (item 6); stabilizing
@@ -550,9 +549,16 @@ scheduled:
    checked when mutation is off.
 2. Default sex model: keep binomial sex for compatibility, or switch to
    exactly N/2 males (documented breaking change; makes Ne ≈ N exact)?
-   0.5.0 shipped with binomial sex as the default and
-   `RandomMating(sexratio = 0.5)` as the explicit alternative; a switch
-   would now be a breaking change of seeded output.
+   Resolved 2026-11-16: binomial sex stays the default. Sex is random
+   at birth in most species, so it is the natural model; it lowers Ne
+   by about one individual (Ne ≈ N − ½ against N + ½ for even N; 9.2
+   against 10.5 at N = 10, 199.5 against 200.5 at N = 200), which
+   matters only at small N or against theory with Ne = N, and
+   `RandomMating(sexratio = 0.5)` gives exactly half males in one
+   keyword. A switch would change the seeded output of every default
+   run since 0.4.0 and break the golden digests. The manual's mating
+   section shows the difference by N and recommends `sexratio = 0.5`
+   for such comparisons.
 3. JOSS paper: resolved 2026-11-11. The paper is under review and stays
    as submitted, scoped to v0.4.x; it does not mention this roadmap.
 4. Selected-site semantics: resolved 2026-11-11 in favour of a fixed s

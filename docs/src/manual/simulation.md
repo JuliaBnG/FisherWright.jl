@@ -207,6 +207,24 @@ size of 40. `RandomMating(sexratio=0.5)` removes the variation in the
 sex ratio of the default scheme, so that ``N_e \approx N + 1/2``
 instead of ``N - 1/2`` for even ``N``.
 
+Binomial sex is the default because sex is random at birth in most
+species; exactly half males is a design choice, as in managed breeding
+or SLiM's Wright–Fisher model. The difference in ``N_e`` is of order
+one individual, so it matters only for small populations, or when a
+run is compared with theory that assumes ``N_e = N``:
+
+| ``N`` | ``N_e``, `RandomMating()` | ``N_e``, `RandomMating(sexratio=0.5)` |
+|---:|---:|---:|
+| 10 | 9.22 | 10.5 |
+| 20 | 19.37 | 20.5 |
+| 50 | 49.46 | 50.5 |
+| 200 | 199.49 | 200.5 |
+| 1000 | 999.5 | 1000.5 |
+
+(``N_e \approx 1/E[a] + 1/2``, with ``E[a]`` over the number of males,
+Binomial(``N``, ½) conditioned on both sexes.) For such comparisons, or
+whenever the sex ratio should not vary, use `sexratio=0.5` or `nmale`.
+
 `nmale` is a count and must be smaller than every parental cohort, which
 matters when it is combined with `popsize`; `sexratio` is a proportion
 of males and follows the census size. The fixed schemes draw sex
