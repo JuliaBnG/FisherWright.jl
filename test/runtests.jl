@@ -2610,6 +2610,60 @@ end
     @test abs(mean(assortment) - 0.50) < 0.020
 end
 
+@testset "Per-chromosome genetic lengths" begin
+    chr = [3, 5]
+    rmap = uniform_recombination_map(chr; morgan = [0.5, 0.0])
+    @test [r[1] for r in rmap.interval_rates] == [0.5, 0.0]
+    @test uniform_recombination_map(chr; M = 0, morgan = [1, 2]).interval_rates == [[1.0], [2.0]]
+    @test_throws ArgumentError uniform_recombination_map(chr; morgan = [0.5])
+    @test_throws ArgumentError uniform_recombination_map(chr; morgan = [0.5, -0.1])
+    @test_throws ArgumentError uniform_recombination_map(chr; morgan = [0.5, NaN])
+
+    # Species: its genetic lengths, unless M or morgan overrides them
+    sp = GenericSpecies("GL", UInt32[100_000, 200_000]; M = 50_000_000)
+    @test [r[1] for r in uniform_recombination_map(sp).interval_rates] == [0.002, 0.004]
+    @test [r[1] for r in uniform_recombination_map(sp; M = 1e8).interval_rates] == [0.001, 0.002]
+    @test [r[1] for r in uniform_recombination_map(sp; morgan = [1, 2]).interval_rates] == [1.0, 2.0]
+    @test_throws ArgumentError uniform_recombination_map(sp; M = 1e8, morgan = [1, 2])
+    @test_throws ArgumentError fisher_wright(sp, 10, 2; M = 1e8, morgan = [1, 2])
+    if hasfield(Species, :morgan)                  # BnGStructs ≥ 0.3
+        own = GenericSpecies("GL", UInt32[100_000, 200_000]; morgan = [0.5, 1.5])
+        @test [r[1] for r in uniform_recombination_map(own).interval_rates] == [0.5, 1.5]
+        @test fisher_wright(own, 10, 5; rng = Xoshiro(3))[1] ==
+              fisher_wright(10, 5, [100_000, 200_000], 1.0; morgan = [0.5, 1.5], rng = Xoshiro(3))[1]
+    end
+
+    # morgan = chr ./ M is the same realization as M; a species' default is M = sp.M
+    c = [100_000, 200_000]
+    @test fisher_wright(10, 5, c, 1.0; M = 5e4, rng = Xoshiro(1))[1] ==
+          fisher_wright(10, 5, c, 1.0; morgan = c ./ 5e4, rng = Xoshiro(1))[1]
+    @test fisher_wright(sp, 10, 5; rng = Xoshiro(2))[1] ==
+          fisher_wright(10, 5, c, 1.0; M = 5e7, rng = Xoshiro(2))[1]
+
+    # End to end: markers at the two ends of each chromosome, unique per
+    # haplotype. Chromosome 1 has 0 M (no recombinant), chromosome 2 has
+    # 0.5 M (Haldane r = (1 - e^{-1})/2 ≈ 0.316 between its ends).
+    n, L = 50, 1_000_000
+    init = [UInt32[h, L - 2n + h, L + h, 2L - 2n + h] for h = 1:2n]
+    owner(x) = (x - 1) % L < 2n ? (x - 1) % L + 1 : (x - 1) % L - (L - 2n) + 1
+    rec = [0, 0]
+    tot = 0
+    for seed = 1:20
+        haps, _ = fisher_wright(n, 1, [L, L], 1.0; morgan = [0.0, 0.5], mutate = false, init = init,
+            rng = Xoshiro(seed))
+        for h in haps
+            a = filter(<=(L), h)
+            b = filter(>(L), h)
+            @test length(a) == length(b) == 2
+            rec[1] += owner(a[1]) != owner(a[2])
+            rec[2] += owner(b[1]) != owner(b[2])
+            tot += 1
+        end
+    end
+    @test rec[1] == 0
+    @test abs(rec[2] / tot - (1 - exp(-1)) / 2) < 0.04
+end
+
 @testset "Chromosome boundary assortment segregates terminal loci" begin
     # Chr 1: 1..1000, Chr 2: 1001..2000
     # Assortment breakpoint is at 1001. Locus 1000 is on Chr 1, locus 1001 is on Chr 2.

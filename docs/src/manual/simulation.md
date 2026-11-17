@@ -3,7 +3,7 @@
 ## `fisher_wright`
 
 ```julia
-fisher_wright(ne, nt, chr, mr; M=1e8, mut_base=1e8,
+fisher_wright(ne, nt, chr, mr; M=1e8, morgan=nothing, mut_base=1e8,
               result=false, fixation_interval=1, mutate=true,
               init=nothing, popsize=nothing, mating=RandomMating(),
               fitness=Neutral(), pedigree=0, verbose=false,
@@ -17,6 +17,7 @@ new mutations per `mut_base` base pairs per haplotype per meiosis.
 | Keyword | Default | Meaning |
 |---|---:|---|
 | `M` | `1e8` | Base pairs per Morgan; controls recombination only. |
+| `morgan` | `nothing` | Genetic length of each chromosome in Morgans; replaces `chr ./ M`. |
 | `mut_base` | `1e8` | Base pairs per unit of `mr`; controls mutation only. |
 | `result` | `false` | Return a `FisherWrightResult` and extract fixed mutations. |
 | `fixation_interval` | `1` | Generations between fixation scans when `result=true`. |
@@ -45,8 +46,9 @@ haplotypes, chromosome_ends = fisher_wright(20, 10, [100_000, 100_000], 1.0)
 
 When using a `BnGStructs.Species`, pass the species object instead of the
 chromosome lengths, with the population size before the number of
-generations. The default `M` is taken from the species, while all
-simulation keywords remain available:
+generations. The genetic length of each chromosome is taken from the
+species (`species.morgan`, by default `species.chromosome ./ species.M`),
+while all simulation keywords remain available:
 
 ```@example simulation
 using BnGStructs
@@ -58,25 +60,42 @@ result.chromosome_ends
 
 ## Recombination
 
-`M` gives the number of base pairs per Morgan. A chromosome of length `L`
-therefore has an expected `L / M` crossovers per meiosis. The default
-recombination map has one uniform interval per chromosome:
+Crossovers on each chromosome are a Poisson process, uniform along its
+length, and chromosomes assort independently. `M` gives the number of
+base pairs per Morgan, so a chromosome of length `L` has an expected
+`L / M` crossovers per meiosis. The keyword `morgan` instead gives the
+genetic length of each chromosome in Morgans, for genomes whose
+recombination rate per base pair differs between chromosomes: small
+chromosomes held near 0.5 M by the obligate crossover, or a
+sex-averaged linkage map. It replaces `chr ./ M`; with `morgan = chr ./
+M` the run is the same realization as with `M`.
+
+```@example simulation
+haplotypes, _ = fisher_wright(20, 10, [1_000_000, 100_000_000], 1.0;
+                              morgan = [0.5, 1.0])
+length(haplotypes)
+```
+
+The recombination map has one uniform interval per chromosome:
 
 ```@example simulation
 map = uniform_recombination_map([100_000, 250_000]; M=1e8)
 map.cbp
 ```
 
-The species overload uses the chromosome lengths and default `M` from the
-species:
+The species overload uses the chromosome lengths and the genetic lengths
+of the species; giving `M` or `morgan` (not both) overrides them:
 
 ```@example simulation
 uniform_recombination_map(species).cbp
 ```
 
-Each chromosome end is treated as an independent assortment boundary. The
-package does not expose a custom map through `fisher_wright`; `RecombinationMap`
-and `cobp!` are available for advanced internal workflows.
+Each chromosome end is treated as an independent assortment boundary.
+Interference is not modelled (Haldane's map function holds), and the
+rate is uniform within a chromosome: the package does not expose a map
+with several intervals per chromosome through `fisher_wright`;
+`RecombinationMap` and `cobp!` are available for advanced internal
+workflows.
 
 ## Continuing a run
 

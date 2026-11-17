@@ -562,6 +562,13 @@ scheduled:
 - Not scheduled: density regulation and an extinction policy (the
   census stays fixed).
 
+Done 2026-11-17 (0.8.2): per-chromosome genetic lengths. `morgan` in
+`fisher_wright` and `uniform_recombination_map`; the species method
+reads `Species.morgan` (BnGStructs ≥ 0.3), which closes the ecosystem
+item that FisherWright used only the scalar `M`. Tested against the
+Haldane recombination fraction between chromosome ends; seeded output
+unchanged for default genetic lengths.
+
 ## Open decisions
 
 1. Mutation-free validation: resolved 2026-11-02 in favour of a

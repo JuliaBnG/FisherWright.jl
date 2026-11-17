@@ -37,6 +37,7 @@ end
         chr::Vector{<:Integer},
         mr::Float64;
         M = 1e8,
+        morgan = nothing,
         mut_base = 1e8,
         result::Bool = false,
         fixation_interval::Int = 1,
@@ -66,6 +67,7 @@ total genome lengths up to ``2^{32} \\approx 4.29 \\times 10^9`` base pairs (bp)
 
 # Keywords
 - `M = 1e8`: Number of base pairs per Morgan (`M > 0`). A chromosome of length `L` experiences an expected `L / M` crossovers per meiosis.
+- `morgan = nothing`: Genetic length of each chromosome in Morgans (a vector of `length(chr)` finite, non-negative values), the expected number of crossovers on it per meiosis; replaces `chr ./ M` and `M` is then not used. Use it for chromosomes whose recombination rate per base pair differs, for example small chromosomes held near 0.5 M by the obligate crossover.
 - `mut_base = 1e8`: Base pairs per unit of mutation rate `mr` (`mut_base > 0`). Decoupled from `M` so adjusting recombination does not alter mutation intensity.
 - `result::Bool = false`:
   - If `false` (default), returns `(prt, cbp)` where `prt` is the vector of `2 * ne` haplotypes and `cbp` is cumulative chromosome end coordinates. Fixed mutations remain in all haplotypes.
@@ -90,7 +92,7 @@ total genome lengths up to ``2^{32} \\approx 4.29 \\times 10^9`` base pairs (bp)
   - A [`FisherWrightResult`](@ref) containing `active_haplotypes`, `chromosome_ends`, accumulated `substitutions`, and the record of the run: the census size of every generation (`census`) and the realized number of males among its parents (`males`), from which [`effective_size`](@ref) gives the realized effective size. With selection it also holds the selected alleles (`selected_haplotypes`, `selected_substitutions`) and, per generation, the mean fitness of the parents and the mean and variance of its logarithm (`mean_fitness`, `mean_log_fitness`, `var_log_fitness`).
 
 # Details
-- **Recombination & Independent Assortment**: Recombination is modeled as a Poisson process along each chromosome with rate `chr[i] / M`. Independent assortment between chromosomes occurs with probability 0.5 at each chromosome boundary.
+- **Recombination & Independent Assortment**: Recombination is modeled as a Poisson process along each chromosome with mean `morgan[i]` crossovers per meiosis (default `chr[i] / M`), uniform along the chromosome. Independent assortment between chromosomes occurs with probability 0.5 at each chromosome boundary.
 - **Mutation model**: Each haplotype receives `Poisson(sum(chr) / mut_base * mr)` new mutations per generation at uniformly drawn positions. A new mutation at a position the haplotype already carries, or at a substituted (fixed and removed) position when `result = true`, has no effect, so both return modes describe the same population.
 - **Multithreading & Reproducibility**: Meiosis and mutation generation are parallelized using `Threads.@threads`. Each meiosis/haplotype slot owns a `Xoshiro` stream seeded once from `rng` at the start, and mating is sampled serially from `rng`, so a run is determined by the state of `rng` alone, independent of `Threads.nthreads()` and task scheduling.
   This holds for a fixed Julia version and package environment. The realization also depends on the variate algorithms of Julia's `Random` and of Distributions.jl, which can change between versions: `randn` differs between Julia 1.10 and 1.13, so Poisson draws with mean ≥ 6 (Distributions' `PoissonADSampler`; in practice the per-haplotype mutation count of most genome-scale runs) can differ, and the same seed then gives a different population. Record the Julia version and `Manifest.toml` with simulated data.
@@ -142,6 +144,7 @@ function fisher_wright(
     chr::Vector{T3},
     mr::Float64;
     M=1e8,
+    morgan=nothing,
     mut_base=1e8,
     result::Bool=false,
     fixation_interval::Int=1,
@@ -168,7 +171,7 @@ function fisher_wright(
     tbp = cbp[end]
 
     p_mut = Poisson(tg / mut_base * mr)
-    recomb_map = uniform_recombination_map(chr; M=M)
+    recomb_map = uniform_recombination_map(chr; M=M, morgan=morgan)
     span = UInt32(1):UInt32(tbp)
 
     demog = _demography(Int(ne), Int(nt), popsize)
@@ -219,7 +222,8 @@ end
         ne::Integer,
         nt::Integer,
         mr::Float64 = 1.0;
-        M = sp.M,
+        M = nothing,
+        morgan = nothing,
         mut_base = 1e8,
         result::Bool = false,
         fixation_interval::Int = 1,
@@ -237,19 +241,22 @@ end
 Simulate a diploid Fisher-Wright population using species parameters from a
 `BnGStructs.Species` instance (such as `Cattle`, `Pig`, `Chicken`, or `GenericSpecies`).
 
-The chromosome lengths `chr` and the default base pairs per Morgan `M` are
-taken from `sp` (`chr = sp.chromosome`, `M = sp.M`); the population size
+The chromosome lengths and their genetic lengths are taken from `sp`
+(`chr = sp.chromosome`, `morgan = sp.morgan`, which BnGStructs defaults to
+`sp.chromosome ./ sp.M`; with BnGStructs 0.2 `sp.chromosome ./ sp.M`); the
+population size
 `ne` is given, as a species carries none (BnGStructs 0.4 removed
 `Species.nid`).
 
 # Arguments
-- `sp::Species`: Species definition from `BnGStructs` specifying chromosome lengths (`chromosome`) and recombination scale (`M`).
+- `sp::Species`: Species definition from `BnGStructs` specifying chromosome lengths (`chromosome`) and genetic lengths (`morgan`).
 - `ne::Integer`: Number of diploid individuals.
 - `nt::Integer`: Number of generations to simulate (`nt > 0`).
 - `mr::Float64 = 1.0`: Mutation rate per `mut_base` base pairs per meiosis (`0.01 < mr < 20.0`).
 
 # Keywords
-- `M = sp.M`: Number of base pairs per Morgan. Defaults to `sp.M`.
+- `M = nothing`: Base pairs per Morgan; if given, the genetic lengths are `sp.chromosome ./ M` instead of `sp.morgan`.
+- `morgan = nothing`: Genetic length of each chromosome in Morgans; if given, replaces `sp.morgan`. `M` and `morgan` cannot both be given.
 - `mut_base = 1e8`: Base pairs per unit of `mr`.
 - `result::Bool = false`: If `true`, returns a [`FisherWrightResult`](@ref); otherwise returns `(prt, cbp)`.
 - `fixation_interval::Int = 1`: Interval (in generations) to scan for and extract fixed substitutions when `result = true`.
@@ -277,7 +284,8 @@ function fisher_wright(
     ne::Integer,
     nt::Integer,
     mr::Float64 = 1.0;
-    M = sp.M,
+    M = nothing,
+    morgan = nothing,
     mut_base = 1e8,
     result::Bool = false,
     fixation_interval::Int = 1,
@@ -296,7 +304,7 @@ function fisher_wright(
         nt,
         sp.chromosome,
         mr;
-        M = M,
+        morgan = _species_morgan(sp, M, morgan),
         mut_base = mut_base,
         result = result,
         fixation_interval = fixation_interval,
