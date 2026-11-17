@@ -268,6 +268,102 @@ Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "s
   0.943); the rest, ``2.0 \pm 0.8``%, is within what finite loci and
   drift within a generation would give, and is not tested.
 
+## Stabilizing selection: matched SLiM model
+
+`validate-stabilizing.jl` checks the genetic variance maintained by
+mutation, Gaussian stabilizing selection and drift (`TraitFitness` with
+`Stabilizing`). The theory for this balance is approximate, so the test
+reference is a matched model in SLiM (`validate-stabilizing.slim`), an
+independent implementation with SLiM's own meiosis and mutation; the
+diffusion theory is reported alongside for comparison.
+
+**Model.** ``N = 500`` diploids. In every generation the roles of sire
+and dam are assigned anew (binomial sex, conditioned on both;
+``N_e = 499.5``), and every offspring draws its sire among the males
+and its dam among the females in proportion to fitness, with
+replacement. ``P = G + e``, ``e \sim N(0, 1)`` drawn anew, fitness
+``\exp(-P^2/2\omega^2)`` with ``\omega^2 = 49`` and the optimum at 0.
+There are ``K = 8{,}000`` additive trait loci (``h = ½``), evenly
+spaced on 20 chromosomes of 1 Morgan, in four interleaved classes of
+2,000 with substitution effect ``|\alpha|`` fixed per class and a sign
+drawn anew for each run. The sizes give
+``B = 2N_e\alpha^2/V_s \approx 1, 4, 16, 64`` at
+``V_s = \omega^2 + V_P \approx 51``. Mutation to the derived allele
+is at ``4N\mu = 10^{-3}`` per site; the sites are biallelic, with no
+back mutation, and a fixed site stays fixed (SLiM: stacking policy
+"f", no conversion to substitutions). Neutral mutation is off. SLiM
+runs the model as nonWF with explicit reproduction, so that the sexes,
+the phenotypes and the weighted draw are coded exactly as above.
+
+**Protocol and statistics.** From a population without variation,
+``20N`` generations of burn-in, then 21 samples ``2N`` apart (30,000
+generations per run). Per sample: the genic variance
+``V_a = \sum 2pq\alpha^2`` of each class, divided by the number of
+sites not fixed, ``K_a``, and by ``4\mu V_s``; the fixed sites per
+class; the mean genotypic value; and the means of ``V_P``, ``V_G`` and
+the variance of log fitness over the preceding window. The samples of
+a run are averaged and standard errors taken over 2,000 runs per
+simulator and seed. A comparison of the two simulators fails at
+``|z| > 3.5``; the mean ``G`` is also compared with 0, its exact
+expectation under random signs.
+
+**Theory, for comparison.** Forward mutation at biallelic loci makes
+every allele unique: this is the house-of-cards family (Turelli 1984;
+Bürger 2000), not the Gaussian regime (Kimura 1965; Lande 1975), which
+needs a continuum of alleles per locus. With the mean at the optimum a
+site is underdominant, ``\Delta x = -(\alpha^2/2V_s)x(1-x)(1-2x)``
+(Robertson 1956). The single-locus diffusion gives the expected genic
+variance per site, in units of ``4\mu V_s``,
+
+```math
+B \int_0^1 \frac{S(1) - S(x)}{S(1)\,\psi(x)}\,dx,
+\qquad \psi(x) = e^{Bx(1-x)},\quad S(x) = \int_0^x \psi,
+```
+
+which is ``B/2`` (neutral) for ``B \to 0`` and 1 (Turelli's house of
+cards) for ``B \to \infty``, and above 1 in between. Bürger's
+stochastic house-of-cards formula, ``(B/2)/(1 + B/2)`` in these units,
+is printed too. The diffusion leaves out the linkage disequilibrium
+that selection builds: carriers of an allele of effect ``\alpha`` sit
+on backgrounds shifted by about ``-\alpha k/(1 + k)``,
+``k = V_G/V_s``, which weakens selection on the allele to about
+``B(1 - k)^2``. The table prints the diffusion with this correction
+("LD-corr."). Neither includes the drift of the mean about the optimum.
+
+**Results, seed 2026** (SLiM 64 processes, 40 min; FisherWright 32
+threads, 1.6 hours):
+
+```@eval
+using Markdown, FisherWright
+Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "src", "validation", "validate-stabilizing-seed2026.txt"), String)))
+```
+
+**Results, seed 7:**
+
+```@eval
+using Markdown, FisherWright
+Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "src", "validation", "validate-stabilizing-seed7.txt"), String)))
+```
+
+- FisherWright and SLiM agree on all 26 checks: |z| ≤ 1.74. The
+  genic variance per class matches within 0.8% at a standard error of
+  about 0.45% per simulator. ``V_P``, ``V_G`` and the variance of log
+  fitness match within 0.13%. Both means of ``G`` are consistent with
+  0. (No site of the ``B = 64`` class fixes, so its fixed-site row is
+  empty.)
+- The classes are far apart: 0.43, 1.10, 1.27 and 1.09 for
+  ``B = 1, 4, 16, 64``. An error in the strength of selection would
+  show at ``B = 1`` and 4, where the variance changes steeply with
+  ``B``.
+- ``V_G = 0.776`` is the summed genic variance, 0.790, less the
+  Bulmer disequilibrium, about ``V_a^2/V_s = 0.012``.
+- Against theory, both simulators exceed the plain diffusion by up to
+  6% (``B = 64``), as expected of a model with ``k = 0.015``. The
+  LD-corrected diffusion leaves 0.3–2.7% at ``B \ge 4``, and nothing
+  at ``B = 1``. Bürger's formula is 11–39% low; it is not meant for
+  biallelic, underdominant loci. These departures belong to the model,
+  since SLiM shows them too; they are not tested.
+
 ## CI test
 
 The testset "Selection under recurrent mutation" runs case 1 of the
@@ -287,10 +383,10 @@ rate at the fitness loci, and the weighted draw of parents.
 
 ## Not covered
 
-- Stabilizing selection against theory: the equilibrium genetic
-  variance under mutation and stabilizing selection depends on the
-  regime (Gaussian, house of cards) and is not compared; the mechanism
-  is tested exactly, and the mean is held at the optimum in CI.
+- Stabilizing selection in the Gaussian regime (a continuum of alleles
+  per locus): the loci are biallelic, so only the house-of-cards
+  regime is compared, against SLiM; the diffusion theory is not
+  tested.
 - A distribution of fitness effects rather than a few fixed values of
   ``s``, and dominance other than ½ at large ``N``.
 - Strong interference between selected sites (Hill–Robertson effects).
@@ -303,11 +399,17 @@ rate at the fitness loci, and the weighted draw of parents.
 [`validate-selection.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-selection.jl)
 and
 [`validate-selection-balance.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-selection-balance.jl),
-[`validate-prf.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-prf.jl)
+[`validate-prf.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-prf.jl),
+[`validate-trait.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-trait.jl)
+and the stabilizing-selection driver
+[`validate-stabilizing.sh`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-stabilizing.sh)
+with
+[`validate-stabilizing.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-stabilizing.jl)
 and
-[`validate-trait.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-trait.jl).
+[`validate-stabilizing.slim`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-stabilizing.slim).
 Rerun them, and replace the result files and the reference values in
-`test/runtests.jl`, when the draw of parents, `SiteFitness`, the
+`test/runtests.jl`, when the draw of parents, `SiteFitness`,
+`TraitFitness`, the
 mutation or the meiosis of the selected stream changes:
 
 ```bash
@@ -318,4 +420,9 @@ julia -t 16 --project=. $D/scripts/validate-selection-balance.jl 4000 400000 202
 julia -t 8 --project=. $D/scripts/validate-trait.jl 1000 2026 > $D/validate-trait.txt
 # about 2 hours on 64 threads
 julia -t 64 --project=. $D/scripts/validate-prf.jl 1000 2026 > $D/validate-prf-seed2026.txt
+# SLiM 5 and FisherWright, 2,000 runs each: about 40 min on 64 and
+# 1.6 hours on 32 cores; STEPS="slim", "engine" or "compare" splits
+# the work between machines
+$D/scripts/validate-stabilizing.sh path/to/slim stab-2026 2000 2026 64
+cp stab-2026/report.txt $D/validate-stabilizing-seed2026.txt
 ```
