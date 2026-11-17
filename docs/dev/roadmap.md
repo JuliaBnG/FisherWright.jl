@@ -123,8 +123,12 @@ generation (22 checks, |z| ≤ 1.93; equilibrium 2NeVm), var P − var G
 against σe², and, for comparison, the response to exp(βP) against
 βV_G (0.923 ± 0.008, of which the finite-N bias of the weighted mean
 predicts 0.943). CI test "Neutral genetic variance of a trait".
-Stabilizing selection against theory (Gaussian or house-of-cards
-equilibria) is not compared.
+Stabilizing selection (2026-11-17, `validate-stabilizing.jl` with a
+matched SLiM model): genic variance per class (B = 2Neα²/V_s ≈ 1, 4,
+16, 64; biallelic loci, so the house-of-cards regime), fixed sites,
+mean G, V_P, V_G and var log w, FisherWright against SLiM, 2,000 runs
+each for two seeds (26 checks, |z| ≤ 1.74); the single-locus diffusion,
+with and without an LD correction, is reported but not tested.
 
 The 0.7.0 row is complete.
 v0.4.0 shipped without the refactor below, so the staging is renumbered
@@ -544,10 +548,9 @@ replicates and seeds; logs go under `docs/src/validation/`.
 Every row of the staging is released. What remains open, none of it
 scheduled:
 
-- Validation: stabilizing selection against its Gaussian or
-  house-of-cards equilibria; drift under `FamilySize` with selection
-  against a reference (only the unbiasedness of one generation of
-  selection is tested).
+- Validation: drift under `FamilySize` with selection against a
+  reference (only the unbiasedness of one generation of selection is
+  tested).
 - Extensions named above: pleiotropy (several traits on shared loci),
   sex-specific fitness, and phenotypic assortative mating as a built-in
   scheme (possible now through `CustomMating`, with `ctx.phenotypic`).

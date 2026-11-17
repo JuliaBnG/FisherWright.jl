@@ -1,0 +1,126 @@
+// Matched SLiM model for stabilizing selection in FisherWright
+// (see validate-stabilizing.jl for the model). An independent
+// implementation in Eidos, with SLiM's own meiosis and mutation: nonWF with
+// explicit reproduction and discrete generations, N individuals; in every
+// generation the roles of sire and dam are assigned anew (Bernoulli(1/2) per
+// parent, redrawn until both sexes are present), each parent has the
+// phenotype P = G + e, e ~ N(0, SIGMAE²) drawn anew, and every offspring
+// draws its sire among the males and its dam among the females with
+// probability proportional to exp(-P²/(2 OMEGA2)), with replacement.
+//
+// Trait loci: K = 4 KC sites evenly spaced on NCHR chromosomes of CL bp
+// (1 Morgan each), in four interleaved classes with |α| = ALPHA[class] and
+// a random sign drawn per run; additive, each copy of the derived allele
+// adds α to G (sumOfMutationsOfType over the selection coefficients, which
+// have no direct effect on fitness). New derived alleles at MU per site per
+// haplosome; a hit on a haplosome that carries the derived allele is
+// dropped (stacking policy "f"), and nothing is converted to a
+// substitution, so a fixed site blocks new hits, as a substituted site does
+// in FisherWright. Allele objects at one position are pooled.
+//
+// After BURN generations, and then every GAP generations, NS samples in
+// all, the run prints one line per sample: the genic variance of each class
+// Σ 2pq α² and its number of fixed sites, the mean genotypic value of the
+// population, and, over the GAP generations before the sample (the last 2N
+// of the burn-in for the first), the mean V_P, V_G and variance of log
+// fitness of the parents.
+//
+// Constants (slim -d): RUN (an id printed with each line), N, KC, NCHR,
+// CL, MU, OMEGA2, SIGMAE, BURN, GAP, NS,
+// ALPHA (four values, comma separated); the seed with -s.
+
+initialize() {
+    initializeSLiMModelType("nonWF");
+    defineConstant("K", 4 * KC);
+    defineConstant("A", asFloat(strsplit(ALPHA, ",")));
+    L = NCHR * CL;
+    step = asInteger(L / K);
+    defineConstant("POS", asInteger(CL / (2 * K / NCHR)) - 1 + step * (0:(K - 1)));
+    defineConstant("CLS", integerMod(0:(K - 1), 4));
+    defineConstant("EFF", A[CLS] * (2 * rbinom(K, 1, 0.5) - 1));
+    initializeMutationType("m2", 0.5, "f", 0.0);
+    m2.mutationStackPolicy = "f";
+    m2.convertToSubstitution = F;
+    initializeGenomicElementType("g1", m2, 1.0);
+    initializeGenomicElement(g1, POS, POS);
+    initializeMutationRate(MU);
+    ends = integer(0);
+    rates = float(0);
+    for (c in 0:(NCHR - 1)) {
+        if (c > 0) {
+            ends = c(ends, c * CL);
+            rates = c(rates, 0.5);
+        }
+        ends = c(ends, (c + 1) * CL - 1);
+        rates = c(rates, 1 / CL);
+    }
+    initializeRecombinationRate(rates, ends);
+    defineGlobal("ACC", float(3));     // V_P, V_G, var(log w) summed over a window
+    defineGlobal("NACC", 0);
+}
+
+mutation(m2) {
+    mut.setSelectionCoeff(EFF[match(mut.position, POS)]);
+    return T;
+}
+
+mutationEffect(m2) { return 1.0; }
+
+1 early() {
+    sim.addSubpop("p1", N);
+    community.rescheduleScriptBlock(s1, BURN, BURN + GAP * (NS - 1));
+}
+
+reproduction() {
+    inds = p1.individuals;
+    n = size(inds);
+    G = inds.sumOfMutationsOfType(m2);
+    P = G + rnorm(n, 0.0, SIGMAE);
+    lw = -P^2 / (2 * OMEGA2);
+    w = exp(lw);
+    do sex = rbinom(n, 1, 0.5);
+    while (sum(sex) == 0 | sum(sex) == n);
+    males = which(sex == 1);
+    females = which(sex == 0);
+    sire = sample(males, N, replace = T, weights = w[males]);
+    dam = sample(females, N, replace = T, weights = w[females]);
+    for (i in 0:(N - 1))
+        p1.addCrossed(inds[sire[i]], inds[dam[i]]);
+    if (sim.cycle > BURN - 2 * N) {
+        defineGlobal("ACC", ACC + c(var(P), var(G), var(lw)));
+        defineGlobal("NACC", NACC + 1);
+    }
+    self.active = 0;
+}
+
+// Discrete generations: the parents die.
+early() {
+    inds = p1.individuals;
+    inds[inds.age > 0].fitnessScaling = 0.0;
+}
+
+s1 1000000 late() {
+    if (integerMod(sim.cycle - BURN, GAP) != 0)
+        return;
+    muts = sim.mutations;
+    f = sim.mutationFrequencies(p1, muts);
+    // Pool the allele objects of a position.
+    idx = match(muts.position, POS);
+    q = float(K);
+    for (j in seqAlong(muts))
+        q[idx[j]] = q[idx[j]] + f[j];
+    va = float(4);
+    fixed = integer(4);
+    for (c in 0:3) {
+        w = which(CLS == c);
+        va[c] = sum(2 * q[w] * (1 - q[w]) * EFF[w]^2);
+        fixed[c] = sum(q[w] >= 1.0 - 1e-12);
+    }
+    gbar = sum(2 * q * EFF);
+    catn("STAB\t" + RUN + "\t" + sim.cycle + "\t" + paste(va, sep = "\t") + "\t" + paste(fixed, sep = "\t") + "\t" +
+        gbar + "\t" + ACC[0] / NACC + "\t" + ACC[1] / NACC + "\t" + ACC[2] / NACC);
+    defineGlobal("ACC", float(3));
+    defineGlobal("NACC", 0);
+    if (sim.cycle == BURN + GAP * (NS - 1))
+        sim.simulationFinished();
+}

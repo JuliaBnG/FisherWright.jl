@@ -1,0 +1,28 @@
+commit 18c2ae4 for both simulators (scripts as committed here), SLiM version 5.2, built Nov 12 2026 21:02:44, SLiM on svr, FisherWright on amd, 2026-11-17
+FisherWright 0.8.0 (commit 18c2ae4), Julia 1.13.4, threads 32, amd.xijiang.org; 2000 runs, seed 7
+N = 500 (Ne = 499.50), 8000 additive loci on 20 × 100 Mb (1 Morgan each), 4Nμ = 0.001 per site; fitness exp(-P²/(2·49)), σe = 1
+|α| = 0.2259, 0.4519, 0.9038, 1.8076; burn-in 10000 generations, then 21 samples 1000 generations apart
+runs: FisherWright 2000, SLiM 2000; per-run means of the samples, SE over runs
+
+statistic                        FisherWright                   SLiM    ratio       z
+V_a/(K_a 4μV_s), B=1          0.4285 ± 0.0013        0.4262 ± 0.0013   1.0053    1.24
+V_a/(K_a 4μV_s), B=4          1.0999 ± 0.0035        1.1079 ± 0.0036   0.9928   -1.58
+V_a/(K_a 4μV_s), B=16         1.2667 ± 0.0047        1.2633 ± 0.0047   1.0027    0.51
+V_a/(K_a 4μV_s), B=64         1.0925 ± 0.0038        1.0838 ± 0.0038   1.0080    1.62
+fixed per site, B=1         0.00731 ± 0.00004      0.00729 ± 0.00004   1.0020    0.27
+fixed per site, B=4         0.00384 ± 0.00003      0.00392 ± 0.00003   0.9813   -1.74
+fixed per site, B=16        0.00025 ± 0.00001      0.00026 ± 0.00001   0.9650   -0.86
+fixed per site, B=64        0.00000 ± 0.00000      0.00000 ± 0.00000        —       —
+mean G                       -0.0014 ± 0.0011        0.0004 ± 0.0011        —   -1.10
+V_P                           1.7754 ± 0.0010        1.7754 ± 0.0010   1.0000    0.03
+V_G                           0.7754 ± 0.0010        0.7754 ± 0.0010   1.0000    0.02
+var log w                 0.000783 ± 0.000001    0.000783 ± 0.000001   1.0003    0.20
+mean G against 0 (exact), FisherWright: z = -1.21
+mean G against 0 (exact), SLiM: z = 0.35
+
+Theory, for comparison (V_s = ω² + V_P = 50.775, k = V_G/V_s = 0.0153):
+class           B    diffusion     LD-corr.          SHC  FW/LD-corr.
+1           1.004       0.4260       0.4281       0.3343       1.0009
+2           4.018       1.0782       1.0971       0.6676       1.0025
+3          16.071       1.2044       1.2490       0.8893       1.0142
+4          64.283       1.0346       1.0682       0.9698       1.0227
