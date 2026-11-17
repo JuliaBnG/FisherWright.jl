@@ -433,8 +433,8 @@ end
     @test cbp == UInt32.(cumsum(chr))
     res = fisher_wright(args...; kw..., mutate=false, result=true, rng=Xoshiro(1))
     @test all(isempty, res.active_haplotypes) && isempty(res.substitutions)
-    sp = GenericSpecies("NoMut", Int32(8), UInt32.(chr), UInt32(50_000))
-    @test all(isempty, fisher_wright(sp, 10; mutate=false, rng=Xoshiro(2))[1])
+    sp = GenericSpecies("NoMut", UInt32.(chr); M = 50_000)
+    @test all(isempty, fisher_wright(sp, 8, 10; mutate=false, rng=Xoshiro(2))[1])
 
     # mutate = true is the default and the switch does not alter it.
     @test fisher_wright(args...; kw..., rng=Xoshiro(3))[1] ==
@@ -507,8 +507,8 @@ end
     @test all(h -> !(UInt32(7) in h), res.active_haplotypes)
 
     # Species method.
-    sp = GenericSpecies("Init", Int32(ne), UInt32.(chr), UInt32(50_000))
-    @test fisher_wright(sp, 40, 5.0; mut_base=1e5, init=burn, rng=Xoshiro(2))[1] == b
+    sp = GenericSpecies("Init", UInt32.(chr); M = 50_000)
+    @test fisher_wright(sp, ne, 40, 5.0; mut_base=1e5, init=burn, rng=Xoshiro(2))[1] == b
 
     # Invalid starting populations.
     empty_start() = [UInt32[] for _ = 1:2ne]
@@ -639,8 +639,8 @@ end
         rng=Xoshiro(6)).active_haplotypes   # init left untouched
 
     # Species method.
-    sp = GenericSpecies("Size", Int32(20), UInt32.(chr), UInt32(50_000))
-    @test fisher_wright(sp, 60, 5.0; mut_base=1e5, popsize=sizes, rng=Xoshiro(4))[1] == haps
+    sp = GenericSpecies("Size", UInt32.(chr); M = 50_000)
+    @test fisher_wright(sp, 20, 60, 5.0; mut_base=1e5, popsize=sizes, rng=Xoshiro(4))[1] == haps
 
     # Invalid trajectories.
     run(p; nt=10) = fisher_wright(20, nt, chr, 5.0; popsize=p)
@@ -745,9 +745,9 @@ end
     @test_throws TypeError fisher_wright(20, 10, chr, 5.0; mating=:random)
 
     # Species method.
-    sp = GenericSpecies("Sex", Int32(20), UInt32.(chr), UInt32(50_000))
+    sp = GenericSpecies("Sex", UInt32.(chr); M = 50_000)
     m = RandomMating(nmale=4)
-    @test fisher_wright(sp, 60, 5.0; mut_base=1e5, mating=m, rng=Xoshiro(4)) ==
+    @test fisher_wright(sp, 20, 60, 5.0; mut_base=1e5, mating=m, rng=Xoshiro(4)) ==
           fisher_wright(20, 60, chr, 5.0; kw..., mating=m, rng=Xoshiro(4))
 end
 
@@ -892,8 +892,8 @@ end
     @test (kept.census, kept.males) == (fix.census, fix.males)
 
     # Species method.
-    sp = GenericSpecies("Census", Int32(20), UInt32.(chr), UInt32(50_000))
-    @test fisher_wright(sp, 10, 5.0; mut_base=1e5, result=true, popsize=sizes).census == [20; sizes]
+    sp = GenericSpecies("Census", UInt32.(chr); M = 50_000)
+    @test fisher_wright(sp, 20, 10, 5.0; mut_base=1e5, result=true, popsize=sizes).census == [20; sizes]
 end
 
 # Fitness by position in the cohort, for tests of weighted mating: not
@@ -1194,8 +1194,8 @@ end
 
     # Species method, and a lethal recessive never becomes homozygous... in
     # an adult that reproduces: no selected substitution can occur.
-    sp = GenericSpecies("Sel", Int32(N), UInt32.(chr), UInt32(2_000))
-    @test fisher_wright(sp, 300, 2.0; mut_base=1e4, result=true, fitness=f, rng=Xoshiro(4)).selected_haplotypes ==
+    sp = GenericSpecies("Sel", UInt32.(chr); M = 2_000)
+    @test fisher_wright(sp, N, 300, 2.0; mut_base=1e4, result=true, fitness=f, rng=Xoshiro(4)).selected_haplotypes ==
           res.selected_haplotypes
     lethal = SiteFitness(FitnessLoci(collect(50:50:10_000), -1.0; h=0.0, μ=1e-4))
     dead = fisher_wright(N, 200, chr, 2.0; kw..., fitness=lethal, mating=RandomMating(sexratio=0.5),
@@ -2159,8 +2159,8 @@ end
     # Errors, and the Species method.
     @test_throws ArgumentError fisher_wright(10, 2, chr, 5.0; pedigree=1)
     @test_throws ArgumentError fisher_wright(10, 2, chr, 5.0; kw..., pedigree=-1)
-    sp = GenericSpecies("Ped", Int32(10), UInt32.(chr), UInt32(50_000))
-    @test isequal(fisher_wright(sp, 6, 5.0; mut_base=1e5, result=true, pedigree=2, rng=Xoshiro(4)).pedigree, w.pedigree)
+    sp = GenericSpecies("Ped", UInt32.(chr); M = 50_000)
+    @test isequal(fisher_wright(sp, 10, 6, 5.0; mut_base=1e5, result=true, pedigree=2, rng=Xoshiro(4)).pedigree, w.pedigree)
 end
 
 @testset "Simulation invariants at scale" begin
@@ -2228,20 +2228,27 @@ end
 
 @testset "Species-based simulation" begin
     # Test using a small generic species
-    sp = GenericSpecies("Mini", Int32(20), UInt32[100_000, 100_000], UInt32(50_000_000))
-    res = fisher_wright(sp, 30, 1.0; result=true)
+    sp = GenericSpecies("Mini", UInt32[100_000, 100_000]; M = 50_000_000)
+    res = fisher_wright(sp, 20, 30, 1.0; result=true)
+    # the form without a size: deprecated; it needs a species that has one
+    if hasfield(Species, :nid)                     # BnGStructs 0.3
+        old = GenericSpecies("Old", 20, UInt32[100_000, 100_000]; M = 50_000_000)
+        @test fisher_wright(old, 5; rng = Xoshiro(1))[1] == fisher_wright(old, 20, 5; rng = Xoshiro(1))[1]
+    else                                           # BnGStructs 0.4: no population size
+        @test_throws ArgumentError fisher_wright(sp, 5)
+    end
     @test res isa FisherWrightResult
     @test length(res.active_haplotypes) == 40
     @test res.chromosome_ends == UInt32[100_000, 200_000]
 
     # Test default tuple return and default mr=1.0
-    mts, cbp = fisher_wright(sp, 10)
+    mts, cbp = fisher_wright(sp, 20, 10)
     @test length(mts) == 40
     @test cbp == UInt32[100_000, 200_000]
 
     # Test Cattle instance
-    cattle = Cattle(15)
-    res_cattle = fisher_wright(cattle, 10, 1.0; result=true)
+    cattle = Cattle()
+    res_cattle = fisher_wright(cattle, 15, 10, 1.0; result=true)
     @test res_cattle isa FisherWrightResult
     @test length(res_cattle.active_haplotypes) == 30
     @test length(res_cattle.chromosome_ends) == 29
