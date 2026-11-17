@@ -150,7 +150,9 @@ At constant numbers the asymptotic rate of loss of heterozygosity,
 ``1/(2N_e)``, corresponds to this value plus ½ (see
 [Effective size](@ref)). Selection that is heritable lowers the
 effective size further over generations (Robertson 1961), which a
-record of one generation at a time does not include.
+record of one generation at a time does not include: under strong
+directional selection the drift effective size can be half of this value
+(see [Drift under `FamilySize` with selection: the pedigree](@ref)).
 
 ## Pedigree
 

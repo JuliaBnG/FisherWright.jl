@@ -364,6 +364,90 @@ Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "s
   biallelic, underdominant loci. These departures belong to the model,
   since SLiM shows them too; they are not tested.
 
+## Drift under `FamilySize` with selection: the pedigree
+
+The drift test of `FamilySize` (see
+[Validation of the mating schemes](@ref)) uses the recursion of the
+heterozygosity, which holds without selection only. With selection the reference is the pedigree itself.
+`validate-family-selection.jl` checks that the alleles FisherWright
+transmits and the pedigree it records agree, generation after
+generation, under `FamilySize` with and without selection.
+
+**Reference.** At a neutral locus unlinked to every selected locus, the
+expected heterozygosity of generation ``t`` given the pedigree is
+
+```math
+E[H_t \mid \text{pedigree}] = H^*\,(1 - \bar\theta_t),
+```
+
+where ``H^*`` is the heterozygosity of the base from which the founders'
+alleles are drawn and ``\bar\theta_t`` is the mean coancestry of
+generation ``t`` over all ordered pairs of individuals, self-coancestry
+``(1 + F_i)/2`` included. Mendelian segregation at an unlinked locus is
+independent of the genotypes that selection acts on, so this holds
+exactly for any selection. That includes the cumulative effect of
+heritable fitness on drift (Robertson 1961), which acts through the
+pedigree. ``\bar\theta_t`` is computed by the tabular method from the
+recorded pedigree (`pedigree = 10` in each of ten continued runs of 10
+generations).
+
+**Design.** ``N = 100`` diploids for 100 generations, with binomial sex.
+Selection is through `TraitFitness`: 400 additive loci (``h = ½``,
+effect ``\pm 0.5``, the sign drawn per locus and run) on chromosomes
+1–4, mutating at ``\mu = 10^{-3}`` per locus and generation from a
+monomorphic start, with ``\sigma_e = 1``. The neutral markers are 1,000
+loci on chromosomes 5–24, with the founders' alleles drawn independently
+at frequency ½ (``H^* = ½``) and no mutation. Every chromosome is 100 Mb
+and 1 Morgan, so the markers are unlinked to the trait loci. The four
+scenarios are:
+
+| | Mating | Fitness |
+|:--|:--|:--|
+| 1 | `FamilySize(dams = :random)` | none (control) |
+| 2 | `FamilySize(dams = :random)` | `Directional(0.5)` |
+| 3 | `FamilySize(dams = 1.0)` (Gamma(1) dam weights) | `Directional(0.5)` |
+| 4 | `FamilySize(dams = 1.0)` | `Stabilizing(0, 4)` |
+
+Per run, every 10 generations: ``H_t``, the mean of ``2pq`` over the
+markers, and ``\bar\theta_t``. The test is that the mean over runs of
+``H_t - ½(1 - \bar\theta_t)`` is 0, with standard errors over 2,000 runs
+per scenario and seed and failure at ``|z| > 3.5``. Reported for
+comparison are the drift effective size from ``\bar\theta`` between
+generations 50 and 100, and [`effective_size`](@ref), the
+within-generation value from the realized family sizes.
+
+**Results, seed 2026** (64 threads, 5 min):
+
+```@eval
+using Markdown, FisherWright
+Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "src", "validation", "validate-family-selection-seed2026.txt"), String)))
+```
+
+**Results, seed 7** (32 threads, 4 min):
+
+```@eval
+using Markdown, FisherWright
+Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "src", "validation", "validate-family-selection-seed7.txt"), String)))
+```
+
+- **The check.** All 88 comparisons pass (4 scenarios × 11
+  generations × 2 seeds), with ``|z| \le 2.18``. The marker
+  heterozygosity follows the pedigree expectation to within 0.00034,
+  while it falls from 0.50 to between 0.008 and 0.23.
+- **Without selection** the drift effective size is 67.0, and
+  `effective_size` is 66.4. The difference is the ½ of
+  ``N_e \approx 1/a + ½`` (see [Effective size](@ref)), so the two
+  agree.
+- **Directional selection** lowers the drift effective size to 14.7
+  with random dam families and to 12.4 with Gamma(1) dam families.
+  `effective_size` gives 30.3 and 21.2. Drift is about twice as fast as
+  the realized family sizes of single generations imply. That is
+  Robertson's cumulative effect: selected parents are related and pass
+  their advantage on, so the same families keep being favoured. One
+  generation's record cannot include it.
+- **Stabilizing selection** (``\omega^2 = 4``) lowers the drift
+  effective size only to 33.0, against 34.6 from the family sizes.
+
 ## CI test
 
 The testset "Selection under recurrent mutation" runs case 1 of the
@@ -383,6 +467,10 @@ rate at the fitness loci, and the weighted draw of parents.
 
 ## Not covered
 
+- A theoretical prediction of the cumulative effect of selection on
+  drift (Robertson 1961; Santiago and Caballero 1995): the drift of
+  `FamilySize` with selection is checked against the realized pedigree,
+  and its effective size is reported, not compared with a formula.
 - Stabilizing selection in the Gaussian regime (a continuum of alleles
   per locus): the loci are biallelic, so only the house-of-cards
   regime is compared, against SLiM; the diffusion theory is not
@@ -406,7 +494,9 @@ and the stabilizing-selection driver
 with
 [`validate-stabilizing.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-stabilizing.jl)
 and
-[`validate-stabilizing.slim`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-stabilizing.slim).
+[`validate-stabilizing.slim`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-stabilizing.slim),
+and
+[`validate-family-selection.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-family-selection.jl).
 Rerun them, and replace the result files and the reference values in
 `test/runtests.jl`, when the draw of parents, `SiteFitness`,
 `TraitFitness`, the
@@ -425,4 +515,6 @@ julia -t 64 --project=. $D/scripts/validate-prf.jl 1000 2026 > $D/validate-prf-s
 # the work between machines
 $D/scripts/validate-stabilizing.sh path/to/slim stab-2026 2000 2026 64
 cp stab-2026/report.txt $D/validate-stabilizing-seed2026.txt
+# 2,000 runs per scenario: about 5 min on 64 threads
+julia -t 64 --project=. $D/scripts/validate-family-selection.jl 2000 2026 > $D/validate-family-selection-seed2026.txt
 ```
