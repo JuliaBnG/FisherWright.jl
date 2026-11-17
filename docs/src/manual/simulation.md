@@ -43,20 +43,16 @@ haplotypes, chromosome_ends = fisher_wright(20, 10, [100_000, 100_000], 1.0)
 
 ## Species parameters
 
-When using a `BnGStructs.Species`, pass the species object directly instead of
-separately supplying its population size and chromosome lengths. The default
-`M` is taken from the species, while all simulation keywords remain available:
+When using a `BnGStructs.Species`, pass the species object instead of the
+chromosome lengths, with the population size before the number of
+generations. The default `M` is taken from the species, while all
+simulation keywords remain available:
 
 ```@example simulation
 using BnGStructs
 
-species = GenericSpecies(
-    "Example",
-    Int32(20),
-    UInt32[100_000, 100_000],
-    UInt32(50_000_000),
-)
-result = fisher_wright(species, 10; result=true)
+species = GenericSpecies("Example", UInt32[100_000, 100_000]; M = 50_000_000)
+result = fisher_wright(species, 20, 10; result=true)
 result.chromosome_ends
 ```
 

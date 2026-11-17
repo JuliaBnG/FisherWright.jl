@@ -216,6 +216,7 @@ end
 """
     fisher_wright(
         sp::Species,
+        ne::Integer,
         nt::Integer,
         mr::Float64 = 1.0;
         M = sp.M,
@@ -236,14 +237,14 @@ end
 Simulate a diploid Fisher-Wright population using species parameters from a
 `BnGStructs.Species` instance (such as `Cattle`, `Pig`, `Chicken`, or `GenericSpecies`).
 
-The population size `ne`, chromosome lengths `chr`, and default base pairs per Morgan `M`
-are automatically extracted from `sp`:
-- `ne = Int(sp.nid)`
-- `chr = sp.chromosome`
-- `M = sp.M`
+The chromosome lengths `chr` and the default base pairs per Morgan `M` are
+taken from `sp` (`chr = sp.chromosome`, `M = sp.M`); the population size
+`ne` is given, as a species carries none (BnGStructs 0.4 removed
+`Species.nid`).
 
 # Arguments
-- `sp::Species`: Species definition from `BnGStructs` specifying diploid population size (`nid`), chromosome lengths (`chromosome`), and recombination scale (`M`).
+- `sp::Species`: Species definition from `BnGStructs` specifying chromosome lengths (`chromosome`) and recombination scale (`M`).
+- `ne::Integer`: Number of diploid individuals.
 - `nt::Integer`: Number of generations to simulate (`nt > 0`).
 - `mr::Float64 = 1.0`: Mutation rate per `mut_base` base pairs per meiosis (`0.01 < mr < 20.0`).
 
@@ -253,7 +254,7 @@ are automatically extracted from `sp`:
 - `result::Bool = false`: If `true`, returns a [`FisherWrightResult`](@ref); otherwise returns `(prt, cbp)`.
 - `fixation_interval::Int = 1`: Interval (in generations) to scan for and extract fixed substitutions when `result = true`.
 - `mutate::Bool = true`: If `false`, no new mutations are generated; see the method above.
-- `init = nothing`: Starting population of `2 * sp.nid` haplotypes, or a [`FisherWrightResult`](@ref); see the method above.
+- `init = nothing`: Starting population of `2 * ne` haplotypes, or a [`FisherWrightResult`](@ref); see the method above.
 - `popsize = nothing`: Census size per generation, as a vector of `nt` integers or a function of the generation; see the method above.
 - `mating = RandomMating()`: Mating scheme, for example `RandomMating(nmale = 10)`; see the method above.
 - `fitness = Neutral()`: Fitness model, for example `SiteFitness(loci)` or `TraitFitness(loci; σe, fitness)`; requires `result = true`; see the method above.
@@ -266,13 +267,14 @@ are automatically extracted from `sp`:
 ```julia
 using BnGStructs, FisherWright
 
-sp = GenericSpecies("Example", Int32(20), UInt32[100_000, 100_000], UInt32(50_000_000))
-res = fisher_wright(sp, 10; result = true)
+sp = GenericSpecies("Example", UInt32[100_000, 100_000]; M = 50_000_000)
+res = fisher_wright(sp, 20, 10; result = true)
 res.chromosome_ends
 ```
 """
 function fisher_wright(
     sp::Species,
+    ne::Integer,
     nt::Integer,
     mr::Float64 = 1.0;
     M = sp.M,
@@ -290,7 +292,7 @@ function fisher_wright(
     rng::AbstractRNG = Random.default_rng(),
 )
     return fisher_wright(
-        Int(sp.nid),
+        Int(ne),
         nt,
         sp.chromosome,
         mr;
@@ -308,4 +310,20 @@ function fisher_wright(
         progress_interval = progress_interval,
         rng = rng,
     )
+end
+
+"""
+    fisher_wright(sp::Species, nt::Integer, mr::Float64 = 1.0; kw...)
+
+Deprecated: the population size came from `sp.nid`, which BnGStructs 0.4
+removed. Use `fisher_wright(sp, ne, nt, mr; kw...)`. With BnGStructs 0.3
+and a species that has a size this still runs (with a deprecation
+warning); otherwise it throws an `ArgumentError`.
+"""
+function fisher_wright(sp::Species, nt::Integer, mr::Float64 = 1.0; kw...)
+    hasfield(Species, :nid) && getfield(sp, :nid) > 0 || throw(ArgumentError(
+        "the species carries no population size; call fisher_wright(sp, ne, nt[, mr])"))
+    Base.depwarn("fisher_wright(sp, nt[, mr]) is deprecated; pass the population size: " *
+                 "fisher_wright(sp, ne, nt[, mr])", :fisher_wright)
+    return fisher_wright(sp, Int(getfield(sp, :nid)), nt, mr; kw...)
 end

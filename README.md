@@ -576,6 +576,17 @@ overlap), with the same output. The new schemes and pedigree recording
 cost at most 2% over random mating. The log is
 `docs/src/validation/benchmark-v0.8.0-vs-v0.7.1.txt`.
 
+## Changes in v0.8.1
+
+**BnGStructs 0.4.** BnGStructs 0.4 removed the population size from
+`Species` (`Species.nid`): a size belongs to a population, not to a
+species. The species method now takes it explicitly,
+`fisher_wright(sp, ne, nt[, mr]; kw...)`, and the compat allows
+BnGStructs 0.2.5–0.4. The old form `fisher_wright(sp, nt[, mr])` is
+deprecated: with BnGStructs 0.3 and a species that has a size it still
+runs (with a deprecation warning), with 0.4 it throws an
+`ArgumentError` that names the new form. Seeded output is unchanged.
+
 ## Contributing and support
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and questions go to the
