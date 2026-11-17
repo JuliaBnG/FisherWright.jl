@@ -41,7 +41,8 @@ The generated site is in `docs/build/`.
   ratio
 - Runs can start from a given population and be continued, with or
   without new mutations
-- Poisson crossovers (uniform rate, `M` bp per Morgan) with free assortment
+- Poisson crossovers, uniform within a chromosome, with a genetic length
+  per chromosome (`morgan`, or `M` bp per Morgan) and free assortment
   between chromosomes, and recurrent neutral mutation
 - Optional extraction of fixed mutations during the run, which keeps memory
   bounded over long burn-ins
@@ -58,8 +59,8 @@ The generated site is in `docs/build/`.
   mating schemes and of linked selection (see the manual)
 
 Not modelled: hard selection and an emergent census size, overlapping
-generations, population structure or migration, and non-uniform
-recombination maps in `fisher_wright`.
+generations, population structure or migration, crossover interference,
+and recombination rates that vary within a chromosome.
 
 ## Main Functions
 
@@ -74,6 +75,7 @@ Keyword arguments:
 | Keyword | Default | Meaning |
 |---|---|---|
 | `M` | `1e8` | base pairs per Morgan (recombination only) |
+| `morgan` | `nothing` | genetic length of each chromosome in Morgans; replaces `chr ./ M` |
 | `mut_base` | `1e8` | base pairs per unit of `mr` (mutation only) |
 | `result` | `false` | return a `FisherWrightResult` and extract fixed positions |
 | `fixation_interval` | `1` | generations between fixation scans, when `result = true` |
@@ -586,6 +588,17 @@ BnGStructs 0.2.5–0.4. The old form `fisher_wright(sp, nt[, mr])` is
 deprecated: with BnGStructs 0.3 and a species that has a size it still
 runs (with a deprecation warning), with 0.4 it throws an
 `ArgumentError` that names the new form. Seeded output is unchanged.
+
+## Changes in v0.8.2
+
+**Per-chromosome genetic lengths.** `fisher_wright` and
+`uniform_recombination_map` take `morgan`, the genetic length of each
+chromosome in Morgans, in place of the genome-wide `chr ./ M`. The
+species method reads `sp.morgan` (BnGStructs ≥ 0.3), so a species
+built with its own genetic lengths now recombines with them; `M` or
+`morgan` overrides it. `morgan = chr ./ M` gives the same realization
+as `M`, and seeded output is unchanged for every species with default
+genetic lengths, the named species included.
 
 ## Contributing and support
 

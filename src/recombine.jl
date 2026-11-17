@@ -64,17 +64,20 @@ struct RecombinationMap
     end
 end
 """
-    uniform_recombination_map(chr::Vector{<:Integer}; M = 1e8) -> RecombinationMap
-    uniform_recombination_map(sp::Species; M = sp.M) -> RecombinationMap
+    uniform_recombination_map(chr::Vector{<:Integer}; M = 1e8, morgan = nothing) -> RecombinationMap
+    uniform_recombination_map(sp::Species; M = nothing, morgan = nothing) -> RecombinationMap
 
-Construct a uniform, single-interval-per-chromosome [`RecombinationMap`](@ref).
+Construct a uniform, single-interval-per-chromosome [`RecombinationMap`](@ref):
+crossovers on chromosome `i` are a Poisson process, uniform along its length,
+with mean `morgan[i]` per meiosis (the genetic length in Morgans).
 
 # Arguments
 - `chr::Vector{<:Integer}`: Chromosome lengths in base pairs (all positive).
-- `sp::Species`: A `BnGStructs.Species` object supplying chromosome lengths (`sp.chromosome`) and default `M` (`sp.M`).
+- `sp::Species`: A `BnGStructs.Species` object supplying chromosome lengths (`sp.chromosome`) and their genetic lengths (`sp.morgan`, BnGStructs ≥ 0.3; `sp.chromosome ./ sp.M` before).
 
 # Keywords
-- `M`: Base pairs per Morgan (default `1e8`, or `sp.M` for species). Chromosome `i` of length `L` receives an expected `L / M` crossovers per meiosis.
+- `M`: Base pairs per Morgan (default `1e8`). Chromosome `i` of length `L` receives an expected `L / M` crossovers per meiosis. For a species, giving `M` replaces the species' genetic lengths by `sp.chromosome ./ M`.
+- `morgan = nothing`: Genetic length of each chromosome in Morgans, one finite, non-negative value per chromosome; replaces `chr ./ M`. For a species it replaces `sp.morgan`; `M` and `morgan` cannot both be given there.
 
 # Examples
 ```julia
@@ -82,18 +85,46 @@ using FisherWright
 
 rmap = uniform_recombination_map([100_000, 200_000]; M = 1e8)
 rmap.cbp == UInt32[100_000, 300_000]
+
+# A 1 Mb chromosome of 0.5 M (obligate crossover) beside a 100 Mb one of 1 M
+rmap = uniform_recombination_map([1_000_000, 100_000_000]; morgan = [0.5, 1.0])
 ```
 """
-function uniform_recombination_map(chr::Vector{T}; M=1e8) where {T<:Integer}
+function uniform_recombination_map(chr::Vector{T}; M=1e8, morgan=nothing) where {T<:Integer}
     all(chr .> 0) || throw(ArgumentError("chromosome lengths must be positive"))
-    M > 0 || throw(ArgumentError("M must be positive"))
+    rates = _genetic_lengths(chr, M, morgan)
     cbp = UInt32.(cumsum(chr))
     ends = [UInt32[cbp[i]] for i in eachindex(cbp)]
-    rates = [Float64[chr[i]/M] for i in eachindex(chr)]
-    return RecombinationMap(cbp, ends, rates)
+    return RecombinationMap(cbp, ends, [Float64[r] for r in rates])
 end
 
-uniform_recombination_map(sp::Species; M=sp.M) = uniform_recombination_map(sp.chromosome; M=M)
+function uniform_recombination_map(sp::Species; M=nothing, morgan=nothing)
+    return uniform_recombination_map(sp.chromosome; M=1e8, morgan=_species_morgan(sp, M, morgan))
+end
+
+# Genetic length per chromosome: `morgan` if given, else `chr ./ M`.
+function _genetic_lengths(chr, M, morgan)
+    if morgan === nothing
+        M > 0 || throw(ArgumentError("M must be positive"))
+        return Float64[c / M for c in chr]
+    end
+    length(morgan) == length(chr) ||
+        throw(ArgumentError("morgan needs one genetic length per chromosome ($(length(chr)))"))
+    all(m -> isfinite(m) && m >= 0, morgan) ||
+        throw(ArgumentError("genetic lengths must be finite and non-negative"))
+    return convert(Vector{Float64}, morgan)
+end
+
+# The genetic lengths of a species, unless `M` or `morgan` overrides them.
+function _species_morgan(sp::Species, M, morgan)
+    M === nothing || morgan === nothing ||
+        throw(ArgumentError("give M or morgan, not both"))
+    morgan === nothing || return morgan
+    M === nothing || return _genetic_lengths(sp.chromosome, M, nothing)
+    # Species.morgan exists from BnGStructs 0.3.
+    return hasfield(Species, :morgan) ? getfield(sp, :morgan) :
+           _genetic_lengths(sp.chromosome, sp.M, nothing)
+end
 
 """
     recombine(
