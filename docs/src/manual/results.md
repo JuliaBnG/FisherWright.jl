@@ -63,7 +63,7 @@ simulations. The result fields are:
 | `selected_haplotypes` | Derived alleles each haplotype carries at the fitness loci; empty in a neutral run. |
 | `selected_substitutions` | Fitness loci whose derived allele was fixed and removed. |
 | `mean_fitness`, `mean_log_fitness`, `var_log_fitness` | Fitness of the parents of each generation: mean, and mean and variance of its logarithm. |
-| `mean_genotypic`, `var_genotypic`, `mean_phenotypic`, `var_phenotypic` | Under `TraitFitness`, the mean and variance of the genotypic value and of the phenotype of the parents of each generation; `NaN` otherwise. |
+| `mean_genotypic`, `var_genotypic`, `mean_phenotypic`, `var_phenotypic` | Under `TraitFitness` with `T` traits, the mean vector (`T × ngen`) and the covariance matrix (`T × T × ngen`) of the genotypic values and of the phenotypes of the parents of each generation; `NaN` otherwise. `T = 1` for one trait or none. |
 | `paternal_pairs`, `maternal_pairs` | Ordered pairs of offspring sharing a sire, and sharing a dam, in each generation. |
 | `selfing` | Proportion of selfed offspring in each generation; 0 with separate sexes. |
 | `related_matings` | Under `AvoidRelatives`, offspring of relatives that could not be avoided, per generation; 0 otherwise. |

@@ -37,6 +37,7 @@ Neutral
 TraitFitness
 TraitLoci
 trait_loci
+ntraits
 Stabilizing
 Directional
 ```

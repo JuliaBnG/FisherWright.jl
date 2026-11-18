@@ -48,7 +48,8 @@ The generated site is in `docs/build/`.
   bounded over long burn-ins
 - Selection at an explicit table of sites with given effects (`s`, `h`,
   or drawn from a distribution of fitness effects), or on a quantitative
-  trait (stabilizing, directional or any function of the phenotype);
+  trait (stabilizing, directional or any function of the phenotype),
+  or on several traits with pleiotropic effects at shared loci;
   soft and within each sex; the causal variants and their effects can be
   exported
 - Effective size realized by the family sizes of a run
@@ -83,7 +84,7 @@ Keyword arguments:
 | `init` | `nothing` | starting population: `2ne` haplotypes or a `FisherWrightResult` to continue from |
 | `popsize` | `nothing` | census size per generation: a vector of `nt` sizes or a function of the generation, for example `bottleneck(100, 10, 21, 5)` or `growth(50, 0.05)` |
 | `mating` | `RandomMating()` | `RandomMating(nmale = m)` or `RandomMating(sexratio = p)` fixes the number or proportion of males; `FamilySize(...)` and `Hierarchical(s, d)` control family sizes; `Monoecious(selfing = s)` for hermaphrodites; `AvoidRelatives(inner; level)` avoids related mates; `CustomMating(f)` leaves the matings to a function |
-| `fitness` | `Neutral()` | `SiteFitness(loci)` selects on the sites of a `FitnessLoci` table, `TraitFitness(loci; σe, fitness)` on a quantitative trait; needs `result = true` |
+| `fitness` | `Neutral()` | `SiteFitness(loci)` selects on the sites of a `FitnessLoci` table, `TraitFitness(loci; σe, Σe, fitness)` on one or more quantitative traits; needs `result = true` |
 | `pedigree` | `0` | generations of matings to record in the result's `pedigree`; needs `result = true` |
 | `verbose` | `false` | report progress (mean muts/hap, substitutions, elapsed, ETA) to `stderr` |
 | `progress_interval` | `100` | generations between progress reports, when `verbose = true` |
@@ -599,6 +600,47 @@ built with its own genetic lengths now recombines with them; `M` or
 `morgan` overrides it. `morgan = chr ./ M` gives the same realization
 as `M`, and seeded output is unchanged for every species with default
 genetic lengths, the named species included.
+
+## Changes in v0.9.0
+
+**Pleiotropy.** A `TraitLoci` table takes a `K × T` matrix of effects:
+`T` traits on shared loci, each site with an effect on every trait,
+and dominance per site or per site and trait. `trait_loci` draws the
+effects from a multivariate distribution, for example
+`MvNormal(0, Σa)`, whose covariance becomes the genetic covariance of
+the traits. `TraitFitness(loci; σe, Σe, fitness)` adds environmental
+deviations with standard deviations `σe` (independent) or covariance
+matrix `Σe` (positive semi-definite), and selects on the phenotype
+vector: `Stabilizing(θ, Ω)` (Gaussian, `Ω` positive definite, its
+off-diagonal elements correlational selection), `Directional(β)`
+(the selection gradient), or any function of the vector. New export:
+`ntraits`.
+
+**Breaking changes.**
+
+- `mean_genotypic` and `mean_phenotypic` of `FisherWrightResult` are
+  `T × ngen` matrices, and `var_genotypic` and `var_phenotypic`
+  `T × T × ngen` arrays, the covariance matrix of each generation. A
+  run with one trait (or none) has `T = 1`: `mean_genotypic[1, g]` and
+  `var_genotypic[1, 1, g]`; linear indexing (`mean_genotypic[g]`)
+  still gives generation `g`.
+- `TraitLoci.a` and `TraitLoci.h` are `K × T` matrices; `Stabilizing`
+  has fields `θ::Vector` and `Ω::Matrix` (was `θ`, `ω²`) and
+  `Directional` has `β::Vector`. The constructors with numbers are
+  unchanged.
+- `TraitFitness` no longer has a field `σe`; it keeps `Σe` and a factor
+  `L` with `L L' = Σe`.
+- `MatingContext.genotypic` and `phenotypic` are `T × n` matrices
+  (`view(ctx.phenotypic, 1, :)` for one trait).
+- `to_haplotype(result, loci::TraitLoci)` names the effect columns
+  `a1, …, aT` and `h1, …, hT` when `T > 1`; one trait keeps `a`, `h`.
+
+Seeded output is unchanged for one trait: the scalar formulae and the
+order of the environmental draws are kept, and runs with
+`Directional`, `Stabilizing` and a user function, with and without
+environmental noise, give the same populations and records as 0.8.2.
+With `T` traits every individual takes `T` standard normal draws per
+generation, in trait order.
 
 ## Contributing and support
 

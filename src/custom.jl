@@ -24,8 +24,9 @@ writes the matings. Parents are numbered `1:n` within their cohort.
   the starting population.
 - `haplotypes`: the `2n` haplotypes of the parents (individual `i` is
   `2i - 1` and `2i`), neutral mutation positions, read-only.
-- `genotypic`, `phenotypic`: the genotypic value and phenotype of each parent
-  under [`TraitFitness`](@ref); 0 otherwise.
+- `genotypic`, `phenotypic`: the genotypic values and phenotypes of the
+  parents under [`TraitFitness`](@ref), `T × n` matrices with one row per
+  trait (column `k` is parent `k`); a `1 × n` matrix of zeros otherwise.
 - `rng`: the random number generator of the run, to be used for every draw so
   that the run stays reproducible.
 """
@@ -55,7 +56,7 @@ parental cohort. Its return value is ignored. Write it with `do` syntax:
 ```julia
 assortative = CustomMating() do ctx
     # pair each offspring's parents among neighbours in phenotype
-    order = sortperm(ctx.phenotypic)
+    order = sortperm(view(ctx.phenotypic, 1, :))
     for i in 1:ctx.noffspring
         k = rand(ctx.rng, 1:ctx.n - 1)
         ctx.pm[i, 1], ctx.pm[i, 2] = order[k], order[k + 1]
@@ -102,7 +103,7 @@ function _mate!(m::CustomMating, f::AbstractFitness, st::SimState, no::Int, rng:
     f isa Neutral && fill!(w, 1.0)
     ctx = MatingContext(st.ped.gen + 1, n, no, view(st.pm, 1:no, :), st.sex, w,
         st.ped.first:st.ped.first+n-1, view(st.rel, :, 1:n), view(st.prt, 1:2n),
-        view(st.gval, 1:n), view(st.pval, 1:n), rng)
+        view(st.gval, :, 1:n), view(st.pval, :, 1:n), rng)
     m.f(ctx)
     length(st.sex) == n ||
         throw(ArgumentError("generation $(ctx.generation): the callback resized ctx.sex"))

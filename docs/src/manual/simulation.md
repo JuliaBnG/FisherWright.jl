@@ -429,14 +429,15 @@ every generation `f(ctx)` receives a `MatingContext` and fills
 The context also holds the generation, the pedigree IDs of the parents,
 their parents and grandparents (`ctx.relatives`, as kept by
 `AvoidRelatives`), their haplotypes, their relative fitness, and their
-genotypic value and phenotype under `TraitFitness`, with the `rng` of
-the run. Positive assortative mating on the phenotype, for example:
+genotypic values and phenotypes under `TraitFitness` (`T × n`
+matrices, one row per trait), with the `rng` of the run. Positive
+assortative mating on the phenotype, for example:
 
 ```@example simulation
 using Random
 
 assortative = CustomMating() do ctx
-    order = sortperm(ctx.phenotypic)
+    order = sortperm(view(ctx.phenotypic, 1, :))   # trait 1
     for i in 1:ctx.noffspring
         k = rand(ctx.rng, 1:ctx.n-1)          # neighbours in phenotype
         ctx.pm[i, 1], ctx.pm[i, 2] = order[k], order[k+1]
@@ -580,21 +581,22 @@ up = fisher_wright(100, 200, chr, 1.0; result=true, rng=Xoshiro(2),
                    fitness=TraitFitness(qtl; σe=1.0,
                                         fitness=Directional(0.5)))
 g = [1, 50, 100, 150, 200]
-(up.mean_genotypic[g], up.var_genotypic[g])
+(up.mean_genotypic[1, g], up.var_genotypic[1, 1, g])
 ```
 
 The result records, for the parents of every generation, the mean and
-variance of ``G`` and of ``P`` (`mean_genotypic`, `var_genotypic`,
-`mean_phenotypic`, `var_phenotypic`; `NaN` for generations without a
-trait model), besides the fitness record. Continuing the population
-under stabilizing selection around ``\theta = 2`` pulls the mean back:
+variance of ``G`` and of ``P`` (`mean_genotypic[1, g]`,
+`var_genotypic[1, 1, g]`, `mean_phenotypic`, `var_phenotypic`; `NaN`
+for generations without a trait model), besides the fitness record.
+Continuing the population under stabilizing selection around
+``\theta = 2`` pulls the mean back:
 
 ```@example simulation
 held = fisher_wright(100, 200, chr, 1.0; init=up, result=true,
                      rng=Xoshiro(3),
                      fitness=TraitFitness(qtl; σe=1.0,
                                           fitness=Stabilizing(2.0, 4.0)))
-held.mean_genotypic[[200, 250, 300, 350, 400]]
+held.mean_genotypic[1, [200, 250, 300, 350, 400]]
 ```
 
 `to_haplotype(result, qtl)` exports the genotypes at the trait loci
@@ -603,6 +605,52 @@ the true genotypic values of the population follow. A fixed site adds
 its ``a`` to every ``G``; it is kept as an offset when it is moved out
 of the haplotypes, so the realization does not depend on
 `fixation_interval`.
+
+### Pleiotropy
+
+With a ``K \times T`` matrix of effects, a `TraitLoci` table describes
+``T`` traits on the same loci: site ``k`` has the effect ``a_{kt}`` on
+trait ``t`` (zero if it does not affect it) and dominance ``h_{kt}``
+(given per site, or per site and trait). ``G`` and ``P = G + e`` are
+vectors, with ``e \sim N(0, \Sigma_e)``, and fitness is a function of
+the vector ``P``:
+
+| Fitness | ``w(P)`` |
+|---|---|
+| `Directional(β)` | ``e^{\beta' P}``; ``\beta`` is the selection gradient, and with a normal phenotype the selection differential is ``\mathbf{P}\beta`` |
+| `Stabilizing(θ, Ω)` | ``e^{-(P - \theta)'\Omega^{-1}(P - \theta)/2}``; off-diagonal elements of ``\Omega`` make selection correlational |
+| any function | its value for the phenotype vector, non-negative |
+
+`trait_loci` draws the effects of each site from a multivariate
+distribution, so that pleiotropic effects are correlated: with effects
+``a \sim N(0, \Sigma_a)`` at additive loci, the genetic covariance
+matrix that mutation and drift build up is proportional to
+``\Sigma_a`` (see [Validation of selection](@ref)). The environmental
+deviations are given as standard deviations, `σe = [σ₁, …, σ_T]`
+(independent), or as a covariance matrix `Σe`. Selection on the first
+of two traits whose effects are negatively correlated:
+
+```@example simulation
+Σa = [0.04 -0.02; -0.02 0.04]
+two = trait_loci(chr, 200; a=MvNormal(zeros(2), Σa), μ=2e-4,
+                 rng=Xoshiro(4))
+base = fisher_wright(100, 200, chr, 1.0; result=true, rng=Xoshiro(5),
+                     fitness=TraitFitness(two; fitness=P -> 1.0))
+β = [0.5, 0.0]                      # selection on trait 1 only
+sel = fisher_wright(100, 50, chr, 1.0; init=base, result=true,
+                    rng=Xoshiro(6),
+                    fitness=TraitFitness(two; σe=[1.0, 1.0],
+                                         fitness=Directional(β)))
+g = [200, 225, 250]
+(sel.mean_genotypic[:, g], sel.var_genotypic[:, :, 200])
+```
+
+The first trait responds directly and the second in the opposite
+direction, through the shared loci only, at about ``\beta_1 G_{21}``
+per generation (Lande 1979). The records are a mean vector per
+generation (`mean_genotypic[:, g]`) and a covariance matrix per
+generation (`var_genotypic[:, :, g]`). `to_haplotype(result, two)`
+exports the effects as columns `a1`, `a2` and `h1`, `h2`.
 
 ## Reproducibility
 
