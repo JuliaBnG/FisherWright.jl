@@ -67,8 +67,8 @@ function neutral_case(N, T, σe, reps, rng)
         loci = trait_loci(CHR, K; a = Normal(0, SIGMA_A), μ = MU, rng = rng)
         f = TraitFitness(loci; σe = σe, fitness = P -> 1.0)
         res = fisher_wright(N, T, CHR, 0.02; mut_base = 1e12, fitness = f, result = true, rng = rng)
-        VG[r, :] .= res.var_genotypic
-        VP[r, :] .= res.var_phenotypic
+        VG[r, :] .= vec(res.var_genotypic)
+        VP[r, :] .= vec(res.var_phenotypic)
     end
     return VG, VP
 end

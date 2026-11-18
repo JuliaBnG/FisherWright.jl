@@ -34,10 +34,12 @@ with the census record of the run.
   relative to an individual without any derived allele at the fitness loci, so substituted sites are included.
   In a neutral run these are `1`, `0` and `0`. If an adult has zero fitness (a lethal genotype), the mean of the
   logarithm is `-Inf` and its variance `NaN`.
-- `mean_genotypic::Vector{Float64}`, `var_genotypic::Vector{Float64}`, `mean_phenotypic::Vector{Float64}`,
-  `var_phenotypic::Vector{Float64}`: under [`TraitFitness`](@ref), the mean and (sample) variance of the genotypic
-  value and of the phenotype of the parents of each generation, as for the fitness record; `NaN` for generations
-  without a trait model.
+- `mean_genotypic::Matrix{Float64}`, `mean_phenotypic::Matrix{Float64}` (`T × ngen`), `var_genotypic::Array{Float64,3}`,
+  `var_phenotypic::Array{Float64,3}` (`T × T × ngen`): under [`TraitFitness`](@ref) with `T` traits, the mean vector
+  and the (sample) covariance matrix of the genotypic values and of the phenotypes of the parents of each generation,
+  as for the fitness record: `mean_genotypic[t, g]` is the mean of trait `t` in generation `g` and
+  `var_genotypic[:, :, g]` the genotypic covariance matrix (`var_genotypic[t, t, g]` the variance of trait `t`).
+  `NaN` for generations without a trait model; `T = 1` ([`ntraits`](@ref)) for a run that never had one.
 - `paternal_pairs::Vector{Float64}`, `maternal_pairs::Vector{Float64}`: the realized family sizes of each
   generation, as the number of ordered pairs of its offspring that share their sire, `Σ m(m - 1)` over the sires,
   and that share their dam, `Σ n(n - 1)` over the dams; [`effective_size`](@ref) uses them. `NaN` in a result
@@ -79,10 +81,10 @@ struct FisherWrightResult
     mean_fitness::Vector{Float64}
     mean_log_fitness::Vector{Float64}
     var_log_fitness::Vector{Float64}
-    mean_genotypic::Vector{Float64}
-    var_genotypic::Vector{Float64}
-    mean_phenotypic::Vector{Float64}
-    var_phenotypic::Vector{Float64}
+    mean_genotypic::Matrix{Float64}
+    var_genotypic::Array{Float64,3}
+    mean_phenotypic::Matrix{Float64}
+    var_phenotypic::Array{Float64,3}
     paternal_pairs::Vector{Float64}
     maternal_pairs::Vector{Float64}
     selfing::Vector{Float64}
@@ -126,14 +128,17 @@ FisherWrightResult(
     mean_genotypic, var_genotypic, mean_phenotypic, var_phenotypic,
     fill(NaN, length(males)), fill(NaN, length(males)))
 
-# Without a trait record: NaN for every recorded generation.
+# Without a trait record: NaN for every recorded generation, one trait.
 FisherWrightResult(
     active_haplotypes, chromosome_ends, substitutions, census, males,
     selected_haplotypes, selected_substitutions, mean_fitness, mean_log_fitness, var_log_fitness,
 ) = FisherWrightResult(
     active_haplotypes, chromosome_ends, substitutions, census, males,
     selected_haplotypes, selected_substitutions, mean_fitness, mean_log_fitness, var_log_fitness,
-    (fill(NaN, length(males)) for _ = 1:4)...)
+    fill(NaN, 1, length(males)), fill(NaN, 1, 1, length(males)),
+    fill(NaN, 1, length(males)), fill(NaN, 1, 1, length(males)))
+
+ntraits(r::FisherWrightResult) = size(r.mean_genotypic, 1)
 
 # Without a fitness record: that of a neutral population, one entry per
 # recorded generation.

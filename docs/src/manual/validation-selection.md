@@ -268,6 +268,68 @@ Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "s
   0.943); the rest, ``2.0 \pm 0.8``%, is within what finite loci and
   drift within a generation would give, and is not tested.
 
+## Pleiotropy
+
+`validate-pleiotropy.jl` checks `TraitFitness` with two traits on the
+same loci. The mechanism is tested exactly in CI ("Pleiotropy"): one
+generation of selection moves the mean genotypic value of each trait,
+the one not selected directly included, by exactly the fitness-weighted
+mean of the parents within each sex; fitness is the function of the
+phenotype vector; identical columns of effects give identical
+genotypic records; and the environmental covariance matrix is
+``\Sigma_e``.
+
+**Neutral genetic covariance matrix.** As for one trait, with
+``K = 20{,}000`` additive loci and the effects of each site on the two
+traits drawn from ``N(0, \Sigma_a)``, ``\Sigma_a = 0.2^2
+\begin{pmatrix}1 & \rho\\ \rho & 1\end{pmatrix}``, ``\rho = -0.5``,
+anew for every replicate. The sample covariance of the dosages of one
+site has expectation ``2H_B - H_W``, and with effects independent
+across sites the sites add, so
+
+```math
+E[\operatorname{cov}(G_s, G_t)] = E[\alpha_s\alpha_t]\,(2H_B - H_W),
+\qquad E[\alpha_s\alpha_t] = \Sigma_{a,st}/4,
+```
+
+for every generation from a population without variation: the
+covariance of pleiotropic effects becomes the genetic covariance in
+proportion. With an environmental covariance ``\Sigma_e``, also
+``E[S_P - S_G] = \Sigma_e`` for the sample covariance matrices.
+
+**Direct and correlated response, for comparison.** With fitness
+``e^{\beta' P}``, ``\beta = (\beta_1, 0)``, and Gaussian ``G`` and
+``P``, the fitness-weighted mean of ``G`` is shifted by
+``\mathbf{G}\beta`` (Lande 1979): the second trait responds by
+``\beta_1 G_{21}`` per generation, through the shared loci only. The
+script compares the mean cumulative response with the mean of
+``\sum_g \mathbf{G}_g\beta`` (a ratio of means: ``\sum_g G_{21}`` of
+one replicate can be near zero), with the same first-order finite-``N``
+bias of the weighted mean as for one trait.
+
+```@eval
+using Markdown, FisherWright
+Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "src", "validation", "validate-pleiotropy.txt"), String)))
+```
+
+- All 48 checks pass at 1,000 replicates per case, for the variances
+  and the covariance from the second generation to near equilibrium
+  (``-0.195 \pm 0.004`` against ``-0.195`` for ``G_{12}`` after 500
+  generations at ``N = 50``). The largest deviation is
+  ``z = -3.08``, for ``G_{12}`` at generation 50, ``N = 50``. The
+  checks are not independent (the three elements come from the same
+  replicates, and the generations from the same runs), so 48 of them
+  do not give 48 chances at ``|z| > 3.5``; a single ``|z|`` near 3
+  among them is not unusual. ``S_P - S_G`` is ``1.003 \pm 0.008``,
+  ``0.403 \pm 0.004`` and ``0.506 \pm 0.004`` for ``\Sigma_e``
+  elements 1, 0.4 and 0.5.
+- The cumulative response over 30 generations is ``0.933 \pm 0.009``
+  of ``\sum_g(\mathbf{G}_g\beta)_1`` for the selected trait and
+  ``0.925 \pm 0.017`` of ``\sum_g(\mathbf{G}_g\beta)_2`` for the
+  correlated one, against 0.943 with the finite-``N`` bias: the
+  correlated response follows the genetic covariance as the direct
+  response follows the variance. This comparison is not a test.
+
 ## Stabilizing selection: matched SLiM model
 
 `validate-stabilizing.jl` checks the genetic variance maintained by
@@ -477,6 +539,10 @@ rate at the fitness loci, and the weighted draw of parents.
   tested.
 - A distribution of fitness effects rather than a few fixed values of
   ``s``, and dominance other than ½ at large ``N``.
+- Multivariate stabilizing selection (`Stabilizing(θ, Ω)` with two or
+  more traits) beyond the exact one-generation check in CI: no
+  equilibrium of the genetic covariance matrix is compared with theory
+  or with SLiM.
 - Strong interference between selected sites (Hill–Robertson effects).
   The effect of selected sites on linked neutral diversity is
   compared with SLiM on [Validation of linked selection](@ref).
@@ -488,7 +554,8 @@ rate at the fitness loci, and the weighted draw of parents.
 and
 [`validate-selection-balance.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-selection-balance.jl),
 [`validate-prf.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-prf.jl),
-[`validate-trait.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-trait.jl)
+[`validate-trait.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-trait.jl),
+[`validate-pleiotropy.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-pleiotropy.jl)
 and the stabilizing-selection driver
 [`validate-stabilizing.sh`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-stabilizing.sh)
 with
@@ -508,6 +575,8 @@ julia -t 16 $D/scripts/fixation-reference.jl 2000000 2026 > $D/fixation-referenc
 julia -t 8 --project=. $D/scripts/validate-selection.jl 200000 2000000 2026 > $D/validate-selection.txt
 julia -t 16 --project=. $D/scripts/validate-selection-balance.jl 4000 400000 2026 > $D/validate-selection-balance.txt
 julia -t 8 --project=. $D/scripts/validate-trait.jl 1000 2026 > $D/validate-trait.txt
+# about 2 min on 16 threads
+julia -t 16 --project=. $D/scripts/validate-pleiotropy.jl 1000 2026 > $D/validate-pleiotropy.txt
 # about 2 hours on 64 threads
 julia -t 64 --project=. $D/scripts/validate-prf.jl 1000 2026 > $D/validate-prf-seed2026.txt
 # SLiM 5 and FisherWright, 2,000 runs each: about 40 min on 64 and

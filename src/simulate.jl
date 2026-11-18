@@ -283,9 +283,11 @@ current cohort occupies the leading entries.
   fitness of the parents and the mean and variance of its logarithm.
 - `fcnt`, `mcnt`, `fidx`, `bsires`, `bdams`: scratch of mating schemes with
   family sizes (`bsires`, `bdams`: the breeding sires and dams).
-- `gval`, `pval`: genotypic value and phenotype of each parent under a
-  trait model; `gmean`, `gvar`, `pmean`, `pvar`: their mean and variance per
-  generation (NaN without a trait).
+- `gval`, `pval`: genotypic values and phenotypes of each parent under a
+  trait model, `T × nmax` (one row per trait; `T = 1` without a trait
+  model); `gmean`, `pmean`: their means per generation, `T` entries each,
+  and `gvar`, `pvar`: their covariance matrices, `T²` entries each in
+  column-major order (NaN without a trait model).
 - `pcnt`: scratch for the number of offspring of each parent.
 - `swt`: scratch for the split weights of parents under selection.
 - `ppairs`, `mpairs`: per generation, the number of ordered pairs of
@@ -328,8 +330,8 @@ mutable struct SimState
     const fmean::Vector{Float64}
     const flmean::Vector{Float64}
     const flvar::Vector{Float64}
-    const gval::Vector{Float64}
-    const pval::Vector{Float64}
+    const gval::Matrix{Float64}
+    const pval::Matrix{Float64}
     const gmean::Vector{Float64}
     const gvar::Vector{Float64}
     const pmean::Vector{Float64}
@@ -361,8 +363,10 @@ function SimState(
     nmax::Int,
     rng::AbstractRNG,
     sel::Vector{Vector{UInt32}}=[Vector{UInt32}() for _ in prt],
-    ssubs::Vector{UInt32}=UInt32[],
+    ssubs::Vector{UInt32}=UInt32[];
+    ntraits::Int=1,
 )
+    ntraits >= 1 || throw(ArgumentError("ntraits must be positive"))
     n = length(prt) ÷ 2
     (iseven(length(prt)) && 1 < n <= nmax) ||
         throw(ArgumentError("starting cohort of $(length(prt)) haplotypes does not fit nmax = $nmax"))
@@ -379,7 +383,7 @@ function SimState(
         [Xoshiro(rand(rng, UInt64)) for _ = 1:nh], [n], Int[],
         sel, bufs(nh), ssubs, bufs(nh), bufs(nh),
         Float64[], Float64[], Float64[],
-        zeros(nmax), zeros(nmax), Float64[], Float64[], Float64[], Float64[],
+        zeros(ntraits, nmax), zeros(ntraits, nmax), Float64[], Float64[], Float64[], Float64[],
         sizehint!(Int[], nmax), sizehint!(Int[], nmax), sizehint!(Int[], nmax),
         sizehint!(Int[], nmax), sizehint!(Int[], nmax),
         zeros(Int, nmax), zeros(nmax), Float64[], Float64[], Float64[], Int[],
@@ -433,10 +437,12 @@ function _initial_state(init::FisherWrightResult, nh::Int, cbp::Vector{UInt32}, 
     _check_positions(subs, cbp[end], "init.substitutions")
     (length(init.census) == length(init.males) + 1 && init.census[end] == nh ÷ 2) ||
         throw(ArgumentError("init.census and init.males do not describe the $(nh ÷ 2) individuals of init"))
-    all(v -> length(v) == length(init.males), (init.mean_fitness, init.mean_log_fitness,
-        init.var_log_fitness, init.mean_genotypic, init.var_genotypic, init.mean_phenotypic,
-        init.var_phenotypic, init.paternal_pairs, init.maternal_pairs, init.selfing,
-        init.related_matings)) ||
+    ng = length(init.males)
+    T = size(init.mean_genotypic, 1)
+    (all(v -> length(v) == ng, (init.mean_fitness, init.mean_log_fitness, init.var_log_fitness,
+        init.paternal_pairs, init.maternal_pairs, init.selfing, init.related_matings)) &&
+     size(init.mean_genotypic) == size(init.mean_phenotypic) == (T, ng) &&
+     size(init.var_genotypic) == size(init.var_phenotypic) == (T, T, ng)) ||
         throw(ArgumentError("the fitness and trait records of init must have one entry per generation"))
     # A substitution is carried by every haplotype: kept apart when the run
     # tracks substitutions, merged back into the haplotypes when it does not.
@@ -446,17 +452,41 @@ end
 
 # Census record of the result: that of this call, appended to the record of
 # a FisherWrightResult the run was continued from.
-_record(::Any, st::SimState) =
-    (st.census, st.males, st.fmean, st.flmean, st.flvar, st.gmean, st.gvar, st.pmean, st.pvar,
+# The trait records are T × ngen (means) and T × T × ngen (covariances).
+function _record(::Any, st::SimState)
+    T = size(st.gval, 1)
+    return (st.census, st.males, st.fmean, st.flmean, st.flvar, reshape(st.gmean, T, :),
+        reshape(st.gvar, T, T, :), reshape(st.pmean, T, :), reshape(st.pvar, T, T, :),
         st.ppairs, st.mpairs, st.selfing, st.forced)
-_record(init::FisherWrightResult, st::SimState) = (
-    vcat(init.census, view(st.census, 2:length(st.census))), vcat(init.males, st.males),
-    vcat(init.mean_fitness, st.fmean), vcat(init.mean_log_fitness, st.flmean),
-    vcat(init.var_log_fitness, st.flvar), vcat(init.mean_genotypic, st.gmean),
-    vcat(init.var_genotypic, st.gvar), vcat(init.mean_phenotypic, st.pmean),
-    vcat(init.var_phenotypic, st.pvar), vcat(init.paternal_pairs, st.ppairs),
-    vcat(init.maternal_pairs, st.mpairs), vcat(init.selfing, st.selfing),
-    vcat(init.related_matings, st.forced))
+end
+function _record(init::FisherWrightResult, st::SimState)
+    T = size(st.gval, 1)
+    gm, gv, pm, pv = _init_trait(init, T)
+    return (
+        vcat(init.census, view(st.census, 2:length(st.census))), vcat(init.males, st.males),
+        vcat(init.mean_fitness, st.fmean), vcat(init.mean_log_fitness, st.flmean),
+        vcat(init.var_log_fitness, st.flvar), hcat(gm, reshape(st.gmean, T, :)),
+        cat(gv, reshape(st.gvar, T, T, :); dims=3), hcat(pm, reshape(st.pmean, T, :)),
+        cat(pv, reshape(st.pvar, T, T, :); dims=3), vcat(init.paternal_pairs, st.ppairs),
+        vcat(init.maternal_pairs, st.mpairs), vcat(init.selfing, st.selfing),
+        vcat(init.related_matings, st.forced))
+end
+
+# The number of traits a run records: those of its trait model, else those
+# of the result it continues, else 1.
+_run_traits(f::AbstractFitness, init) = f isa TraitFitness ? ntraits(f) :
+                                        init isa FisherWrightResult ? ntraits(init) : 1
+
+# The trait record of `init` with `T` traits: as it is, or, if it holds no
+# trait generation (all NaN), widened to T traits.
+function _init_trait(init::FisherWrightResult, T::Int)
+    gm, gv, pm, pv = init.mean_genotypic, init.var_genotypic, init.mean_phenotypic, init.var_phenotypic
+    size(gm, 1) == T && return gm, gv, pm, pv
+    all(isnan, gm) && all(isnan, gv) && all(isnan, pm) && all(isnan, pv) || throw(ArgumentError(
+        "init records $(size(gm, 1)) traits; the trait model of the run has $T"))
+    ng = size(gm, 2)
+    return fill(NaN, T, ng), fill(NaN, T, T, ng), fill(NaN, T, ng), fill(NaN, T, T, ng)
+end
 
 # Realized family sizes of one generation, from the mating table: for the
 # first (sire) and the second (dam) parent of an offspring i, the number of
@@ -507,10 +537,15 @@ end
 # Trait record of the parents of one generation: NaN unless the fitness
 # model is a trait model, which records it in `_fitness!`.
 function _record_trait!(::AbstractFitness, st::SimState)
-    push!(st.gmean, NaN)
-    push!(st.gvar, NaN)
-    push!(st.pmean, NaN)
-    push!(st.pvar, NaN)
+    T = size(st.gval, 1)
+    for _ = 1:T
+        push!(st.gmean, NaN)
+        push!(st.pmean, NaN)
+    end
+    for _ = 1:T^2
+        push!(st.gvar, NaN)
+        push!(st.pvar, NaN)
+    end
     return nothing
 end
 

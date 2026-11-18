@@ -556,9 +556,9 @@ replicates and seeds; logs go under `docs/src/validation/`.
 Every row of the staging is released. What remains open, none of it
 scheduled:
 
-- Extensions named above: pleiotropy (several traits on shared loci),
-  sex-specific fitness, and phenotypic assortative mating as a built-in
-  scheme (possible now through `CustomMating`, with `ctx.phenotypic`).
+- Extensions named above: sex-specific fitness, and phenotypic
+  assortative mating as a built-in scheme (possible now through
+  `CustomMating`, with `ctx.phenotypic`).
 - Not scheduled: density regulation and an extinction policy (the
   census stays fixed).
 
@@ -568,6 +568,21 @@ reads `Species.morgan` (BnGStructs ≥ 0.3), which closes the ecosystem
 item that FisherWright used only the scalar `M`. Tested against the
 Haldane recombination fraction between chromosome ends; seeded output
 unchanged for default genetic lengths.
+
+Done 2026-11-18 (0.9.0, breaking): pleiotropy. `TraitLoci` takes a
+`K × T` matrix of effects (dominance per site or per site and trait);
+`trait_loci` draws them from a multivariate distribution;
+`TraitFitness(loci; σe, Σe, fitness)` with a positive semi-definite
+environmental covariance; `Stabilizing(θ, Ω)` and `Directional(β)` on
+the phenotype vector, or any function of it. The trait records of
+`FisherWrightResult` are `T × ngen` means and `T × T × ngen`
+covariance matrices, and `MatingContext.genotypic`/`phenotypic` are
+`T × n`. Seeded output unchanged for one trait (hash-checked against
+0.8.2 for directional, stabilizing and user fitness, with and without
+noise, and a custom mating on the phenotype). Validated by
+`validate-pleiotropy.jl`: the neutral genetic covariance matrix
+against Σa/4 (2H_B − H_W), all 48 checks |z| ≤ 3.08, and the
+correlated response against Lande's Gβ for comparison.
 
 ## Open decisions
 
