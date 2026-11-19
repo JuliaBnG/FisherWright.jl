@@ -281,3 +281,95 @@ using Markdown, FisherWright
 dir = joinpath(pkgdir(FisherWright), "docs", "src", "validation", "scripts")
 Markdown.MD(Markdown.Code("julia", read(joinpath(dir, "validate-equilibrium.jl"), String)))
 ```
+
+## Assortative mating
+
+`docs/src/validation/scripts/validate-assortative.jl` checks
+[`Assortative`](@ref) against Bulmer's (1980) recursion for the genetic
+variance under assortative mating.
+
+**Model.** ``N = 2{,}000`` diploids with two sexes, a neutral trait
+(fitness 1) with ``K = 1{,}000`` additive loci, one per chromosome, so
+that every pair of loci recombines freely; no mutation. The starting
+population is drawn in Hardy–Weinberg and linkage equilibrium, with
+allele frequencies from U(0.1, 0.9) and effects scaled to genic
+variance ``V_a = 1``; ``V_E = 1``. Mating is assortative with
+``ρ = 0.5``, 0.8 and −0.5 for ``T = 15`` generations, 200 replicates
+each.
+
+**Reference.** With free recombination and many loci of small effect,
+the additive variance of the next parents is
+
+```math
+V_A' = c \, \frac{V_A (1 + m h^2)}{2} + \frac{V_a - d/K_{eff}}{2}, \qquad h^2 = V_A / V_P,
+```
+
+where ``m`` is the phenotypic correlation of mates, ``V_a`` the genic
+variance (reduced by drift by ``1 - 1/2N`` per generation) and
+``c = 1 - (1/N_m + 1/N_f)/2`` the population variance of the sires and
+dams relative to the sample variance ``V_A`` (Bulmer 1980; Crow and
+Kimura 1970). The disequilibrium ``d = V_A - V_a`` halves every
+generation, and ``V_A`` approaches ``V_a/(1 - m h^2)``. The last term
+is the share of ``d`` within loci: assortment also correlates the two
+alleles of a parent at one locus, which lowers its heterozygosity and
+the Mendelian sampling variance it passes on. The disequilibrium of
+loci ``i`` and ``j`` is in proportion to ``x_i x_j``, ``x = α^2 pq``, so
+that share is ``1/K_{eff}`` with ``K_{eff} = (\sum x)^2 / \sum x^2``,
+about 317 here. It is 0.2 % of ``V_A`` at ``ρ = 0.8`` and is absent
+from the infinitesimal model (``K \to \infty``). The script takes
+``V_A``, ``V_P`` and ``m`` from the record of each run and tests the
+one-step prediction (averaged over generations), the trajectory of the
+recursion from the start at generations 2, 5 and 15, and the change of
+the mean genotypic value, which is 0 in expectation.
+
+### Results, 200 replicates, seed 2026
+
+```@eval
+using Markdown, FisherWright
+Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "src", "validation", "validate-assortative-seed2026.txt"), String)))
+```
+
+### Results, 200 replicates, seed 7
+
+```@eval
+using Markdown, FisherWright
+Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "src", "validation", "validate-assortative-seed7.txt"), String)))
+```
+
+### Reading the results
+
+All 30 checks pass; the largest ``|z|`` is 2.55. The realized
+correlation of mates is within 0.004 of ``ρ`` in every case. The
+variance rises from 1 to 1.40 (``ρ = 0.5``) and 2.07–2.09 (``ρ = 0.8``,
+still approaching its equilibrium of 2.21) and falls to 0.81
+(``ρ = -0.5``), as the recursion gives, with standard errors of 0.1 %
+to 0.4 % of ``V_A``.
+
+The within-locus term was added after a first run without it. Then the
+one-step residuals for ``ρ > 0`` were negative in both seeds (combined
+z −2.1 at ``ρ = 0.5`` and −2.5 at ``ρ = 0.8``, about 0.1 % to 0.2 % of
+``V_A``), and near zero for ``ρ < 0``: the sign and size this term
+predicts. With it, the one-step residuals combined over the two seeds
+are −1.2, −1.1 and −0.4. Whether the dams drawn have less variance than
+the females, through the weights of the copula, was also checked: by
+direct computation for 1,000 females, 0.02 % less, too little to
+matter.
+
+Two patterns remain, each within the limits. The changes of the mean
+have ``|z|`` of 2.55, 2.33 and 2.05 under seed 2026 but below 1 under
+seed 7, and the model has no mechanism for a change of the mean (sires
+are drawn uniformly, the weights of the dams are symmetric in their
+normal scores): noise. At ``ρ = -0.5``, ``V_A`` at generation 15 lies
+below the recursion in both seeds (z −1.44 and −2.05, combined −2.5,
+0.3 % to 0.5 % of ``V_A``), the largest combined deviation among the
+checks. The recursion leaves out the departure of the regression of
+``A`` on ``P`` from linearity, and with 30 checks a combined ``|z|`` of
+2.5 is not unusual, so this is recorded here rather than explained.
+
+### Assortative mating script
+
+```@eval
+using Markdown, FisherWright
+dir = joinpath(pkgdir(FisherWright), "docs", "src", "validation", "scripts")
+Markdown.MD(Markdown.Code("julia", read(joinpath(dir, "validate-assortative.jl"), String)))
+```

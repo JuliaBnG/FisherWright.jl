@@ -1,7 +1,7 @@
 using Test
 using Random
 using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_sorted, merge_sorted!, recombine, _recombine!, _insert_sorted!, _isearchfirst,
-    cobp, cobp!, FisherWrightResult, GenerationRecords, write_result, read_result, effective_size, to_haplotype, RecombinationMap,
+    cobp, cobp!, FisherWrightResult, GenerationRecords, write_result, read_result, Assortative, effective_size, to_haplotype, RecombinationMap,
     uniform_recombination_map, random_mate, random_mate!, _fixed_sex_mate!, _nmale, _fixed_mutations,
     _drop_mutations, _drop_mutations!, _fixation_step, _fixation_step!, _extract_fixed,
     _intersect_sorted!, _remove_sorted!, _with_fixed, _simulate!, _initial_state,
@@ -10,7 +10,7 @@ using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_s
     _draw_parents!, _mate!, FitnessLoci, fitness_loci, SiteFitness, _log_fitness, _selected,
     _meiosis!, _meiosis_selected!, _sel_mutation!, TraitLoci, trait_loci, TraitFitness, Stabilizing,
     Directional, _genotypic_value, _genotypic_value!, ntraits, SexSpecific, FamilySize, Hierarchical, Monoecious, AvoidRelatives, CustomMating,
-    _record_families!, _related
+    _record_families!, _related, _RECORD_FIELDS
 using Distributions: Gamma, Exponential, Normal, Chisq, quantile
 import FisherWright: _fitness!
 using BnGStructs
@@ -3262,9 +3262,10 @@ end
     @test_deprecated res.census
     if Base.JLOptions().depwarn != 2
         quiet(f) = Base.CoreLogging.with_logger(f, Base.CoreLogging.NullLogger())
-        for f in fieldnames(GenerationRecords)
+        for f in _RECORD_FIELDS
             @test quiet(() -> getproperty(res, f)) === getfield(res.records, f)
         end
+        @test_throws Exception res.mate_correlation   # never a field of the result (FieldError from Julia 1.12)
         R = res.records
         old = quiet(() -> FisherWrightResult(res.active_haplotypes, res.chromosome_ends, res.substitutions,
             R.census, R.males, res.selected_haplotypes, res.selected_substitutions, R.mean_fitness,
@@ -3322,8 +3323,8 @@ end
     bytes = take!(io)
     @test_throws "not a FisherWright result file" read_result(IOBuffer(vcat(Vector{UInt8}("FWRESULX"), bytes[9:end])))
     later = copy(bytes)
-    later[9:12] .= reinterpret(UInt8, [htol(UInt32(2))])
-    @test_throws "format version 2" read_result(IOBuffer(later))
+    later[9:12] .= reinterpret(UInt8, [htol(UInt32(3))])
+    @test_throws "format version 3" read_result(IOBuffer(later))
     changed = copy(bytes)
     changed[end-20] ⊻= 0x01
     @test_throws ArgumentError read_result(IOBuffer(changed))
@@ -3346,6 +3347,21 @@ end
     @test v1.first_id == 97 && size(v1.pedigree) == (36, 5) && sum(v1.pedigree.sire) == 2018 && sum(v1.pedigree.dam) == 2008
     @test count(ismissing, v1.pedigree.sex) == 12 && count(isequal(true), v1.pedigree.sex) == 12
     @test v1.pedigree.generation[[1, end]] == [6, 8]
+    @test all(isnan, R.mate_correlation) && length(R.mate_correlation) == 8   # not in format 1
+
+    # The fixture of format version 2, written by FisherWright 0.11.0
+    # (test/data/make-result-v2.jl), with assortative mating.
+    v2 = read_result(joinpath(@__DIR__, "data", "result-v2.fwr"))
+    R = v2.records
+    @test length(v2.active_haplotypes) == 24 && sum(length, v2.active_haplotypes) == 191
+    @test sum(Int, reduce(vcat, v2.active_haplotypes)) == 10_187_239
+    @test sum(length, v2.selected_haplotypes) == 25 && sum(Int, reduce(vcat, v2.selected_haplotypes)) == 1_458_487
+    @test R.census == fill(12, 9) && R.males == [6, 3, 4, 7, 7, 4, 6, 5]
+    @test R.paternal_pairs == [20, 42, 38, 16, 20, 30, 18, 30] && R.maternal_pairs == [22, 6, 22, 20, 30, 12, 26, 32]
+    @test R.mate_correlation == [-0.2103575618350657, 0.647123974514525, 0.5250019085438647, 0.41335749073862016,
+        0.4811159043531788, 0.7296881456040151, 0.8093945921944323, 0.48782993321098184]
+    @test R.mean_genotypic[:, end] == [-0.12482887835150604, -0.09732388897045857]
+    @test v2.first_id == 97 && size(v2.pedigree) == (36, 5) && sum(v2.pedigree.sire) == 2031 && sum(v2.pedigree.dam) == 2032
 end
 
 @testset "The exported map" begin
@@ -3358,6 +3374,108 @@ end
     @test m1.pos == sort(unique(reduce(vcat, res.active_haplotypes))) && isempty(m1.morgan)
     @test m1.chr == Int8.(ifelse.(m1.pos .<= 50_000, 1, 2)) && m1.frq ≈ vec(sum(h1; dims=2)) ./ 40
     @test_throws ArgumentError to_haplotype(FisherWrightResult([UInt32[] for _ = 1:4], UInt32[100], UInt32[]))
+end
+
+@testset "Assortative mating" begin
+    chr = [100_000, 100_000]
+    loci = trait_loci(chr, 60; a=0.2, μ=1e-3, rng=Xoshiro(1))
+    neutral = TraitFitness(loci; σe=0.5, fitness=P -> 1.0)
+    m = Assortative(0.6)
+    @test (m.ρ, m.trait, m.inner) == (0.6, 1, RandomMating()) && occursin("Assortative(0.6", sprint(show, m))
+    @test_throws ArgumentError Assortative(1.0)
+    @test_throws ArgumentError Assortative(-1)
+    @test_throws ArgumentError Assortative(0.5; trait=0)
+    @test_throws TypeError Assortative(0.5; inner=Monoecious())
+    @test_throws ArgumentError fisher_wright(20, 3, chr, 1.0; result=true, mating=m)          # no phenotype
+    @test_throws ArgumentError fisher_wright(20, 3, chr, 1.0; result=true, mating=m,
+        fitness=SiteFitness(fitness_loci(chr, 10; s=0.01, rng=Xoshiro(2))))
+    @test_throws ArgumentError fisher_wright(20, 3, chr, 1.0; result=true, fitness=neutral,
+        mating=Assortative(0.5; trait=2))
+    @test_throws ArgumentError fisher_wright(20, 3, chr, 1.0; result=true, fitness=neutral,
+        mating=Assortative(0.5; inner=RandomMating(nmale=25)))
+
+    # The draw of one generation, exactly: sires in proportion to fitness,
+    # and the dams of each sire in proportion to fitness times the copula
+    # density of the normal scores, ties sharing their mean score. Chi-square
+    # over all sires and dams.
+    n, no = 12, 60_000
+    st = SimState([UInt32[] for _ = 1:2n], UInt32[], no, Xoshiro(3))
+    P = [0.3, -1.2, 0.3, 2.0, 0.7, -0.4, 0.3, 1.1, -2.2, 0.0, 0.7, 1.5]
+    st.fit.pval[1, 1:n] .= P
+    w = [1.0, 0.5, 2.0, 1.0, 0.0, 1.5, 1.0, 0.8, 1.2, 1.0, 0.3, 2.5]
+    st.fit.w[1:n] .= w
+    push!(st.rec.mate_correlation, NaN)
+    ρ = 0.6
+    _mate!(Assortative(ρ), neutral, st, no, Xoshiro(4))
+    sires, dams, pm = st.mate.sires, st.mate.dams, st.mate.pm
+    @test all(st.mate.sex[pm[1:no, 1]]) && !any(st.mate.sex[pm[1:no, 2]])
+    function scores(g)
+        # the mean of the scores of the ranks a tied group occupies
+        [mean(quantile(Normal(), (k - 0.5) / length(g))
+              for k in (count(<(P[i]), P[g]) + 1):(count(<=(P[i]), P[g]))) for i in g]
+    end
+    z = zeros(n)
+    z[sires] = scores(sires)
+    z[dams] = scores(dams)
+    chi, df = 0.0, 0
+    ns = [count(==(s), view(pm, 1:no, 1)) for s in sires]
+    ps = w[sires] ./ sum(w[sires])
+    for (k, s) in enumerate(sires)
+        e = no * ps[k]
+        e > 0 && (chi += (ns[k] - e)^2 / e; df += 1)
+    end
+    df -= 1
+    for s in sires
+        rows = findall(==(s), view(pm, 1:no, 1))
+        isempty(rows) && continue
+        c = [w[d] * exp((2ρ * z[s] * z[d] - ρ^2 * (z[s]^2 + z[d]^2)) / (2(1 - ρ^2))) for d in dams]
+        p = c ./ sum(c)
+        got = [count(==(d), view(pm, rows, 2)) for d in dams]
+        for (k, d) in enumerate(dams)
+            e = length(rows) * p[k]
+            e > 0 && (chi += (got[k] - e)^2 / e; df += 1)
+        end
+        df -= 1
+        @test all(got[p .== 0] .== 0)
+    end
+    @test chi < quantile(Chisq(df), 1 - 1e-4)
+    @test st.rec.mate_correlation[end] ≈ cor(P[pm[1:no, 1]], P[pm[1:no, 2]])
+
+    # A run: the record, a continuation, a result file; the other schemes
+    # record NaN. From a population in linkage equilibrium at 200 unlinked
+    # loci (one per chromosome) with V_a = V_E = 1, mating with ρ = 0.9
+    # raises the genetic variance towards the equilibrium of
+    # V = V_a/(1 - m V/(V + V_E)), 3.2 (about 2.0 in generations 6-10), and
+    # ρ = -0.9 lowers it towards 0.73 (Bulmer 1980); over seeds 5-9 and
+    # Julia 1.10 and 1.13 the means of generations 6-10 were 1.90-2.13,
+    # 0.96-1.02 (random mating) and 0.71-0.75.
+    K, N = 200, 1000
+    lchr = fill(1_000, K)
+    lpos = UInt32.(cumsum(lchr) .- 500)
+    lr = Xoshiro(5)
+    p = rand(lr, K) .* 0.8 .+ 0.1
+    eff = 2 .* ones(K) ./ sqrt(sum(2 .* p .* (1 .- p)))
+    lfit = TraitFitness(TraitLoci(lpos, eff; μ=0.0); σe=1.0, fitness=P -> 1.0)
+    start = FisherWrightResult([UInt32[] for _ = 1:2N], UInt32.(cumsum(lchr)), UInt32[];
+        selected_haplotypes=[lpos[rand(lr, K) .< p] for _ = 1:2N])
+    go(m, seed) = fisher_wright(N, 10, lchr, 1.0; result=true, fitness=lfit, init=start, mutate=false,
+        mating=m, rng=Xoshiro(seed))
+    a, d, r = go(Assortative(0.9), 6), go(Assortative(-0.9), 6), go(RandomMating(), 6)
+    @test all(isnan, r.records.mate_correlation) && all(isfinite, a.records.mate_correlation)
+    @test 0.8 < mean(a.records.mate_correlation) < 0.95 && -0.95 < mean(d.records.mate_correlation) < -0.8
+    vg(x) = mean(x.records.var_genotypic[1, 1, 6:10])
+    @test vg(a) > 1.6 && 0.85 < vg(r) < 1.15 && vg(d) < 0.85
+    c = fisher_wright(N, 2, lchr, 1.0; result=true, fitness=lfit, init=a, mutate=false, mating=Assortative(0.9),
+        rng=Xoshiro(7))
+    @test length(c.records.mate_correlation) == 12 && c.records.mate_correlation[1:10] == a.records.mate_correlation
+    io = IOBuffer()
+    write_result(io, c)
+    @test isequal(read_result(seekstart(io)), c)
+    # Sex-specific fitness with a trait gives the phenotypes too.
+    ss = SexSpecific(TraitFitness(loci; σe=0.5, fitness=Directional(0.2)), TraitFitness(loci; σe=0.5, fitness=P -> 1.0))
+    x = fisher_wright(200, 5, chr, 1.0; mut_base=1e3, result=true, fitness=ss, mating=Assortative(0.5),
+        rng=Xoshiro(7))
+    @test all(isfinite, x.records.mate_correlation)
 end
 
 include("properties.jl")

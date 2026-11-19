@@ -33,6 +33,9 @@ being the matings of the parents of census `g` and the birth of census
 - `related_matings::Vector{Int}`: under [`AvoidRelatives`](@ref), the number of offspring of each generation whose
   parents are relatives at the level avoided, kept because no unrelated mate was found within `max_tries` draws;
   0 under other schemes, which do not check relationships.
+- `mate_correlation::Vector{Float64}`: under [`Assortative`](@ref), the realized correlation of the phenotypes of the
+  sire and the dam over the matings of each generation (one per offspring), for the trait mating sorts on; `NaN`
+  under other schemes.
 
     GenerationRecords(n; ntraits = 1)
     GenerationRecords(; census, males, mean_fitness, ...)
@@ -40,7 +43,8 @@ being the matings of the parents of census `g` and the birth of census
 The first form is the record of a population of `n` individuals without recorded generations. The second takes
 the fields by keyword: `census` and `males` are required, and every other field defaults to its value for
 generations without selection, trait model or family record (fitness `1`, `0`, `0`; traits `NaN` with
-`ntraits` traits; family sizes `NaN`; selfing and related matings `0`). The lengths are checked.
+`ntraits` traits; family sizes and mate correlation `NaN`; selfing and related matings `0`). The lengths are
+checked.
 """
 struct GenerationRecords
     census::Vector{Int}
@@ -56,21 +60,23 @@ struct GenerationRecords
     maternal_pairs::Vector{Float64}
     selfing::Vector{Float64}
     related_matings::Vector{Int}
+    mate_correlation::Vector{Float64}
     function GenerationRecords(census, males, mean_fitness, mean_log_fitness, var_log_fitness,
         mean_genotypic, var_genotypic, mean_phenotypic, var_phenotypic, paternal_pairs, maternal_pairs, selfing,
-        related_matings)
+        related_matings, mate_correlation)
         ng = length(males)
         T = size(mean_genotypic, 1)
         length(census) == ng + 1 ||
             throw(ArgumentError("census must have one entry more than males (the starting population)"))
         all(v -> length(v) == ng, (mean_fitness, mean_log_fitness, var_log_fitness, paternal_pairs,
-            maternal_pairs, selfing, related_matings)) &&
+            maternal_pairs, selfing, related_matings, mate_correlation)) &&
             size(mean_genotypic) == size(mean_phenotypic) == (T, ng) &&
             size(var_genotypic) == size(var_phenotypic) == (T, T, ng) && T >= 1 ||
             throw(ArgumentError("every record must have one entry per generation, " *
                 "the trait records T × ngen and T × T × ngen"))
         return new(census, males, mean_fitness, mean_log_fitness, var_log_fitness, mean_genotypic, var_genotypic,
-            mean_phenotypic, var_phenotypic, paternal_pairs, maternal_pairs, selfing, related_matings)
+            mean_phenotypic, var_phenotypic, paternal_pairs, maternal_pairs, selfing, related_matings,
+            mate_correlation)
     end
 end
 
@@ -89,12 +95,13 @@ function GenerationRecords(;
     maternal_pairs=fill(NaN, length(males)),
     selfing=zeros(length(males)),
     related_matings=zeros(Int, length(males)),
+    mate_correlation=fill(NaN, length(males)),
 )
     return GenerationRecords(Vector{Int}(census), Vector{Int}(males), Vector{Float64}(mean_fitness),
         Vector{Float64}(mean_log_fitness), Vector{Float64}(var_log_fitness), Matrix{Float64}(mean_genotypic),
         Array{Float64,3}(var_genotypic), Matrix{Float64}(mean_phenotypic), Array{Float64,3}(var_phenotypic),
         Vector{Float64}(paternal_pairs), Vector{Float64}(maternal_pairs), Vector{Float64}(selfing),
-        Vector{Int}(related_matings))
+        Vector{Int}(related_matings), Vector{Float64}(mate_correlation))
 end
 
 GenerationRecords(n::Integer; ntraits::Integer=1) = GenerationRecords(; census=[Int(n)], males=Int[], ntraits=ntraits)
@@ -182,7 +189,10 @@ FisherWrightResult(
 
 # The positional constructors of 0.9 (5 to 20 arguments, the record fields
 # in the result), deprecated.
-const _RECORD_FIELDS = fieldnames(GenerationRecords)
+# The record fields that were fields of the result in 0.9 (later record
+# fields were never read through the result).
+const _RECORD_FIELDS = (:census, :males, :mean_fitness, :mean_log_fitness, :var_log_fitness, :mean_genotypic,
+    :var_genotypic, :mean_phenotypic, :var_phenotypic, :paternal_pairs, :maternal_pairs, :selfing, :related_matings)
 const _OLD_POSITIONAL = (:census, :males, :selected_haplotypes, :selected_substitutions, :mean_fitness,
     :mean_log_fitness, :var_log_fitness, :mean_genotypic, :var_genotypic, :mean_phenotypic, :var_phenotypic,
     :paternal_pairs, :maternal_pairs, :selfing, :related_matings, :first_id, :pedigree)

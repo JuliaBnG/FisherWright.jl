@@ -32,7 +32,8 @@ The generated site is in `docs/build/`.
   (equal, multinomial or overdispersed families; breeder subsets and
   the nested sire–dam design of livestock breeding); hermaphrodites with
   random or given selfing; avoidance of full-sib, half-sib or cousin
-  matings; or any scheme written as a function of the cohort (IDs,
+  matings; assortative (or disassortative) mating by phenotype; or any
+  scheme written as a function of the cohort (IDs,
   relatives, fitness, phenotypes, haplotypes)
 - Pedigree of the last k generations, with running IDs that continue
   across runs
@@ -716,6 +717,34 @@ pedigrees as 0.9.1, at 1 and 4 threads.
   mating schemes), `fit` (selected stream and fitness) and `rec` (the
   record as it grows); code that reached into `SimState`, such as a
   user fitness model writing `st.w`, uses `st.fit.w`.
+
+## Changes in v0.11.0
+
+**Assortative mating.** `mating = Assortative(ρ; inner, trait)` mates
+by phenotype with correlation `ρ` between mates (`ρ < 0`:
+disassortative). Sires are drawn by fitness as under `RandomMating`
+(`inner` sets the sex model), and each dam in proportion to her fitness
+times the Gaussian copula density with correlation `ρ` at the normal
+scores of the two phenotypes, so the correlation of mates is `ρ`
+whatever the distribution of the phenotype. The phenotypes come from a
+`TraitFitness` (`fitness = P -> 1.0` for a neutral trait). Validated
+against Bulmer's (1980) recursion for the genetic variance under
+assortative mating (`validate-assortative.jl`).
+
+- New record `records.mate_correlation`: the realized phenotypic
+  correlation of sire and dam per generation (`NaN` under other
+  schemes).
+- Result files are format version 2, with that record; files of
+  version 1 (0.10) are still read, with `mate_correlation` `NaN`.
+
+**Breaking changes.**
+
+- The positional constructor of `GenerationRecords` takes
+  `mate_correlation` as a 14th argument; the keyword constructor gives
+  it a default. Results written by 0.11 are not read by 0.10.
+
+Seeded output of the other schemes is unchanged (52 configurations
+against 0.10.0).
 
 ## Contributing and support
 

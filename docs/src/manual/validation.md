@@ -386,7 +386,8 @@ Markdown.MD(Markdown.Code("bash", read(joinpath(pkgdir(FisherWright), "docs", "s
   [Validation of selection](@ref). Skewed sex ratios, family sizes and
   selfing are checked on [Validation of the mating schemes](@ref): drift
   against SLiM, and mutation–drift diversity (Σ2pq, ``H_{obs}``, S)
-  against exact references. The package doesn't model subdivision.
+  against exact references; assortative mating against Bulmer's
+  recursion for the genetic variance. The package doesn't model subdivision.
 - Benchmark-scale runs (N = 2,000, 1 Gb) are checked only through their SNP
   count against msprime.
 

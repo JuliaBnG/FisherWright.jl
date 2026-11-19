@@ -273,6 +273,9 @@ parents and offspring (`st.mate` of a [`SimState`](@ref)).
 - `rel`, `rnew`: under `AvoidRelatives`, the parents and grandparents of
   every member of the cohort (6 × nmax) and the buffer for the next one;
   empty otherwise.
+- `zsc`, `aw`, `ord`: under `Assortative`, the normal scores of the
+  phenotypes, the weights of the dams for one sire, and an ordering
+  buffer.
 """
 mutable struct MatingBuffers
     const pm::Matrix{Int}
@@ -290,6 +293,9 @@ mutable struct MatingBuffers
     const swt::Vector{Float64}
     rel::Matrix{Int}
     rnew::Matrix{Int}
+    const zsc::Vector{Float64}
+    const aw::Vector{Float64}
+    const ord::Vector{Int}
 end
 
 MatingBuffers(n::Int, nmax::Int) = MatingBuffers(
@@ -297,7 +303,7 @@ MatingBuffers(n::Int, nmax::Int) = MatingBuffers(
     AliasTable(nmax), AliasTable(nmax),
     sizehint!(Int[], nmax), sizehint!(Int[], nmax), sizehint!(Int[], nmax),
     sizehint!(Int[], nmax), sizehint!(Int[], nmax), zeros(Int, nmax), zeros(nmax),
-    zeros(Int, 6, 0), zeros(Int, 6, 0))
+    zeros(Int, 6, 0), zeros(Int, 6, 0), zeros(nmax), zeros(nmax), zeros(Int, nmax))
 
 """
     SelectionBuffers
@@ -354,10 +360,11 @@ struct RunRecord
     maternal_pairs::Vector{Float64}
     selfing::Vector{Float64}
     related_matings::Vector{Int}
+    mate_correlation::Vector{Float64}
 end
 
 RunRecord(n::Int) = RunRecord([n], Int[], Float64[], Float64[], Float64[], Float64[], Float64[], Float64[],
-    Float64[], Float64[], Float64[], Float64[], Int[])
+    Float64[], Float64[], Float64[], Float64[], Int[], Float64[])
 
 """
     SimState
@@ -491,7 +498,8 @@ function _record(::Any, st::SimState)
     T, r = size(st.fit.gval, 1), st.rec
     return GenerationRecords(r.census, r.males, r.mean_fitness, r.mean_log_fitness, r.var_log_fitness,
         reshape(r.mean_genotypic, T, :), reshape(r.var_genotypic, T, T, :), reshape(r.mean_phenotypic, T, :),
-        reshape(r.var_phenotypic, T, T, :), r.paternal_pairs, r.maternal_pairs, r.selfing, r.related_matings)
+        reshape(r.var_phenotypic, T, T, :), r.paternal_pairs, r.maternal_pairs, r.selfing, r.related_matings,
+        r.mate_correlation)
 end
 function _record(init::FisherWrightResult, st::SimState)
     T, r, i = size(st.fit.gval, 1), st.rec, init.records
@@ -503,7 +511,7 @@ function _record(init::FisherWrightResult, st::SimState)
         cat(gv, reshape(r.var_genotypic, T, T, :); dims=3), hcat(pm, reshape(r.mean_phenotypic, T, :)),
         cat(pv, reshape(r.var_phenotypic, T, T, :); dims=3), vcat(i.paternal_pairs, r.paternal_pairs),
         vcat(i.maternal_pairs, r.maternal_pairs), vcat(i.selfing, r.selfing),
-        vcat(i.related_matings, r.related_matings))
+        vcat(i.related_matings, r.related_matings), vcat(i.mate_correlation, r.mate_correlation))
 end
 
 # The number of traits a run records: those of its trait model, else those
@@ -747,6 +755,7 @@ function _simulate!(
         _record_fitness!(fitness, st)
         _record_trait!(fitness, st)
         push!(st.rec.related_matings, 0)
+        push!(st.rec.mate_correlation, NaN)
         _mate!(mating, fitness, st, no, rng)
         _record_mated!(fitness, st)
         _track_relatives(mating) && _update_relatives!(st, no)
