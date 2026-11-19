@@ -1,0 +1,36 @@
+======================================================================================
+ FisherWright.jl validation of assortative mating against Bulmer's recursion
+ N = 2000, K = 1000 free loci, V_a = 1, V_E = 1.0, T = 15, no mutation; reps = 200, seed = 2026,
+ threads = 16. A check fails when |z| > 3.5
+======================================================================================
+
+  ρ = 0.5  (158 s); realized mate correlation 0.4997 (generation 1) 0.4964 (generation 15); K_eff 318
+                                           simulated   expected        z
+  one-step residual              -0.00016 ± 0.00077     0.00000    -0.21  pass
+  V_A, generation 2 - recursion   -0.00154 ± 0.00231     0.00000    -0.67  pass
+  V_A, generation 5 - recursion    0.00007 ± 0.00359     0.00000     0.02  pass
+  V_A, generation 15 - recursion    0.00066 ± 0.00442     0.00000     0.15  pass
+  change of the mean             -0.01763 ± 0.00692     0.00000    -2.55  pass
+  V_A at generation 15: 1.3992; recursion 1.3986; its equilibrium for m = 0.4964: 1.4028 (random mating: 0.9963)
+
+  ρ = 0.8  (156 s); realized mate correlation 0.7985 (generation 1) 0.7983 (generation 15); K_eff 317
+                                           simulated   expected        z
+  one-step residual               0.00057 ± 0.00109     0.00000     0.52  pass
+  V_A, generation 2 - recursion    0.00073 ± 0.00270     0.00000     0.27  pass
+  V_A, generation 5 - recursion    0.00299 ± 0.00547     0.00000     0.55  pass
+  V_A, generation 15 - recursion    0.01456 ± 0.00798     0.00000     1.83  pass
+  change of the mean              0.01896 ± 0.00813     0.00000     2.33  pass
+  V_A at generation 15: 2.0855; recursion 2.0710; its equilibrium for m = 0.7983: 2.2129 (random mating: 0.9962)
+
+  ρ = -0.5  (157 s); realized mate correlation -0.4991 (generation 1) -0.4992 (generation 15); K_eff 317
+                                           simulated   expected        z
+  one-step residual               0.00005 ± 0.00052     0.00000     0.09  pass
+  V_A, generation 2 - recursion   -0.00020 ± 0.00206     0.00000    -0.10  pass
+  V_A, generation 5 - recursion    0.00188 ± 0.00188     0.00000     1.00  pass
+  V_A, generation 15 - recursion   -0.00279 ± 0.00194     0.00000    -1.44  pass
+  change of the mean              0.01039 ± 0.00506     0.00000     2.05  pass
+  V_A at generation 15: 0.8114; recursion 0.8142; its equilibrium for m = -0.4992: 0.8139 (random mating: 0.9962)
+
+======================================================================================
+ All checks passed.
+======================================================================================

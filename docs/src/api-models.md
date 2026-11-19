@@ -11,6 +11,7 @@ FamilySize
 Hierarchical
 Monoecious
 AvoidRelatives
+Assortative
 CustomMating
 MatingContext
 ```

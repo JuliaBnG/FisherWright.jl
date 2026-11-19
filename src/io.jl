@@ -6,11 +6,11 @@
 # Layout (all integers and floats little-endian):
 #
 #   magic        8 bytes  "FWRESULT"
-#   version      UInt32   format version (1)
+#   version      UInt32   format version (2; 1 is still read)
 #   payload      the fields below, in order
 #   checksum     UInt32   CRC-32C of the payload
 #
-# Payload of format version 1, with `vec` = Int64 length then the elements,
+# Payload of format version 2, with `vec` = Int64 length then the elements,
 # and `ragged` = Int64 count n, Int64 offsets[n + 1] (offsets[1] = 0), then the
 # concatenated UInt32 elements:
 #
@@ -29,14 +29,18 @@
 #   var_phenotypic           T × T × ngen Float64
 #   paternal_pairs, maternal_pairs, selfing           ngen Float64 each
 #   related_matings          ngen Int64
+#   mate_correlation         ngen Float64
 #   first_id                 Int64
 #   pedigree rows m          Int64
 #   id, sire, dam            m Int64 each
 #   sex                      m Int8 (1 male, 0 female, -1 missing)
 #   generation               m Int64
+#
+# Format version 1 (FisherWright 0.10) is version 2 without
+# mate_correlation, which reads as NaN.
 
 const _FWR_MAGIC = b"FWRESULT"
-const _FWR_VERSION = UInt32(1)
+const _FWR_VERSION = UInt32(2)
 const _CRC_CHUNK = 1 << 16
 
 # Bytes are written and read through these, which keep the running checksum.
@@ -154,6 +158,7 @@ function write_result(io::IO, r::FisherWrightResult)
     _put(c, rec.maternal_pairs)
     _put(c, rec.selfing)
     _put(c, Vector{Int64}(rec.related_matings))
+    _put(c, rec.mate_correlation)
     _put(c, Int64(r.first_id))
     ped = r.pedigree
     _put(c, Int64(nrow(ped)))
@@ -189,7 +194,10 @@ function read_result(io::IO)
     return r
 end
 
-function _read_payload(c::_CRCIO, ::Val{1})
+_read_payload(c::_CRCIO, ::Val{1}) = _read_payload(c, false)
+_read_payload(c::_CRCIO, ::Val{2}) = _read_payload(c, true)
+
+function _read_payload(c::_CRCIO, mates::Bool)
     haps = _get_ragged(c)
     ends = _get_vec(c, UInt32)
     subs = _get_vec(c, UInt32)
@@ -206,12 +214,13 @@ function _read_payload(c::_CRCIO, ::Val{1})
     pv = reshape(_get(c, Float64, T * T * ng), T, T, ng)
     pp, mp, sf = _get(c, Float64, ng), _get(c, Float64, ng), _get(c, Float64, ng)
     related = _get(c, Int64, ng)
+    mc = mates ? _get(c, Float64, ng) : fill(NaN, ng)
     first_id = _get(c, Int64)
     m = _get(c, Int64)
     id, sire, dam = _get(c, Int64, m), _get(c, Int64, m), _get(c, Int64, m)
     sex = Union{Missing,Bool}[s < 0 ? missing : s == 1 for s in _get(c, Int8, m)]
     gen = _get(c, Int64, m)
-    records = GenerationRecords(census, males, fm, flm, flv, gm, gv, pm, pv, pp, mp, sf, related)
+    records = GenerationRecords(census, males, fm, flm, flv, gm, gv, pm, pv, pp, mp, sf, related, mc)
     ped = DataFrame(id=id, sire=sire, dam=dam, sex=sex, generation=gen)
     return FisherWrightResult(haps, ends, subs, sel, ssubs, records, first_id, ped)
 end

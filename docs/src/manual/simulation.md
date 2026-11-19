@@ -420,6 +420,48 @@ is decided as without avoidance, and only an outcrossed second parent
 is redrawn. `FamilySize` and `Hierarchical` assign sires to dams as a
 whole and are not supported.
 
+## Assortative mating
+
+`mating = Assortative(ρ; inner, trait)` mates by phenotype, with
+correlation `ρ` between mates (`ρ < 0`: disassortative). Sexes are
+drawn as by `inner`, a `RandomMating`; every offspring draws its sire
+in proportion to fitness, and then its dam in proportion to her fitness
+times ``c_ρ(z_s, z_d)``, the density of the Gaussian copula with
+correlation `ρ` at the normal scores of the two phenotypes (their ranks
+within each sex, through ``Φ^{-1}``). Without selection the normal
+scores of mates then have correlation `ρ`, up to the discreteness of a
+finite cohort, whatever the distribution of the phenotype; for a
+Gaussian phenotype that is the phenotypic correlation of mates. The
+phenotypes come from a `TraitFitness` (`trait` picks one of several
+traits); for a trait that is not under selection, give it the fitness
+`P -> 1.0`. The realized correlation of the phenotypes of sire and dam
+is recorded in `mate_correlation`:
+
+```@example simulation
+using Random, Statistics
+chr = fill(1_000, 400)                       # one locus per chromosome
+qtl = trait_loci(chr, 400; a=0.1, μ=1e-3, rng=Xoshiro(8))
+flat = TraitFitness(qtl; σe=1.0, fitness=p -> 1.0)
+base = fisher_wright(500, 400, chr, 1.0; fitness=flat, result=true,
+                     rng=Xoshiro(9))
+pos = fisher_wright(500, 15, chr, 1.0; init=base, fitness=flat,
+                    mating=Assortative(0.6), result=true, rng=Xoshiro(10))
+neg = fisher_wright(500, 15, chr, 1.0; init=base, fitness=flat,
+                    mating=Assortative(-0.6), result=true, rng=Xoshiro(10))
+vg(r) = mean(r.records.var_genotypic[1, 1, end-4:end])
+(mean(pos.records.mate_correlation[401:end]), vg(base), vg(pos), vg(neg))
+```
+
+Assortment builds positive covariances between the loci and raises the
+genetic variance; disassortative mating lowers it. With free
+recombination the variance approaches ``V_a/(1 - m h^2)`` for genic
+variance ``V_a``, mate correlation `m` and heritability ``h^2``
+(Bulmer 1980), which the validation checks generation by generation.
+A generation costs O(distinct sires × females), as the weights of the
+dams are built for every sire. `FamilySize`, `Hierarchical` and
+`Monoecious` are not supported as `inner`; any other rule can be
+written with `CustomMating`.
+
 ## Custom mating
 
 `mating = CustomMating(f; sexes)` leaves the matings to a function. In
@@ -431,7 +473,9 @@ their parents and grandparents (`ctx.relatives`, as kept by
 `AvoidRelatives`), their haplotypes, their relative fitness, and their
 genotypic values and phenotypes under `TraitFitness` (`T × n`
 matrices, one row per trait), with the `rng` of the run. Positive
-assortative mating on the phenotype, for example:
+assortative mating by pairing neighbours in phenotype, for example
+(the built-in [`Assortative`](@ref) draws mates by a Gaussian copula
+instead):
 
 ```@example simulation
 using Random

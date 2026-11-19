@@ -46,9 +46,10 @@ include("sexspecific.jl")
 include("family.jl")
 include("monoecious.jl")
 include("relatives.jl")
+include("assortative.jl")
 include("custom.jl")
 include("fwp.jl")
 
-export fisher_wright, muts2bitarray, extract_chip_bitarray, FisherWrightResult, GenerationRecords, write_result, read_result, effective_size, to_haplotype, RecombinationMap, uniform_recombination_map, RandomMating, bottleneck, growth, FitnessLoci, fitness_loci, SiteFitness, Neutral, TraitLoci, trait_loci, ntraits, TraitFitness, Stabilizing, Directional, SexSpecific, FamilySize, Hierarchical, Monoecious, AvoidRelatives, CustomMating, MatingContext
+export fisher_wright, muts2bitarray, extract_chip_bitarray, FisherWrightResult, GenerationRecords, write_result, read_result, effective_size, to_haplotype, RecombinationMap, uniform_recombination_map, RandomMating, bottleneck, growth, FitnessLoci, fitness_loci, SiteFitness, Neutral, TraitLoci, trait_loci, ntraits, TraitFitness, Stabilizing, Directional, SexSpecific, FamilySize, Hierarchical, Monoecious, AvoidRelatives, Assortative, CustomMating, MatingContext
 
 end # module FisherWright

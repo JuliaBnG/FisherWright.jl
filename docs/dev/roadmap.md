@@ -556,8 +556,8 @@ replicates and seeds; logs go under `docs/src/validation/`.
 Every row of the staging is released. What remains open, none of it
 scheduled:
 
-- Extension named above: phenotypic assortative mating as a built-in
-  scheme (possible now through `CustomMating`, with `ctx.phenotypic`).
+- Done (0.11.0): phenotypic assortative mating as a built-in scheme,
+  below.
 - Not scheduled: density regulation and an extinction policy (the
   census stays fixed).
 
@@ -611,6 +611,18 @@ instead, because the scheme objects are immutable user values that may
 be shared between runs, and the groups give the same containment
 without type parameters on the state. Seeded output unchanged (53
 configurations against 0.9.1, at 1 and 4 threads).
+
+Done 2026-11-19 (0.11.0): assortative mating. `Assortative(ρ; inner,
+trait)` draws the sire by fitness and the dam in proportion to fitness
+times the Gaussian copula density with correlation `ρ` at the normal
+scores of the phenotypes within each sex (ties share their mean score),
+so mates have correlation `ρ` on the normal-score scale for any
+phenotype distribution; O(distinct sires × females) per generation.
+The realized phenotypic correlation of mates is recorded
+(`records.mate_correlation`), and result files are format version 2
+(version 1 still read, with a fixture of each). Validated against
+Bulmer's (1980) recursion, with free recombination (one locus per
+chromosome). Seeded output of the other schemes unchanged.
 
 ## Open decisions
 

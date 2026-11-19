@@ -75,6 +75,7 @@ The fields of `result.records`, one entry per generation:
 | `paternal_pairs`, `maternal_pairs` | Ordered pairs of offspring sharing a sire, and sharing a dam, in each generation. |
 | `selfing` | Proportion of selfed offspring in each generation; 0 with separate sexes. |
 | `related_matings` | Under `AvoidRelatives`, offspring of relatives that could not be avoided, per generation; 0 otherwise. |
+| `mate_correlation` | Under `Assortative`, the realized correlation of the phenotypes of sire and dam, per generation; `NaN` otherwise. |
 
 Before version 0.10 these were fields of the result itself. `result.census`
 and the other names still work, with a deprecation warning, until 1.0.
@@ -112,7 +113,8 @@ The file holds every field of the result. The format is versioned and
 defined byte by byte (little-endian, with a CRC-32C checksum), not by
 Julia's `Serialization`, so it does not depend on the Julia or package
 version: every later release reads the files of earlier format versions,
-and the test suite reads a file written by 0.10.0. The layout is described
+and the test suite reads a file of each version (format 1, written by
+0.10.0, and format 2, by 0.11.0). The layout is described
 in `src/io.jl`.
 
 ## Census record and effective size
