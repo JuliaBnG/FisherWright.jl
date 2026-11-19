@@ -304,6 +304,7 @@ function _from_cov(σe, Σe, T::Int)
 end
 
 ntraits(f::TraitFitness) = ntraits(f.loci)
+_model_traits(f::TraitFitness) = ntraits(f)
 
 _selected(::TraitFitness) = true
 _sel_poisson(f::TraitFitness) =
@@ -372,11 +373,11 @@ function _push_moments!(m::Vector{Float64}, v::Vector{Float64}, X::Matrix{Float6
     return nothing
 end
 
-# Genotypic values, phenotypes and relative fitness of every parent, and the
-# records of the generation. The value of the substituted sites, carried by
-# every parent on both haplotypes, is added to G.
-function _fitness!(f::TraitFitness, st::SimState, rng::AbstractRNG)
-    n, sel, G, P, w = st.n, st.sel, st.gval, st.pval, st.w
+# Genotypic values and phenotypes of every parent, in `st.gval` and
+# `st.pval`, and their records. The value of the substituted sites, carried
+# by every parent on both haplotypes, is added to G.
+function _trait_values!(f::TraitFitness, st::SimState, rng::AbstractRNG)
+    n, sel, G, P = st.n, st.sel, st.gval, st.pval
     loci = f.loci
     T = ntraits(loci)
     size(G, 1) == T || error("the state holds $(size(G, 1)) traits; the model has $T")
@@ -401,9 +402,6 @@ function _fitness!(f::TraitFitness, st::SimState, rng::AbstractRNG)
         @inbounds for i = 1:n
             P[1, i] = σe > 0 ? G[1, i] + σe * randn(rng) : G[1, i]
         end
-        @inbounds for i = 1:n
-            w[i] = _log_w(f.w, P[1, i])
-        end
     else
         copyto!(view(P, :, 1:n), view(G, :, 1:n))
         if any(!iszero, L)
@@ -417,13 +415,33 @@ function _fitness!(f::TraitFitness, st::SimState, rng::AbstractRNG)
                 end
             end
         end
-        @inbounds for i = 1:n
-            w[i] = _log_w(f.w, view(P, :, i))
-        end
     end
-    lw = view(w, 1:n)
     _push_moments!(st.gmean, st.gvar, G, n)
     _push_moments!(st.pmean, st.pvar, P, n)
+    return nothing
+end
+
+# Log fitness `fit(P)` of the phenotypes of the n parents, into `lw`.
+function _trait_log_w!(lw::AbstractVector{Float64}, fit, P::Matrix{Float64}, n::Int)
+    if size(P, 1) == 1
+        @inbounds for i = 1:n
+            lw[i] = _log_w(fit, P[1, i])
+        end
+    else
+        @inbounds for i = 1:n
+            lw[i] = _log_w(fit, view(P, :, i))
+        end
+    end
+    return lw
+end
+
+# Genotypic values, phenotypes and relative fitness of every parent, and the
+# records of the generation.
+function _fitness!(f::TraitFitness, st::SimState, rng::AbstractRNG)
+    n, w = st.n, st.w
+    _trait_values!(f, st, rng)
+    _trait_log_w!(w, f.w, st.pval, n)
+    lw = view(w, 1:n)
     push!(st.flmean, mean(lw))
     push!(st.flvar, var(lw))
     push!(st.fmean, sum(exp, lw) / n)

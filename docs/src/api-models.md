@@ -41,3 +41,9 @@ ntraits
 Stabilizing
 Directional
 ```
+
+## Sex-specific fitness
+
+```@docs
+SexSpecific
+```

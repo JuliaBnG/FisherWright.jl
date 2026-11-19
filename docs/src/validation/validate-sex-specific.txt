@@ -1,0 +1,45 @@
+# Date: 2026-11-18T21:00Z  Commit: 145a34f + branch sex-specific-fitness (v0.9.1, uncommitted working tree)
+# CPU: AMD Ryzen 9 5950X 16-Core Processor (amd); julia version 1.13.4; deps: BnGStructs v0.4.0 DataFrames v1.8.3 Distributions v0.25.135
+# $ julia -t 16 --project=. docs/src/validation/scripts/validate-sex-specific.jl 200 2026
+
+================================================================================
+ FisherWright.jl validation of sex-specific fitness
+ One site, N = 10000, all heterozygous at the start, no mutation; reps = 200, seed = 2026,
+ threads = 16. A check fails when |z| > 3.5
+================================================================================
+
+  1. antagonistic, additive: s_m = 0.1, h_m = 0.5, s_f = -0.1, h_f = 0.5  (30 s)
+  generation          mean frequency  recursion        z
+  10              0.49333 ± 0.00081     0.49439    -1.30  pass
+  20              0.48671 ± 0.00119     0.48824    -1.29  pass
+  40              0.47593 ± 0.00168     0.47617    -0.15  pass
+  80              0.45177 ± 0.00213     0.45302    -0.59  pass
+
+  2. males only: s_m = 0.1, h_m = 0.5, s_f = 0, h_f = 0.5  (26 s)
+  generation          mean frequency  recursion        z
+  10              0.55373 ± 0.00079     0.55327     0.58  pass
+  20              0.61054 ± 0.00109     0.61079    -0.23  pass
+  40              0.71319 ± 0.00138     0.71532    -1.54  pass
+  80              0.86589 ± 0.00113     0.86460     1.14  pass
+
+  3. both sexes at half strength: s_m = 0.05, h_m = 0.5, s_f = 0.05, h_f = 0.5  (28 s)
+  generation          mean frequency  recursion        z
+  10              0.55535 ± 0.00080     0.55463     0.90  pass
+  20              0.61360 ± 0.00117     0.61368    -0.07  pass
+  40              0.72227 ± 0.00141     0.72085     1.01  pass
+  80              0.87273 ± 0.00119     0.87183     0.75  pass
+
+  4. antagonistic, dominance reversal: s_m = 0.2, h_m = 0.8, s_f = -0.2, h_f = 0.2  (46 s)
+  generation          mean frequency  recursion        z
+  10              0.48295 ± 0.00073     0.48135     2.20  pass
+  20              0.46613 ± 0.00089     0.46649    -0.40  pass
+  40              0.44817 ± 0.00095     0.44862    -0.47  pass
+  80              0.43500 ± 0.00097     0.43519    -0.19  pass
+  160             0.43094 ± 0.00095     0.43091     0.04  pass
+  equilibrium of the recursion 0.43061
+
+  Cases 2 and 3 by the recursion at generations 10, 40, 80: [0.55327, 0.71532, 0.8646] and [0.55463, 0.72085, 0.87183]
+
+================================================================================
+ All checks passed.
+================================================================================

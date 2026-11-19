@@ -556,9 +556,8 @@ replicates and seeds; logs go under `docs/src/validation/`.
 Every row of the staging is released. What remains open, none of it
 scheduled:
 
-- Extensions named above: sex-specific fitness, and phenotypic
-  assortative mating as a built-in scheme (possible now through
-  `CustomMating`, with `ctx.phenotypic`).
+- Extension named above: phenotypic assortative mating as a built-in
+  scheme (possible now through `CustomMating`, with `ctx.phenotypic`).
 - Not scheduled: density regulation and an extinction policy (the
   census stays fixed).
 
@@ -583,6 +582,16 @@ noise, and a custom mating on the phenotype). Validated by
 `validate-pleiotropy.jl`: the neutral genetic covariance matrix
 against Σa/4 (2H_B − H_W), all 48 checks |z| ≤ 3.08, and the
 correlated response against Lande's Gβ for comparison.
+
+Done 2026-11-18 (0.9.1): sex-specific fitness. `SexSpecific(male,
+female)` of `Neutral`, `SiteFitness` or `TraitFitness` sharing one
+table of selected loci. Both models are evaluated for every parent
+before the sexes are drawn (`st.w` for sires, `st.wf` for dams), so
+the draws keep their order; the fitness record is completed after
+mating, each parent under the model of its sex. Seeded output of the
+other models hash-checked unchanged (4 fitness models × 5 mating
+schemes). Validated by `validate-sex-specific.jl` against the
+deterministic two-sex recursion at N = 10,000.
 
 ## Open decisions
 

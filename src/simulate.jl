@@ -34,7 +34,8 @@ abstract type AbstractMating end
 Fitness of the adult cohort. A subtype implements `_fitness!(f, st)`, called
 on the parents before mating, which writes the relative fitness of parent
 `i` to `st.w[i]` for `i = 1:st.n`: finite, non-negative, and positive for at
-least one parent of each sex. Parents are then drawn with probability
+least one parent of each sex. Dams are drawn by `st.wf`, the same vector as
+`st.w` unless a model ([`SexSpecific`](@ref)) writes female fitness there. Parents are then drawn with probability
 proportional to fitness within each sex (soft selection: the census size is
 not affected). [`Neutral`](@ref) writes nothing and keeps the uniform draw.
 """
@@ -271,7 +272,10 @@ current cohort occupies the leading entries.
 - `pm`, `sex`, `sires`, `dams`: mating table (sire and dam of each
   offspring) and its scratch.
 - `w`: relative fitness of each parent, written by `_fitness!`; unused under
-  `Neutral`.
+  `Neutral`. Sires are drawn by `w` and dams by `wf`, which is the same
+  vector unless fitness is sex-specific ([`SexSpecific`](@ref)), when `w`
+  holds the fitness of every parent as a male and `wf` as a female, and
+  `lwraw` their logarithms (rows 1 and 2), before scaling.
 - `tm`, `tf`: alias tables for the weighted draw of sires and dams.
 - `srng`: one stream per meiosis/haplotype slot, seeded serially from the
   caller's rng, so a run does not depend on the thread count or scheduling.
@@ -350,6 +354,8 @@ mutable struct SimState
     rel::Matrix{Int}
     rnew::Matrix{Int}
     const ped::PedRecord
+    wf::Vector{Float64}
+    const lwraw::Matrix{Float64}
 end
 
 # State for the starting cohort `prt` (two haplotypes per individual), with
@@ -373,13 +379,14 @@ function SimState(
     length(sel) == length(prt) ||
         throw(ArgumentError("the selected stream must have one entry per haplotype"))
     nh = 2nmax
+    w = ones(nmax)
     bufs(k) = [Vector{UInt32}() for _ = 1:k]
     append!(prt, bufs(nh - 2n))
     append!(sel, bufs(nh - 2n))
     return SimState(
         n, prt, bufs(nh), substitutions, bufs(nh), bufs(nh), bufs(nmax),
         Matrix{Int}(undef, nmax, 2), sizehint!(Vector{Bool}(undef, n), nmax), Int[], Int[],
-        ones(nmax), AliasTable(nmax), AliasTable(nmax),
+        w, AliasTable(nmax), AliasTable(nmax),
         [Xoshiro(rand(rng, UInt64)) for _ = 1:nh], [n], Int[],
         sel, bufs(nh), ssubs, bufs(nh), bufs(nh),
         Float64[], Float64[], Float64[],
@@ -387,7 +394,7 @@ function SimState(
         sizehint!(Int[], nmax), sizehint!(Int[], nmax), sizehint!(Int[], nmax),
         sizehint!(Int[], nmax), sizehint!(Int[], nmax),
         zeros(Int, nmax), zeros(nmax), Float64[], Float64[], Float64[], Int[],
-        zeros(Int, 6, 0), zeros(Int, 6, 0), PedRecord(n),
+        zeros(Int, 6, 0), zeros(Int, 6, 0), PedRecord(n), w, zeros(2, nmax),
     )
 end
 
@@ -474,8 +481,12 @@ end
 
 # The number of traits a run records: those of its trait model, else those
 # of the result it continues, else 1.
-_run_traits(f::AbstractFitness, init) = f isa TraitFitness ? ntraits(f) :
-                                        init isa FisherWrightResult ? ntraits(init) : 1
+function _run_traits(f::AbstractFitness, init)
+    T = _model_traits(f)
+    T === nothing || return T
+    return init isa FisherWrightResult ? ntraits(init) : 1
+end
+_model_traits(::AbstractFitness) = nothing
 
 # The trait record of `init` with `T` traits: as it is, or, if it holds no
 # trait generation (all NaN), widened to T traits.
@@ -536,7 +547,8 @@ end
 
 # Trait record of the parents of one generation: NaN unless the fitness
 # model is a trait model, which records it in `_fitness!`.
-function _record_trait!(::AbstractFitness, st::SimState)
+_record_trait!(::AbstractFitness, st::SimState) = _record_no_trait!(st)
+function _record_no_trait!(st::SimState)
     T = size(st.gval, 1)
     for _ = 1:T
         push!(st.gmean, NaN)
@@ -580,11 +592,11 @@ end
 _parents!(::Neutral, st::SimState, no::Int, rng::AbstractRNG) =
     _draw_parents!(st.pm, st.sires, st.dams, no, rng)
 function _parents!(::AbstractFitness, st::SimState, no::Int, rng::AbstractRNG)
-    w = st.w
+    w, wf = st.w, st.wf
     # Soft selection cannot rescue a sex without any fit member.
-    (any(i -> w[i] > 0, st.sires) && any(i -> w[i] > 0, st.dams)) || error(
+    (any(i -> w[i] > 0, st.sires) && any(i -> wf[i] > 0, st.dams)) || error(
         "no parent with positive fitness in one sex: the population cannot reproduce")
-    return _draw_parents!(st.pm, st.sires, st.dams, no, rng, w, st.tm, st.tf)
+    return _draw_parents!(st.pm, st.sires, st.dams, no, rng, w, st.tm, st.tf, wf)
 end
 
 # One meiosis per parent for each of `no` offspring (threaded), written into
@@ -708,6 +720,7 @@ function _simulate!(
         _record_trait!(fitness, st)
         push!(st.forced, 0)
         _mate!(mating, fitness, st, no, rng)
+        _record_mated!(fitness, st)
         _track_relatives(mating) && _update_relatives!(st, no)
         push!(st.males, length(st.sires))
         _record_families!(st, no)

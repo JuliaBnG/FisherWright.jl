@@ -255,7 +255,7 @@ function _family_mate!(m::FamilySize, f::AbstractFitness, st::SimState, no::Int,
         nd = _split!(st.fcnt, Nf, no, m.dams, m.kd, st.w, st.tf, st.fidx, rng)
         ms = _split!(st.mcnt, Nm, Nf, m.sires, m.km, st.w, st.tm, st.fidx, rng)
     else
-        nd = _split_selected!(st.fcnt, dams, no, m.dams, m.kd, st.w, st.swt, st.tf, st.fidx, rng, "dam")
+        nd = _split_selected!(st.fcnt, dams, no, m.dams, m.kd, st.wf, st.swt, st.tf, st.fidx, rng, "dam")
         ms = _split_selected!(st.mcnt, sires, Nf, m.sires, m.km, st.w, st.swt, st.tm, st.fidx, rng, "sire")
     end
     # The sire of each dam: the slots of the sires, in a uniformly random
