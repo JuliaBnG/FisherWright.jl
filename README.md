@@ -103,10 +103,6 @@ Converts a vector of mutation sets (haplotypes) and chromosome breakpoints into
 a `BitArray` of haplotypes and a linkage map (`DataFrame`). Supports random
 flipping of alleles and removal of fixed loci.
 
-### `quickHap`
-
-Synthetic haplotypes at independent loci, as a `BnGStructs.Haplotype`.
-
 ### `write_result`, `read_result`
 
 Save a `FisherWrightResult` to a file and read it back, for example a
@@ -710,14 +706,10 @@ pedigrees as 0.9.1, at 1 and 4 threads.
   `ArgumentError` (was `ErrorException`) when no locus is polymorphic.
   `muts2bitarray` and the loci tables of `to_haplotype(result, loci)`
   stay `DataFrame`s.
-- `quickHap` returns a `BnGStructs.Haplotype` (was `Matrix{Int8}`), with
-  the same alleles for the same `rng`; `Int8.(hp)` gives the old
-  matrix. It throws an `ArgumentError` (was `ErrorException`) for `maf`
-  outside `(0, 0.5)`.
-- `quickGT` is removed. Genotypes at independent loci with Beta
-  frequencies are a poor stand-in for a population; simulate a small
-  historical population with `fisher_wright` (cheap), or sum the two
-  haplotypes of each individual from `quickHap` for the same model.
+- `quickGT` and `quickHap` are removed. Genotypes at independent loci
+  with Beta frequencies are a poor stand-in for a population; simulate
+  a small historical population with `fisher_wright`, which is cheap,
+  and export it with `to_haplotype`.
 - Requires BnGStructs 0.3 or 0.4 (0.2.5 is dropped, for `VariantMap`).
 - Internal: `SimState` keeps the genome and the per-slot streams, and
   groups the rest into `mate` (mating table and the scratch of the

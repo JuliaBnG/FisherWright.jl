@@ -19,8 +19,6 @@ dense matrix allocations during generation stepping.
   without full genome materialization via [`extract_chip_bitarray`](@ref) or [`to_haplotype`](@ref).
 - **Recombination Landscapes**: Custom or uniform crossover recombination maps via
   [`RecombinationMap`](@ref) and [`uniform_recombination_map`](@ref).
-- **Synthetic Data**: Generate synthetic haplotypes at independent loci with controlled allele
-  frequencies via [`quickHap`](@ref).
 """
 module FisherWright
 
@@ -50,8 +48,7 @@ include("monoecious.jl")
 include("relatives.jl")
 include("custom.jl")
 include("fwp.jl")
-include("quick-genotypes.jl")
 
-export fisher_wright, muts2bitarray, extract_chip_bitarray, quickHap, FisherWrightResult, GenerationRecords, write_result, read_result, effective_size, to_haplotype, RecombinationMap, uniform_recombination_map, RandomMating, bottleneck, growth, FitnessLoci, fitness_loci, SiteFitness, Neutral, TraitLoci, trait_loci, ntraits, TraitFitness, Stabilizing, Directional, SexSpecific, FamilySize, Hierarchical, Monoecious, AvoidRelatives, CustomMating, MatingContext
+export fisher_wright, muts2bitarray, extract_chip_bitarray, FisherWrightResult, GenerationRecords, write_result, read_result, effective_size, to_haplotype, RecombinationMap, uniform_recombination_map, RandomMating, bottleneck, growth, FitnessLoci, fitness_loci, SiteFitness, Neutral, TraitLoci, trait_loci, ntraits, TraitFitness, Stabilizing, Directional, SexSpecific, FamilySize, Hierarchical, Monoecious, AvoidRelatives, CustomMating, MatingContext
 
 end # module FisherWright

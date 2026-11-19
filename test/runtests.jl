@@ -1,7 +1,7 @@
 using Test
 using Random
 using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_sorted, merge_sorted!, recombine, _recombine!, _insert_sorted!, _isearchfirst,
-    cobp, cobp!, FisherWrightResult, GenerationRecords, write_result, read_result, quickHap, effective_size, to_haplotype, RecombinationMap,
+    cobp, cobp!, FisherWrightResult, GenerationRecords, write_result, read_result, effective_size, to_haplotype, RecombinationMap,
     uniform_recombination_map, random_mate, random_mate!, _fixed_sex_mate!, _nmale, _fixed_mutations,
     _drop_mutations, _drop_mutations!, _fixation_step, _fixation_step!, _extract_fixed,
     _intersect_sorted!, _remove_sorted!, _with_fixed, _simulate!, _initial_state,
@@ -3348,21 +3348,7 @@ end
     @test v1.pedigree.generation[[1, end]] == [6, 8]
 end
 
-@testset "Synthetic haplotypes and the exported map" begin
-    hp, q = quickHap(200, 30; rng=Xoshiro(2), return_p=true)
-    @test hp isa Haplotype && size(hp) == (200, 60) && all(0.2 .< q .< 0.8)
-    # The same draws as the Matrix{Int8} of 0.9: Bernoulli(p) per allele, row
-    # by row.
-    rng = Xoshiro(2)
-    for i in 1:200
-        f = rand(rng, Distributions.Beta(0.75, 0.75))
-        while !(0.2 < f < 0.8)
-            f = rand(rng, Distributions.Beta(0.75, 0.75))
-        end
-        @test f == q[i] && hp[i, :] == (rand(rng, Distributions.Binomial(1, f), 60) .== 1)
-    end
-    @test_throws ArgumentError quickHap(10, 5; maf=0.0)
-
+@testset "The exported map" begin
     # The map of to_haplotype: a VariantMap that BnGStructs accepts, with
     # nucleotides from the rng given.
     res = fisher_wright(20, 20, [50_000, 50_000], 1.0; mut_base=1e5, result=true, rng=Xoshiro(3))

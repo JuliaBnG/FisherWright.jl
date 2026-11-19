@@ -57,9 +57,7 @@ mutations into `FisherWrightResult.substitutions` when `result=true`.
 `muts2bitarray.jl` and `to_haplotype` convert sparse simulation output to a
 locus-by-haplotype `BitMatrix` plus linkage-map `DataFrame`. The default export
 removes monomorphic loci; structured results require `include_fixed=true` to
-put substitutions back into dense output. `quick-genotypes.jl` is independent
-synthetic genotype/haplotype generation rather than part of the simulation
-pipeline.
+put substitutions back into dense output.
 
 ## Repository conventions
 

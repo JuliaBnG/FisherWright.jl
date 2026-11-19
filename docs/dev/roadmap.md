@@ -601,9 +601,9 @@ with a deprecation warning until 1.0, and the positional constructors
 are deprecated. `write_result`/`read_result`: a versioned binary
 format (little-endian, CRC-32C) with a fixture of format version 1 in
 `test/data`, replacing `Serialization` for saved burn-ins.
-`to_haplotype(result)` returns a `BnGStructs.VariantMap`; `quickHap` a
-`BnGStructs.Haplotype`; `quickGT` removed (a small historical population
-is cheap to simulate); `rng` for the placeholder nucleotides.
+`to_haplotype(result)` returns a `BnGStructs.VariantMap`; `quickGT` and
+`quickHap` removed (a small historical population is cheap to
+simulate); `rng` for the placeholder nucleotides.
 `SimState` keeps the genome and the per-slot streams and groups the
 rest into `mate`, `fit` and `rec`. The roadmap had asked for scratch
 owned by the mating and fitness objects; grouping by role was chosen

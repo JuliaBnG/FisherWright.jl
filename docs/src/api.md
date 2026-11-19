@@ -35,12 +35,6 @@ RecombinationMap
 uniform_recombination_map
 ```
 
-## Synthetic data
-
-```@docs
-quickHap
-```
-
 ## Advanced helpers
 
 ```@docs

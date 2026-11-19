@@ -1,32 +1,11 @@
 # Utilities
 
-## Synthetic haplotypes
-
-`quickHap` generates phased haplotypes at independent loci as a
-`BnGStructs.Haplotype` (`true` for the alternate allele). Allele frequencies
-are sampled from a Beta distribution and restricted to the requested
-minor-allele-frequency range. For genotypes with linkage and the allele
-frequency spectrum of a population, simulate a small historical population
-with `fisher_wright` instead; it is cheap.
-
-```@example utilities
-using FisherWright
-using Random
-
-haplotypes, frequencies = quickHap(100, 50; rng=MersenneTwister(2), return_p=true)
-(typeof(haplotypes), size(haplotypes), extrema(frequencies))
-```
-
-It accepts:
-
-| Keyword | Default | Meaning |
-|---|---|---|
-| `maf` | `0.2` | Strict lower minor-allele-frequency bound. |
-| `qd` | `Beta(0.75, 0.75)` | Distribution used to sample allele frequencies. |
-| `rng` | `Random.default_rng()` | Random-number generator. |
-| `return_p` | `false` | Return sampled frequencies with the matrix. |
-
-`maf` must be strictly between zero and `0.5`.
+Test data with linkage and the allele frequency spectrum of a population
+come from a small historical population: `fisher_wright` with a few hundred
+individuals and generations takes a fraction of a second, and
+`to_haplotype` turns it into a `BnGStructs.Haplotype` and its
+`VariantMap`. (`quickGT` and `quickHap`, which drew genotypes at
+independent loci, were removed in 0.10.)
 
 ## Efficient internal helpers
 
