@@ -37,18 +37,36 @@
 
 const _FWR_MAGIC = b"FWRESULT"
 const _FWR_VERSION = UInt32(1)
+const _CRC_CHUNK = 1 << 16
 
 # Bytes are written and read through these, which keep the running checksum.
 mutable struct _CRCIO{S<:IO}
     io::S
     crc::UInt32
+    const buf::Vector{UInt8}
+end
+_CRCIO(io::IO) = _CRCIO(io, UInt32(0), Vector{UInt8}(undef, _CRC_CHUNK))
+
+# CRC-32C of the memory of `x`, in chunks through a byte buffer: the
+# `crc32c` of Julia 1.10 takes `Array{UInt8}` only, and a copy of a large
+# array would double the memory of writing or reading it.
+function _crc(crc::UInt32, x::Array{T}, buf::Vector{UInt8}) where {T}
+    n = sizeof(x)
+    i = 0
+    GC.@preserve x buf while i < n
+        k = min(_CRC_CHUNK, n - i)
+        unsafe_copyto!(pointer(buf), Ptr{UInt8}(pointer(x)) + i, k)
+        crc = crc32c(view(buf, 1:k), crc)
+        i += k
+    end
+    return crc
 end
 
 function _put(c::_CRCIO, x::AbstractArray{T}) where {T<:Union{UInt32,Int64,Float64,Int8}}
     isempty(x) && return nothing
-    bytes = reinterpret(UInt8, x isa Array ? vec(x) : collect(x))
-    c.crc = crc32c(bytes, c.crc)
-    write(c.io, bytes)
+    a = x isa Array ? x : collect(x)
+    c.crc = _crc(c.crc, a, c.buf)
+    write(c.io, a)
     return nothing
 end
 _put(c::_CRCIO, x::T) where {T<:Union{UInt32,Int64,Float64,Int8}} = _put(c, T[x])
@@ -72,10 +90,8 @@ function _get(c::_CRCIO, ::Type{T}, n::Integer) where {T}
     n >= 0 || throw(ArgumentError("corrupt FisherWright result file: negative length"))
     x = Vector{T}(undef, n)
     n == 0 && return x
-    bytes = reinterpret(UInt8, x)
-    nb = readbytes!(c.io, bytes, length(bytes))
-    nb == length(bytes) || throw(EOFError())
-    c.crc = crc32c(bytes, c.crc)
+    read!(c.io, x)
+    c.crc = _crc(c.crc, x, c.buf)
     return x
 end
 _get(c::_CRCIO, ::Type{T}) where {T} = _get(c, T, 1)[1]
@@ -115,7 +131,7 @@ function write_result(io::IO, r::FisherWrightResult)
     ENDIAN_BOM == 0x04030201 || error("the result format is little-endian; this platform is not")
     write(io, _FWR_MAGIC)
     write(io, htol(_FWR_VERSION))
-    c = _CRCIO(io, UInt32(0))
+    c = _CRCIO(io)
     _put_ragged(c, r.active_haplotypes)
     _put_vec(c, r.chromosome_ends)
     _put_vec(c, r.substitutions)
@@ -167,7 +183,7 @@ function read_result(io::IO)
     version = ltoh(read(io, UInt32))
     1 <= version <= _FWR_VERSION || throw(ArgumentError(
         "result format version $version; this release of FisherWright reads versions 1 to $(_FWR_VERSION)"))
-    c = _CRCIO(io, UInt32(0))
+    c = _CRCIO(io)
     r = _read_payload(c, Val(Int(version)))
     ltoh(read(io, UInt32)) == c.crc || throw(ArgumentError("FisherWright result file fails its checksum"))
     return r
