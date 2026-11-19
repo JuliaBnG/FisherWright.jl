@@ -124,13 +124,13 @@ function _mate!(m::AvoidRelatives{RandomMating}, f::AbstractFitness, st::SimStat
     else
         _draw_fixed_sex!(st.sex, st.sires, st.dams, nm, rng)
     end
-    sires, dams, pm, w = st.sires, st.dams, st.pm, st.w
+    sires, dams, pm, w, wf = st.sires, st.dams, st.pm, st.w, st.wf
     neutral = f isa Neutral
     if !neutral
-        (any(i -> w[i] > 0, sires) && any(i -> w[i] > 0, dams)) || error(
+        (any(i -> w[i] > 0, sires) && any(i -> wf[i] > 0, dams)) || error(
             "no parent with positive fitness in one sex: the population cannot reproduce")
         _alias_build!(st.tm, w, sires)
-        _alias_build!(st.tf, w, dams)
+        _alias_build!(st.tf, wf, dams)
     end
     forced = 0
     @inbounds for i = 1:no

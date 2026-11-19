@@ -159,7 +159,8 @@ end
 # Sire and dam of each of `n2` offspring, with replacement and with
 # probability proportional to the weight `w[i]` of parent `i` within its sex.
 # `tm` and `tf` are rebuilt for the current sires and dams. Per offspring the
-# draws from `rng` are two for the sire, then two for the dam.
+# draws from `rng` are two for the sire, then two for the dam. Dams are
+# weighted by `wf`, by default the same weights (sex-specific fitness).
 function _draw_parents!(
     pm::Matrix{Int},
     sires::Vector{Int},
@@ -169,9 +170,10 @@ function _draw_parents!(
     w::AbstractVector{Float64},
     tm::AliasTable,
     tf::AliasTable,
+    wf::AbstractVector{Float64}=w,
 )
     _alias_build!(tm, w, sires)
-    _alias_build!(tf, w, dams)
+    _alias_build!(tf, wf, dams)
     @inbounds for i = 1:n2
         pm[i, 1] = sires[_alias_draw(tm, rng)]
         pm[i, 2] = dams[_alias_draw(tf, rng)]

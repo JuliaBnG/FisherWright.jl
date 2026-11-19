@@ -652,6 +652,48 @@ generation (`mean_genotypic[:, g]`) and a covariance matrix per
 generation (`var_genotypic[:, :, g]`). `to_haplotype(result, two)`
 exports the effects as columns `a1`, `a2` and `h1`, `h2`.
 
+## Sex-specific fitness
+
+`fitness = SexSpecific(male, female)` gives each sex its own fitness
+model, `Neutral()`, `SiteFitness` or `TraitFitness`: every offspring
+draws its sire among the males in proportion to the male fitness and
+its dam among the females in proportion to the female fitness. Both
+models act on the same selected alleles, so two `SiteFitness` models
+need tables with the same positions and mutation rate (``s`` and ``h``
+may differ), and two `TraitFitness` models the same trait loci and
+environmental (co)variance (the fitness functions may differ); with
+`Neutral()` on one side, selection acts in the other sex only.
+Sexually antagonistic selection at 20 sites, with the derived allele
+favoured and dominant in males and disfavoured and recessive in
+females:
+
+```@example simulation
+pos = fitness_loci(chr, 20; s=0.0, rng=Xoshiro(7)).pos
+anta = SexSpecific(SiteFitness(FitnessLoci(pos, 0.2; h=0.8, μ=1e-4)),
+                   SiteFitness(FitnessLoci(pos, -0.2; h=0.2, μ=1e-4)))
+sa = fisher_wright(200, 300, chr, 1.0; fitness=anta, result=true,
+                   rng=Xoshiro(8))
+qtl_sa, map_sa = to_haplotype(sa, anta.male.loci)
+round.(map_sa.frq; digits=2)
+```
+
+With dominance reversal like this, an allele can be kept polymorphic
+by selection (Kidwell et al. 1977), at a frequency the two-sex
+recursion gives (see [Validation of selection](@ref)). For sex-limited
+expression of a trait, use two traits of one `TraitLoci` table, with
+the male fitness a function of the first and the female fitness of
+the second, for example `TraitFitness(loci; fitness=P -> exp(P[1]))`
+and `TraitFitness(loci; fitness=P -> exp(P[2]))`.
+
+Fitness is evaluated for every parent under both models before the
+sexes of the generation are drawn, so a run draws its random numbers
+in the same order as with one model; every individual has one
+phenotype. The fitness record (`mean_fitness`, `mean_log_fitness`,
+`var_log_fitness`) is that of each parent under the model of its own
+sex. The mating scheme must draw separate sexes (`RandomMating`,
+`FamilySize`, `AvoidRelatives`); `Monoecious` and `CustomMating` are
+refused.
+
 ## Reproducibility
 
 Pass an explicit generator, for example `rng = Xoshiro(2026)`.

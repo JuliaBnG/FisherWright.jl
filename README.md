@@ -50,6 +50,7 @@ The generated site is in `docs/build/`.
   or drawn from a distribution of fitness effects), or on a quantitative
   trait (stabilizing, directional or any function of the phenotype),
   or on several traits with pleiotropic effects at shared loci;
+  the same or different (sex-specific) fitness in males and females;
   soft and within each sex; the causal variants and their effects can be
   exported
 - Effective size realized by the family sizes of a run
@@ -641,6 +642,24 @@ order of the environmental draws are kept, and runs with
 environmental noise, give the same populations and records as 0.8.2.
 With `T` traits every individual takes `T` standard normal draws per
 generation, in trait order.
+
+## Changes in v0.9.1
+
+**Sex-specific fitness.** `fitness = SexSpecific(male, female)` gives
+males and females their own fitness model (`Neutral`, `SiteFitness` or
+`TraitFitness`): sires are drawn in proportion to the male fitness and
+dams to the female fitness. Two `SiteFitness` models share the
+positions and mutation rate of their tables and may differ in `s` and
+`h`, for sexually antagonistic selection; two `TraitFitness` models
+share the trait loci and environmental (co)variance and may differ in
+the fitness function; with `Neutral` on one side, selection acts in
+one sex only. Sex-limited expression is two traits of one table, the
+male fitness on one and the female fitness on the other. Fitness is
+evaluated for every parent under both models before the sexes are
+drawn, so a run draws its random numbers in the same order as with one
+model. Mating schemes with separate sexes drawn by the run only
+(`Monoecious` and `CustomMating` are refused). Seeded output of the
+other models is unchanged. No breaking changes.
 
 ## Contributing and support
 

@@ -9,7 +9,7 @@ using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_s
     AbstractFitness, AliasTable, _alias_build!, _alias_draw, _alias_probabilities,
     _draw_parents!, _mate!, FitnessLoci, fitness_loci, SiteFitness, _log_fitness, _selected,
     _meiosis!, _meiosis_selected!, _sel_mutation!, TraitLoci, trait_loci, TraitFitness, Stabilizing,
-    Directional, _genotypic_value, _genotypic_value!, ntraits, FamilySize, Hierarchical, Monoecious, AvoidRelatives, CustomMating,
+    Directional, _genotypic_value, _genotypic_value!, ntraits, SexSpecific, FamilySize, Hierarchical, Monoecious, AvoidRelatives, CustomMating,
     _record_families!, _related
 using Distributions: Gamma, Exponential, Normal, Chisq, quantile
 import FisherWright: _fitness!
@@ -1693,6 +1693,124 @@ end
     here = fisher_wright(30, 40, [5_000, 5_000], 2.0; M=2_000, mut_base=1e4, result=true,
         fitness=TraitFitness(l; Σe=[1.0 0.3; 0.3 0.5], fitness=Stabilizing([1.0, 0.0], 1.0)), rng=Xoshiro(11))
     @test parse(UInt, read(cmd, String)) == hash((here.selected_haplotypes, here.mean_phenotypic))
+end
+
+@testset "Sex-specific fitness" begin
+    chr = [5_000, 5_000]
+    kw = (M=2_000, mut_base=1e4, result=true)
+    N = 30
+    pos = collect(100:100:10_000)
+    lm, lf = FitnessLoci(pos, 0.1; μ=2e-3), FitnessLoci(pos, -0.1; h=0.2, μ=2e-3)
+    sm, sf = SiteFitness(lm), SiteFitness(lf)
+    tl = TraitLoci(pos, [0.2 * (-1)^k for k = 1:100]; μ=2e-3)
+
+    # The two models must share the selected alleles.
+    @test SexSpecific(male=sm).female isa Neutral && SexSpecific(sm, sf).male === sm
+    for bad in (() -> SexSpecific(sm, SiteFitness(FitnessLoci(pos[1:50], -0.1; μ=2e-3))),
+        () -> SexSpecific(sm, SiteFitness(FitnessLoci(pos, -0.1; μ=1e-3))),
+        () -> SexSpecific(sm, TraitFitness(tl; fitness=Directional(1.0))),
+        () -> SexSpecific(TraitFitness(tl; fitness=Directional(1.0)), sm),
+        () -> SexSpecific(TraitFitness(tl; fitness=Directional(1.0)),
+            TraitFitness(TraitLoci(pos, 0.1; μ=2e-3); fitness=Directional(1.0))),
+        () -> SexSpecific(TraitFitness(tl; σe=1.0, fitness=Directional(1.0)),
+            TraitFitness(tl; σe=2.0, fitness=Directional(1.0))),
+        () -> SexSpecific(SexSpecific(sm, sf), sf))
+        @test_throws ArgumentError bad()
+    end
+    # Separate sexes, drawn by the run.
+    for m in (Monoecious(), AvoidRelatives(Monoecious()), CustomMating(ctx -> nothing),
+        CustomMating(ctx -> nothing; sexes=true))
+        @test_throws "separate sexes" fisher_wright(N, 2, chr, 2.0; kw..., mating=m, fitness=SexSpecific(sm, sf))
+    end
+    @test_throws "nothing to select on" fisher_wright(N, 2, chr, 2.0; kw..., mating=Hierarchical(3, 3),
+        fitness=SexSpecific(male=sm))
+
+    # One generation: sires are weighted by the male fitness and dams by the
+    # female fitness, and the fitness record is that of each parent under
+    # the model of its sex.
+    rmap = uniform_recombination_map(chr; M=2_000)
+    rng = Xoshiro(1)
+    upos = UInt32.(pos)
+    start = [upos[rand(rng, 100) .< 0.3] for _ = 1:2N]
+    st = SimState([UInt32[] for _ = 1:2N], UInt32[], N, rng, copy.(start), UInt32[])
+    _simulate!(st, ConstantSize(N), RandomMating(), SexSpecific(sm, sf), 1, rmap, Poisson(1.0),
+        UInt32(1):UInt32(10_000); mutate=false, track=false, fixation_interval=1, verbose=false,
+        progress_interval=100, rng=rng)
+    lwm = [_log_fitness(sm, start[2i-1], start[2i]) for i = 1:N]
+    lwf = [_log_fitness(sf, start[2i-1], start[2i]) for i = 1:N]
+    @test st.w !== st.wf
+    @test log.(st.w[1:N]) ≈ lwm .- maximum(lwm) && log.(st.wf[1:N]) ≈ lwf .- maximum(lwf)
+    own = [st.sex[i] ? lwm[i] : lwf[i] for i = 1:N]
+    @test st.flmean ≈ [mean(own)] && st.flvar ≈ [var(own)] && st.fmean ≈ [mean(exp.(own))]
+    @test all(i -> st.sex[i], st.pm[1:N, 1]) && !any(i -> st.sex[i], st.pm[1:N, 2])
+
+    # ... and the response is unbiased: for additive loci, the expected mean G
+    # of the offspring given the parents is the mean of the male-weighted
+    # mean G of the sires and the female-weighted mean G of the dams.
+    # Directional selection in opposite directions in the two sexes, under
+    # three mating schemes.
+    lt = TraitLoci(pos, randn(rng, 100) .* 0.3)
+    start = [upos[rand(rng, 100) .< 0.3] for _ = 1:2N]
+    ss = SexSpecific(TraitFitness(lt; σe=0.7, fitness=Directional(1.0)),
+        TraitFitness(lt; σe=0.7, fitness=Stabilizing(-1.0, 0.5)))
+    for mating in (RandomMating(), FamilySize(dams=:random, sires=2.0), AvoidRelatives(RandomMating()))
+        R = 2_000
+        d = zeros(R)
+        for r = 1:R
+            st = SimState([UInt32[] for _ = 1:2N], UInt32[], N, rng, copy.(start), UInt32[])
+            _simulate!(st, ConstantSize(N), mating, ss, 1, rmap, Poisson(1.0), UInt32(1):UInt32(10_000);
+                mutate=false, track=false, fixation_interval=1, verbose=false, progress_interval=100, rng=rng)
+            G, wm, wf, sex = st.gval[1, 1:N], st.w[1:N], st.wf[1:N], st.sex[1:N]
+            if r == 1
+                P = st.pval[1, 1:N]
+                lf = -(P .+ 1) .^ 2 ./ (2 * 0.5)
+                @test log.(wm) ≈ P .- maximum(P) && log.(wf) ≈ lf .- maximum(lf)
+            end
+            expect = (sum(G[sex] .* wm[sex]) / sum(wm[sex]) + sum(G[.!sex] .* wf[.!sex]) / sum(wf[.!sex])) / 2
+            d[r] = mean(_genotypic_value(lt, st.sel[2i-1], st.sel[2i])[1] for i = 1:N) - expect
+        end
+        @test abs(mean(d)) / (std(d) / sqrt(R)) < 3.5
+    end
+
+    # Through fisher_wright: the same model in both sexes gives the weights
+    # and records of the model itself; one-sex selection responds.
+    r1 = fisher_wright(N, 30, chr, 2.0; kw..., fitness=sm, rng=Xoshiro(2))
+    r2 = fisher_wright(N, 30, chr, 2.0; kw..., fitness=SexSpecific(sm, sm), rng=Xoshiro(2))
+    @test r1.mean_log_fitness[1] ≈ r2.mean_log_fitness[1] && r1.var_log_fitness[1] ≈ r2.var_log_fitness[1]
+    @test all(isnan, r2.mean_genotypic) && size(r2.mean_genotypic) == (1, 30)
+    tf = TraitFitness(tl; σe=0.5, fitness=Directional(1.0))
+    up = fisher_wright(N, 100, chr, 2.0; kw..., fitness=SexSpecific(female=tf), rng=Xoshiro(3))
+    @test up.mean_genotypic[1, end] > 2 && !any(isnan, up.mean_phenotypic)
+    down = fisher_wright(N, 100, chr, 2.0; kw..., rng=Xoshiro(3),
+        fitness=SexSpecific(TraitFitness(tl; σe=0.5, fitness=Directional(-1.0)), tf))
+    @test abs(down.mean_genotypic[1, end]) < up.mean_genotypic[1, end]
+    # Sex-limited expression: two traits on the same loci, the male fitness
+    # on the first and the female fitness on the second.
+    two = TraitLoci(pos, randn(Xoshiro(9), 100, 2) .* 0.2; μ=2e-3)       # uncorrelated effects
+    sl = SexSpecific(TraitFitness(two; σe=[0.5, 0.5], fitness=P -> exp(P[1])),
+        TraitFitness(two; σe=[0.5, 0.5], fitness=P -> exp(P[2])))
+    both = fisher_wright(N, 100, chr, 2.0; kw..., fitness=sl, rng=Xoshiro(4))
+    @test size(both.mean_genotypic) == (2, 100) && all(>(0), both.mean_genotypic[:, end])
+    # A continued run keeps the selected alleles of the shared table.
+    more = fisher_wright(N, 5, chr, 2.0; kw..., init=both, fitness=sl, rng=Xoshiro(5))
+    @test length(more.mean_fitness) == 105
+    @test_throws ArgumentError fisher_wright(N, 5, chr, 2.0; kw..., init=both,
+        fitness=SexSpecific(male=SiteFitness(FitnessLoci(pos .+ 1, 0.1; μ=2e-3))))
+    # A sex without a fit member stops the run.
+    lethal = SiteFitness(FitnessLoci(pos, -1.0; h=1.0, μ=2e-3))
+    @test_throws "positive fitness" fisher_wright(N, 5, chr, 2.0; kw..., init=both,
+        fitness=SexSpecific(male=lethal))
+
+    # A run does not depend on the number of threads.
+    other_t = Threads.nthreads() == 1 ? 3 : 1
+    code = "using FisherWright, Random; p = collect(100:100:10_000); " *
+           "f = SexSpecific(SiteFitness(FitnessLoci(p, 0.1; μ = 2e-3)), SiteFitness(FitnessLoci(p, -0.1; h = 0.2, μ = 2e-3))); " *
+           "r = fisher_wright(30, 40, [5_000, 5_000], 2.0; M = 2_000, mut_base = 1e4, result = true, " *
+           "fitness = f, rng = Xoshiro(11)); print(hash((r.selected_haplotypes, r.mean_log_fitness)))"
+    cmd = `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active_project()) -t $other_t -e $code`
+    here = fisher_wright(30, 40, [5_000, 5_000], 2.0; M=2_000, mut_base=1e4, result=true,
+        fitness=SexSpecific(sm, sf), rng=Xoshiro(11))
+    @test parse(UInt, read(cmd, String)) == hash((here.selected_haplotypes, here.mean_log_fitness))
 end
 
 # Probability that two distinct items of `total` fall to the same one of `n`

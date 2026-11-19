@@ -330,6 +330,55 @@ Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "s
   correlated response follows the genetic covariance as the direct
   response follows the variance. This comparison is not a test.
 
+## Sex-specific fitness
+
+`validate-sex-specific.jl` checks `SexSpecific` at one autosomal site,
+``N = 10{,}000``, every individual heterozygous at the start, no
+mutation. Genotypes ``AA``, ``Aa`` and ``aa`` have fitness ``1 + s``,
+``1 + hs`` and 1, with ``(s_m, h_m)`` in males and ``(s_f, h_f)`` in
+females. With soft selection within each sex, the frequency of ``A``
+in the gametes of the selected males is
+
+```math
+x' = \frac{P_{AA}(1 + s_m) + P_{Aa}(1 + h_m s_m)/2}{\bar w_m},
+```
+
+and ``y'`` likewise for the females, from the genotype frequencies
+``P`` of the parents (the same in both sexes, since sex is independent
+of genotype); the offspring have ``P_{AA} = x'y'`` and
+``P_{Aa} = x'(1 - y') + y'(1 - x')``, and the expected frequency
+``(x' + y')/2`` (Owen 1953; Kidwell et al. 1977). This is exact in
+expectation for one generation given the parents, which CI tests
+("Sex-specific fitness"), as it tests that sires are weighted by the
+male and dams by the female fitness under each mating scheme. Over
+``t`` generations drift erodes ``pq`` and the mean of a finite
+population lags the deterministic trajectory by order
+``s\,pq\,t^2/(8N)``, here at most about ``8 \times 10^{-4}``.
+
+The four cases are sexually antagonistic additive selection
+(``s_m = 0.1``, ``s_f = -0.1``); selection in males only
+(``s_m = 0.1``) and in both sexes at half strength (``s = 0.05``), the
+same to first order in ``s``; and antagonistic selection with
+dominance reversal (``s_m = 0.2``, ``h_m = 0.8``, ``s_f = -0.2``,
+``h_f = 0.2``), which keeps the allele polymorphic.
+
+```@eval
+using Markdown, FisherWright
+Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "src", "validation", "validate-sex-specific.txt"), String)))
+```
+
+- All 17 checks pass at 200 replicates, ``|z| \le 2.20``.
+- Under dominance reversal the mean frequency approaches the
+  equilibrium of the recursion, ``0.43094 \pm 0.00095`` at generation
+  160 against ``0.43091`` (equilibrium ``0.43061``): selection that
+  differs between the sexes maintains the polymorphism.
+- Selection in males only and in both sexes at half strength follow
+  their own recursions, which differ by about 0.007 at generation 80
+  (0.8646 and 0.8718); the simulated difference is 0.0068.
+- Not covered: sex-specific selection on a trait beyond the
+  one-generation check in CI, and sex chromosomes (FisherWright has
+  none).
+
 ## Stabilizing selection: matched SLiM model
 
 `validate-stabilizing.jl` checks the genetic variance maintained by
@@ -555,7 +604,8 @@ and
 [`validate-selection-balance.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-selection-balance.jl),
 [`validate-prf.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-prf.jl),
 [`validate-trait.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-trait.jl),
-[`validate-pleiotropy.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-pleiotropy.jl)
+[`validate-pleiotropy.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-pleiotropy.jl),
+[`validate-sex-specific.jl`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-sex-specific.jl)
 and the stabilizing-selection driver
 [`validate-stabilizing.sh`](https://github.com/JuliaBnG/FisherWright.jl/blob/main/docs/src/validation/scripts/validate-stabilizing.sh)
 with
@@ -577,6 +627,8 @@ julia -t 16 --project=. $D/scripts/validate-selection-balance.jl 4000 400000 202
 julia -t 8 --project=. $D/scripts/validate-trait.jl 1000 2026 > $D/validate-trait.txt
 # about 2 min on 16 threads
 julia -t 16 --project=. $D/scripts/validate-pleiotropy.jl 1000 2026 > $D/validate-pleiotropy.txt
+# about 2 min on 16 threads
+julia -t 16 --project=. $D/scripts/validate-sex-specific.jl 200 2026 > $D/validate-sex-specific.txt
 # about 2 hours on 64 threads
 julia -t 64 --project=. $D/scripts/validate-prf.jl 1000 2026 > $D/validate-prf-seed2026.txt
 # SLiM 5 and FisherWright, 2,000 runs each: about 40 min on 64 and
