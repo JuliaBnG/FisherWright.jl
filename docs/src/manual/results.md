@@ -58,28 +58,62 @@ simulations. The result fields are:
 | `active_haplotypes` | Polymorphic mutation positions after fixed loci are removed. |
 | `chromosome_ends` | Cumulative chromosome endpoints. |
 | `substitutions` | Sorted fixed mutation positions. |
-| `census` | Census sizes ``N_0, N_1, …, N_{nt}`` of the run. |
-| `males` | Number of males among the parents of each generation; 0 for hermaphrodites. |
 | `selected_haplotypes` | Derived alleles each haplotype carries at the fitness loci; empty in a neutral run. |
 | `selected_substitutions` | Fitness loci whose derived allele was fixed and removed. |
+| `records` | The record of every generation, a `GenerationRecords` (below). |
+| `first_id` | ID of individual 1 of `active_haplotypes`. |
+| `pedigree` | With `pedigree = k`, the matings of the last `k` generations (a `DataFrame`). |
+
+The fields of `result.records`, one entry per generation:
+
+| Field | Meaning |
+|---|---|
+| `census` | Census sizes ``N_0, N_1, …, N_{nt}`` of the run (one entry more than the generations). |
+| `males` | Number of males among the parents of each generation; 0 for hermaphrodites. |
 | `mean_fitness`, `mean_log_fitness`, `var_log_fitness` | Fitness of the parents of each generation: mean, and mean and variance of its logarithm. |
 | `mean_genotypic`, `var_genotypic`, `mean_phenotypic`, `var_phenotypic` | Under `TraitFitness` with `T` traits, the mean vector (`T × ngen`) and the covariance matrix (`T × T × ngen`) of the genotypic values and of the phenotypes of the parents of each generation; `NaN` otherwise. `T = 1` for one trait or none. |
 | `paternal_pairs`, `maternal_pairs` | Ordered pairs of offspring sharing a sire, and sharing a dam, in each generation. |
 | `selfing` | Proportion of selfed offspring in each generation; 0 with separate sexes. |
 | `related_matings` | Under `AvoidRelatives`, offspring of relatives that could not be avoided, per generation; 0 otherwise. |
-| `first_id` | ID of individual 1 of `active_haplotypes`. |
-| `pedigree` | With `pedigree = k`, the matings of the last `k` generations (a `DataFrame`). |
 
-Convert a structured result to `BnGStructs.Haplotype` and a linkage map:
+Before version 0.10 these were fields of the result itself. `result.census`
+and the other names still work, with a deprecation warning, until 1.0.
+
+Convert a structured result to a `BnGStructs.Haplotype` and the
+`BnGStructs.VariantMap` of its loci (genome-wide positions, chromosomes,
+frequencies, and random placeholder nucleotides from the `rng` keyword):
 
 ```@example results
-haplotype, loci = to_haplotype(result)
-(haplotype.nlc, haplotype.nhp, length(loci.pos))
+using Random
+haplotype, map = to_haplotype(result; rng=Xoshiro(1))
+(haplotype.nlc, haplotype.nhp, map.pos)
 ```
 
 Use `to_haplotype(result; include_fixed=true)` when fixed substitutions should
 also appear in the dense output. If no polymorphic loci are available,
-`to_haplotype` raises an error rather than returning an empty `Haplotype`.
+`to_haplotype` throws an `ArgumentError` rather than returning an empty
+`Haplotype`.
+
+## Saving a result
+
+`write_result` saves a result in FisherWright's binary result format and
+`read_result` reads it back, for example to burn in once and start
+replicates from the file in later sessions:
+
+```@example results
+burnin = fisher_wright(50, 100, [100_000], 1.0; result=true, rng=Xoshiro(2))
+path = tempname()
+write_result(path, burnin)
+again = read_result(path)
+isequal(again, burnin)
+```
+
+The file holds every field of the result. The format is versioned and
+defined byte by byte (little-endian, with a CRC-32C checksum), not by
+Julia's `Serialization`, so it does not depend on the Julia or package
+version: every later release reads the files of earlier format versions,
+and the test suite reads a file written by 0.10.0. The layout is described
+in `src/io.jl`.
 
 ## Census record and effective size
 
@@ -97,7 +131,7 @@ only and `males` empty.
 ```@example results
 sizes = [fill(10, 5); fill(40, 15)]
 run = fisher_wright(40, 20, [100_000], 1.0; popsize=sizes, result=true)
-(run.census[1:8], run.males[1:8])
+(run.records.census[1:8], run.records.males[1:8])
 ```
 
 The record also holds the realized family sizes of every generation:
@@ -229,7 +263,7 @@ fixed sites count; a neutral run records `1`, `0` and `0`.
 
 ```@example results
 g = [1, 100, 200, 300]
-(sel.mean_fitness[g], sel.var_log_fitness[g])
+(sel.records.mean_fitness[g], sel.records.var_log_fitness[g])
 ```
 
 Under soft selection the mean fitness itself has no effect on the

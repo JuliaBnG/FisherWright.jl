@@ -116,7 +116,7 @@ function engine_run(N, K, s, h, μ, T, rng)
     for x in res.selected_substitutions
         c[searchsortedfirst(loci.pos, x)] = 2N
     end
-    return c, res.mean_fitness[end], res.var_log_fitness[end]
+    return c, res.records.mean_fitness[end], res.records.var_log_fitness[end]
 end
 
 function engine(N, K, s, h, μ, T, runs, seed)

@@ -55,7 +55,7 @@ function run_fw(m, R, rng)
         start = [UInt32.(findall(rand(rng, Bool, L))) for _ = 1:2N]
         res = fisher_wright(N, NT, CHR, 1.0; M=50, init=start, mutate=false, mating=m, result=true, rng=rng)
         out[r, 1], out[r, 2] = stats(FisherWright._with_fixed(res))
-        out[r, 3] = sum(res.related_matings)
+        out[r, 3] = sum(res.records.related_matings)
     end
     return out
 end

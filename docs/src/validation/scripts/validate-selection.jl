@@ -35,21 +35,21 @@ function engine_fixation(N, s, h, reps, rng; mating = RandomMating())
     st = SimState([UInt32[] for _ = 1:2N], UInt32[], N, rng)
     fixed = 0
     for _ = 1:reps
-        foreach(empty!, st.sel)
-        push!(st.sel[rand(rng, 1:2N)], UInt32(50))
+        foreach(empty!, st.fit.sel)
+        push!(st.fit.sel[rand(rng, 1:2N)], UInt32(50))
         while true
             _simulate!(st, ConstantSize(N), mating, f, 1, rmap, Poisson(1.0), UInt32(1):UInt32(100);
                 mutate = false, track = false, fixation_interval = 1, verbose = false, progress_interval = 100,
                 rng = rng)
-            c = count(!isempty, view(st.sel, 1:2N))
+            c = count(!isempty, view(st.fit.sel, 1:2N))
             c == 0 && break
             if c == 2N
                 fixed += 1
                 break
             end
         end
-        resize!(st.census, 1)
-        empty!(st.males)
+        resize!(st.rec.census, 1)
+        empty!(st.rec.males)
     end
     return fixed / reps
 end

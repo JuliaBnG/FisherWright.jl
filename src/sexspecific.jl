@@ -102,11 +102,11 @@ _model_traits(f::SexSpecific) = (t = _trait(f); t === nothing ? nothing : ntrait
 
 # Absolute log fitness of the n parents under one model, into `lw`.
 _sex_log_w!(lw, ::Neutral, st::SimState) = fill!(lw, 0.0)
-_sex_log_w!(lw, f::TraitFitness, st::SimState) = _trait_log_w!(lw, f.w, st.pval, st.n)
+_sex_log_w!(lw, f::TraitFitness, st::SimState) = _trait_log_w!(lw, f.w, st.fit.pval, st.n)
 function _sex_log_w!(lw, f::SiteFitness, st::SimState)
-    sel = st.sel
+    sel = st.fit.sel
     offset = 0.0
-    for x in st.ssubs
+    for x in st.fit.ssubs
         offset += f.lhom[searchsortedfirst(f.loci.pos, x)]
     end
     Threads.@threads for i = 1:st.n
@@ -127,15 +127,15 @@ end
 
 function _fitness!(f::SexSpecific, st::SimState, rng::AbstractRNG)
     n = st.n
-    # Sires are drawn by st.w and dams by st.wf: two vectors from here on.
-    st.wf === st.w && (st.wf = similar(st.w))
+    # Sires are drawn by st.fit.w and dams by st.fit.wf: two vectors from here on.
+    st.fit.wf === st.fit.w && (st.fit.wf = similar(st.fit.w))
     t = _trait(f)
     t === nothing || _trait_values!(t, st, rng)
-    lm, lf = view(st.lwraw, 1, 1:n), view(st.lwraw, 2, 1:n)
+    lm, lf = view(st.fit.lwraw, 1, 1:n), view(st.fit.lwraw, 2, 1:n)
     _sex_log_w!(lm, f.male, st)
     _sex_log_w!(lf, f.female, st)
-    _scale_w!(st.w, lm, n)
-    _scale_w!(st.wf, lf, n)
+    _scale_w!(st.fit.w, lm, n)
+    _scale_w!(st.fit.wf, lf, n)
     return nothing
 end
 
@@ -146,7 +146,7 @@ _record_trait!(f::SexSpecific, st::SimState) = _trait(f) === nothing ? _record_n
 # After mating: the fitness of each parent under the model of its sex.
 _record_mated!(::AbstractFitness, ::SimState) = nothing
 function _record_mated!(::SexSpecific, st::SimState)
-    n, sex, lw = st.n, st.sex, st.lwraw
+    n, sex, lw = st.n, st.mate.sex, st.fit.lwraw
     m = s = s2 = 0.0
     @inbounds for i = 1:n
         x = lw[sex[i] ? 1 : 2, i]
@@ -157,9 +157,9 @@ function _record_mated!(::SexSpecific, st::SimState)
     @inbounds for i = 1:n
         s2 += (lw[sex[i] ? 1 : 2, i] - m)^2
     end
-    push!(st.flmean, m)
-    push!(st.flvar, s2 / (n - 1))
-    push!(st.fmean, s / n)
+    push!(st.rec.mean_log_fitness, m)
+    push!(st.rec.var_log_fitness, s2 / (n - 1))
+    push!(st.rec.mean_fitness, s / n)
     return nothing
 end
 

@@ -1,7 +1,7 @@
 using Test
 using Random
 using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_sorted, merge_sorted!, recombine, _recombine!, _insert_sorted!, _isearchfirst,
-    cobp, cobp!, FisherWrightResult, effective_size, to_haplotype, RecombinationMap,
+    cobp, cobp!, FisherWrightResult, GenerationRecords, write_result, read_result, effective_size, to_haplotype, RecombinationMap,
     uniform_recombination_map, random_mate, random_mate!, _fixed_sex_mate!, _nmale, _fixed_mutations,
     _drop_mutations, _drop_mutations!, _fixation_step, _fixation_step!, _extract_fixed,
     _intersect_sorted!, _remove_sorted!, _with_fixed, _simulate!, _initial_state,
@@ -14,8 +14,9 @@ using FisherWright: fisher_wright, muts2bitarray, extract_chip_bitarray, merge_s
 using Distributions: Gamma, Exponential, Normal, Chisq, quantile
 import FisherWright: _fitness!
 using BnGStructs
-using DataFrames: nrow, names
+using DataFrames: DataFrame, nrow, names
 using Distributions: Poisson, MvNormal
+import Distributions
 using LinearAlgebra: dot
 using Statistics: mean, var, cor, std
 
@@ -544,8 +545,8 @@ end
     @test st.srng == Xoshiro.(seeds)
     @test rand(rng, UInt64) == rand(ref, UInt64)
     @test length(st.prt) == length(st.off) == length(st.mbuf) == length(st.nbuf) == 2ne
-    @test length(st.cbuf) == length(st.sex) == size(st.pm, 1) == ne
-    @test st.census == [ne] && isempty(st.males)
+    @test length(st.cbuf) == length(st.mate.sex) == size(st.mate.pm, 1) == ne
+    @test st.rec.census == [ne] && isempty(st.rec.males)
 
     # fisher_wright is the engine behind validation: same seed, same output.
     rng = Xoshiro(9)
@@ -589,7 +590,7 @@ end
         mutate=false, track=false, fixation_interval=1, verbose=false,
         progress_interval=100, rng=rng)
     fixed!(st, rng)
-    @test sum(st.sex) == 7 && length(st.sex) == 50   # parents of the last generation
+    @test sum(st.mate.sex) == 7 && length(st.mate.sex) == 50   # parents of the last generation
     @test @allocated(fixed!(st, rng)) / 100 < 2^16
 end
 
@@ -789,12 +790,12 @@ end
         (30, growth(30, -0.15; start=5, limit=6)))
         res = fisher_wright(ne, 25, chr, 5.0; kw..., popsize=f, rng=Xoshiro(2))
         vec = fisher_wright(ne, 25, chr, 5.0; kw..., popsize=f.(1:25), rng=Xoshiro(2))
-        @test res.census == [ne; f.(1:25)]
-        @test res.active_haplotypes == vec.active_haplotypes && res.males == vec.males
+        @test res.records.census == [ne; f.(1:25)]
+        @test res.active_haplotypes == vec.active_haplotypes && res.records.males == vec.records.males
     end
     # The bottleneck cohorts are the parents of the following generations.
     res = fisher_wright(30, 25, chr, 5.0; kw..., popsize=bottleneck(30, 4, 6, 5), rng=Xoshiro(2))
-    @test all(<(4), res.males[7:11]) && effective_size(res, 7:11; from=:sexes) < 4 < effective_size(res, 1:6; from=:sexes)
+    @test all(<(4), res.records.males[7:11]) && effective_size(res, 7:11; from=:sexes) < 4 < effective_size(res, 1:6; from=:sexes)
     @test effective_size(res, 7:11) < effective_size(res, 1:6)
     # A decline without a floor is stopped by fisher_wright at the first
     # generation whose size is below 2: 20·0.5^4 = 1.25.
@@ -807,19 +808,19 @@ end
     # Constant size, default mating: N_0, …, N_nt and one sex count per
     # generation, with both sexes present.
     res = fisher_wright(20, 60, chr, 5.0; kw..., rng=Xoshiro(3))
-    @test res.census == fill(20, 61) && length(res.males) == 60
-    @test all(m -> 1 <= m <= 19, res.males) && length(unique(res.males)) > 1
+    @test res.records.census == fill(20, 61) && length(res.records.males) == 60
+    @test all(m -> 1 <= m <= 19, res.records.males) && length(unique(res.records.males)) > 1
     # The record does not change the realization or depend on the scan.
     @test _with_fixed(res) == fisher_wright(20, 60, chr, 5.0; M=5e4, mut_base=1e5, rng=Xoshiro(3))[1]
     scan = fisher_wright(20, 60, chr, 5.0; kw..., fixation_interval=7, rng=Xoshiro(3))
-    @test (scan.census, scan.males) == (res.census, res.males)
+    @test (scan.records.census, scan.records.males) == (res.records.census, res.records.males)
 
     # Binomial sex: the male count of N = 50 parents has mean 25 and variance
     # 12.5 (truncation at 0 and 50 is below 1e-14). z-test of the mean over
     # 4,000 independent generations, and the variance within 10%.
     long = fisher_wright(50, 4000, [1_000], 1.0; result=true, mutate=false, rng=Xoshiro(12))
-    @test abs(mean(long.males) - 25) / sqrt(12.5 / 4000) < 3.5
-    @test 0.9 < var(long.males) / 12.5 < 1.1
+    @test abs(mean(long.records.males) - 25) / sqrt(12.5 / 4000) < 3.5
+    @test 0.9 < var(long.records.males) / 12.5 < 1.1
     # Ne from the record: Jensen's inequality puts it below 4·25·25/50 = 50,
     # at E[1/4Nm + 1/4Nf]⁻¹ = 48.96 for N = 50.
     @test 48.7 < effective_size(long; from=:sexes) < 49.3
@@ -827,10 +828,10 @@ end
     # Fixed sexes and a changing size: the record is the request.
     sizes = [fill(10, 5); fill(40, 4); 7]
     fix = fisher_wright(20, 10, chr, 5.0; kw..., popsize=sizes, mating=RandomMating(nmale=3), rng=Xoshiro(4))
-    @test fix.census == [20; sizes] && fix.males == fill(3, 10)
-    @test length(fix.active_haplotypes) == 2fix.census[end]
+    @test fix.records.census == [20; sizes] && fix.records.males == fill(3, 10)
+    @test length(fix.active_haplotypes) == 2fix.records.census[end]
     rat = fisher_wright(20, 10, chr, 5.0; kw..., popsize=sizes, mating=RandomMating(sexratio=0.2), rng=Xoshiro(4))
-    @test rat.males == [4; fill(2, 5); fill(8, 4)]   # parents: 20, 10 × 5, 40 × 4
+    @test rat.records.males == [4; fill(2, 5); fill(8, 4)]   # parents: 20, 10 × 5, 40 × 4
 
     # effective_size(; from = :sexes): Wright's formula per generation, harmonic mean over
     # several, parents only (the last cohort of 7 does not enter).
@@ -852,49 +853,51 @@ end
     # The realized family sizes: the recorded pairs are those of the mating
     # table, and under random mating their expectation is the sex-count
     # formula, so the two agree over a long run.
-    @test length(fix.paternal_pairs) == length(fix.maternal_pairs) == 10
+    @test length(fix.records.paternal_pairs) == length(fix.records.maternal_pairs) == 10
     rng = Xoshiro(13)
     rmap = uniform_recombination_map(chr; M=5e4)
     st = SimState([UInt32[] for _ = 1:40], UInt32[], 20, rng)
     for _ = 1:20
         _simulate!(st, ConstantSize(20), RandomMating(), Neutral(), 1, rmap, Poisson(1.0), UInt32(1):UInt32(300_000);
             mutate=false, track=false, fixation_interval=1, verbose=false, progress_interval=100, rng=rng)
-        pairs(col) = (c = [count(==(k), st.pm[1:20, col]) for k = 1:20]; sum(c .* (c .- 1)))
-        @test (st.ppairs[end], st.mpairs[end]) == (pairs(1), pairs(2))
+        pairs(col) = (c = [count(==(k), st.mate.pm[1:20, col]) for k = 1:20]; sum(c .* (c .- 1)))
+        @test (st.rec.paternal_pairs[end], st.rec.maternal_pairs[end]) == (pairs(1), pairs(2))
     end
     @test abs(effective_size(long) / effective_size(long; from=:sexes) - 1) < 0.02
 
     # A run continued from a result appends to its record; from plain
     # haplotypes, or in a result built by hand, the record starts anew.
     cont = fisher_wright(7, 3, chr, 5.0; kw..., init=fix, popsize=[9, 9, 12], rng=Xoshiro(5))
-    @test cont.census == [20; sizes; 9; 9; 12] && cont.males[1:10] == fix.males
-    @test length(cont.males) == 13 && all(m -> 1 <= m <= 8, cont.males[12:13])
+    @test cont.records.census == [20; sizes; 9; 9; 12] && cont.records.males[1:10] == fix.records.males
+    @test length(cont.records.males) == 13 && all(m -> 1 <= m <= 8, cont.records.males[12:13])
     @test effective_size(cont, 1:10) == effective_size(fix)
-    @test cont.paternal_pairs[1:10] == fix.paternal_pairs && length(cont.maternal_pairs) == 13
-    @test fix.census == [20; sizes] && fix.males == fill(3, 10)   # init left untouched
+    @test cont.records.paternal_pairs[1:10] == fix.records.paternal_pairs && length(cont.records.maternal_pairs) == 13
+    @test fix.records.census == [20; sizes] && fix.records.males == fill(3, 10)   # init left untouched
     plain = fisher_wright(7, 3, chr, 5.0; kw..., init=_with_fixed(fix), rng=Xoshiro(5))
-    @test plain.census == fill(7, 4) && length(plain.males) == 3
+    @test plain.records.census == fill(7, 4) && length(plain.records.males) == 3
     bare = FisherWrightResult(fix.active_haplotypes, fix.chromosome_ends, fix.substitutions)
-    @test fisher_wright(7, 3, chr, 5.0; kw..., init=bare, rng=Xoshiro(5)).census == fill(7, 4)
+    @test fisher_wright(7, 3, chr, 5.0; kw..., init=bare, rng=Xoshiro(5)).records.census == fill(7, 4)
     # A record that does not end at the individuals of init is rejected.
-    bad(c, m) = FisherWrightResult(fix.active_haplotypes, fix.chromosome_ends, fix.substitutions, c, m)
+    bad(c, m) = FisherWrightResult(fix.active_haplotypes, fix.chromosome_ends, fix.substitutions;
+        records=GenerationRecords(; census=c, males=m))
     @test_throws ArgumentError fisher_wright(7, 3, chr, 5.0; init=bad([20, 8], [3]))
-    @test_throws ArgumentError fisher_wright(7, 3, chr, 5.0; init=bad([20, 7], [3, 3]))
+    @test_throws ArgumentError bad([20, 7], [3, 3])   # census needs one entry more than males
 
     # A hand-built result has no record.
     manual = FisherWrightResult([UInt32[1, 3], UInt32[2], UInt32[], UInt32[1, 2, 3]], UInt32[5], UInt32[5])
-    @test manual.census == [2] && isempty(manual.males)
+    @test manual.records.census == [2] && isempty(manual.records.males)
     @test_throws ArgumentError effective_size(manual)
-    five = FisherWrightResult(manual.active_haplotypes, UInt32[5], UInt32[5], [2, 2], [1])
-    @test all(isnan, five.paternal_pairs) && effective_size(five; from=:sexes) ≈ 2   # 1 male, 1 female
+    five = FisherWrightResult(manual.active_haplotypes, UInt32[5], UInt32[5];
+        records=GenerationRecords(; census=[2, 2], males=[1]))
+    @test all(isnan, five.records.paternal_pairs) && effective_size(five; from=:sexes) ≈ 2   # 1 male, 1 female
     @test_throws "not recorded" effective_size(five)
     kept = _extract_fixed(FisherWrightResult(copy.(fix.active_haplotypes), fix.chromosome_ends,
-        fix.substitutions, fix.census, fix.males))
-    @test (kept.census, kept.males) == (fix.census, fix.males)
+        fix.substitutions; records=GenerationRecords(; census=fix.records.census, males=fix.records.males)))
+    @test (kept.records.census, kept.records.males) == (fix.records.census, fix.records.males)
 
     # Species method.
     sp = GenericSpecies("Census", UInt32.(chr); M = 50_000)
-    @test fisher_wright(sp, 20, 10, 5.0; mut_base=1e5, result=true, popsize=sizes).census == [20; sizes]
+    @test fisher_wright(sp, 20, 10, 5.0; mut_base=1e5, result=true, popsize=sizes).records.census == [20; sizes]
 end
 
 # Fitness by position in the cohort, for tests of weighted mating: not
@@ -902,7 +905,7 @@ end
 struct IndexFitness <: AbstractFitness
     w::Vector{Float64}
 end
-_fitness!(f::IndexFitness, st::SimState) = (copyto!(st.w, 1, f.w, 1, st.n); nothing)
+_fitness!(f::IndexFitness, st::SimState) = (copyto!(st.fit.w, 1, f.w, 1, st.n); nothing)
 
 # (s, h, u, SE) from docs/src/validation/fixation-reference.txt, N = 30.
 const FIXATION_REFERENCE = [
@@ -990,12 +993,12 @@ end
         st, demog, RandomMating(nmale=4), f, nt, rmap, Poisson(1.0), UInt32(1):UInt32(2_000);
         mutate=true, track=false, fixation_interval=1, verbose=false, progress_interval=100, rng=r)
     st = SimState(_initial_state(nothing, 20, cbp, false)..., 10, rng)
-    @test st.w == ones(10)
+    @test st.fit.w == ones(10)
     run!(st, Neutral(), 5, rng)
-    @test st.w == ones(10)
+    @test st.fit.w == ones(10)
     f = IndexFitness(w)
     run!(st, f, 5, rng)
-    @test st.w == w && length(st.tm) == 4 && length(st.tf) == 6
+    @test st.fit.w == w && length(st.mate.tm) == 4 && length(st.mate.tf) == 6
     @test (@inferred run!(st, f, 1, rng)) === st
     run!(st, f, 50, rng)
     @test @allocated(run!(st, f, 50, rng)) / 50 < 2^16
@@ -1003,12 +1006,12 @@ end
     # the weighted draw must still never pick it.
     for _ = 1:200
         _mate!(RandomMating(nmale=4), f, st, 10, rng)
-        @test !(4 in view(st.pm, 1:10, :))
+        @test !(4 in view(st.mate.pm, 1:10, :))
     end
     # Equal fitness is random mating in distribution (not the same draws).
     flat = IndexFitness(ones(10))
     _mate!(RandomMating(), flat, st, 10, rng)
-    @test all(st.sex[st.pm[1:10, 1]]) && !any(st.sex[st.pm[1:10, 2]])
+    @test all(st.mate.sex[st.mate.pm[1:10, 1]]) && !any(st.mate.sex[st.mate.pm[1:10, 2]])
 end
 
 @testset "Fitness loci" begin
@@ -1089,25 +1092,25 @@ end
     # recombinant of their union under the same crossovers and strand.
     function state(seed)
         st = SimState([rand_neu() for _ = 1:2N], UInt32[], N, Xoshiro(seed), [rand_sel() for _ = 1:2N], UInt32[])
-        st.pm[:, 1] .= rand(Xoshiro(seed + 1), 1:N, N)
-        st.pm[:, 2] .= rand(Xoshiro(seed + 2), 1:N, N)
+        st.mate.pm[:, 1] .= rand(Xoshiro(seed + 1), 1:N, N)
+        st.mate.pm[:, 2] .= rand(Xoshiro(seed + 2), 1:N, N)
         return st
     end
     rng = Xoshiro(3); a = state(5)
     rng = Xoshiro(3); b = state(5)
-    parents = [merge_sorted(a.prt[k], a.sel[k]) for k = 1:2N]
+    parents = [merge_sorted(a.prt[k], a.fit.sel[k]) for k = 1:2N]
     streams = copy.(b.srng)
     _meiosis!(a, rmap, N)
     _meiosis_selected!(b, rmap, N)
     @test a.prt[1:2N] == b.prt[1:2N]
     @test a.srng == b.srng                        # same draws from every stream
     co, out = UInt32[], UInt32[]
-    for i = 1:N, (p, k) in ((b.pm[i, 1], 2i - 1), (b.pm[i, 2], 2i))
+    for i = 1:N, (p, k) in ((b.mate.pm[i, 1], 2i - 1), (b.mate.pm[i, 2], 2i))
         r = streams[i]
         cobp!(co, rmap; rng=r)
         _recombine!(parents[2p-1], parents[2p], out, co, rand(r, Bool))
-        @test merge_sorted(b.prt[k], b.sel[k]) == out
-        @test issubset(b.sel[k], loci.pos) && isdisjoint(b.prt[k], loci.pos)
+        @test merge_sorted(b.prt[k], b.fit.sel[k]) == out
+        @test issubset(b.fit.sel[k], loci.pos) && isdisjoint(b.prt[k], loci.pos)
     end
 
     # Mutation at the fitness loci: only sites of the table, sorted and
@@ -1117,18 +1120,18 @@ end
     p_sel = Poisson(length(loci) * loci.μ)
     gained = 0
     for _ = 1:200
-        before = sum(length, st.sel)
+        before = sum(length, st.fit.sel)
         _sel_mutation!(f, st, p_sel)
-        gained += sum(length, st.sel) - before
-        foreach(empty!, st.sel)
+        gained += sum(length, st.fit.sel) - before
+        foreach(empty!, st.fit.sel)
     end
     @test abs(gained / (200 * 2N) - 0.4) < 3.5 * sqrt(0.4 / (200 * 2N))
-    st.ssubs = loci.pos[1:100]
+    st.fit.ssubs = loci.pos[1:100]
     for _ = 1:50
         _sel_mutation!(f, st, p_sel)
     end
-    @test all(h -> issorted(h) && allunique(h) && issubset(h, loci.pos[101:end]), st.sel[1:2N])
-    @test sum(length, st.sel) > 100
+    @test all(h -> issorted(h) && allunique(h) && issubset(h, loci.pos[101:end]), st.fit.sel[1:2N])
+    @test sum(length, st.fit.sel) > 100
 
     # Through fisher_wright: both streams valid, kept apart, reproducible,
     # and independent of the fixation interval.
@@ -1166,7 +1169,7 @@ end
     @test issubset(res.selected_substitutions, cont.selected_substitutions)
     @test issubset(reduce(union, cont.selected_haplotypes), reduce(union, res.selected_haplotypes))
     @test res.selected_haplotypes == keep.selected_haplotypes
-    @test length(cont.census) == 341
+    @test length(cont.records.census) == 341
     # A starting population with one copy of a selected allele.
     sel = [UInt32[] for _ = 1:2N]
     push!(sel[3], loci.pos[7])
@@ -1187,8 +1190,8 @@ end
     @test_throws ArgumentError fisher_wright(N, 5, [5_000], 2.0; fitness=f, result=true) # loci beyond the genome
     other = SiteFitness(FitnessLoci([1, 2, 3], 0.1))
     @test_throws ArgumentError fisher_wright(N, 5, chr, 2.0; fitness=other, init=res, result=true)
-    short = FisherWrightResult([UInt32[] for _ = 1:2N], cbp, UInt32[]; selected_haplotypes=sel[1:4])
-    @test_throws ArgumentError fisher_wright(N, 5, chr, 2.0; kw..., init=short)
+    # A selected stream of the wrong length: refused by the constructor.
+    @test_throws ArgumentError FisherWrightResult([UInt32[] for _ = 1:2N], cbp, UInt32[]; selected_haplotypes=sel[1:4])
     unsorted = FisherWrightResult([UInt32[] for _ = 1:2N], cbp, UInt32[];
         selected_haplotypes=[[[loci.pos[2], loci.pos[1]]]; sel[2:end]])
     @test_throws ArgumentError fisher_wright(N, 5, chr, 2.0; kw..., init=unsorted)
@@ -1285,7 +1288,7 @@ end
 @testset "Fitness record" begin
     chr, cbp, N = [5_000, 5_000], UInt32[5_000, 10_000], 20
     kw = (M=2_000, mut_base=1e4, result=true)
-    record(r) = (r.mean_fitness, r.mean_log_fitness, r.var_log_fitness)
+    record(r) = (r.records.mean_fitness, r.records.mean_log_fitness, r.records.var_log_fitness)
 
     # A neutral run records fitness 1 for the parents of every generation.
     neutral = fisher_wright(N, 30, chr, 2.0; kw..., rng=Xoshiro(1))
@@ -1296,26 +1299,26 @@ end
     loci = FitnessLoci(collect(50:50:10_000), [0.03 * (-1)^k for k = 1:200]; h=0.3, μ=2e-3)
     f = SiteFitness(loci)
     res = fisher_wright(N, 200, chr, 2.0; kw..., fitness=f, rng=Xoshiro(2))
-    @test all(v -> length(v) == length(res.males) == 200, record(res))
+    @test all(v -> length(v) == length(res.records.males) == 200, record(res))
     @test !isempty(res.selected_substitutions)
-    @test all(>(0), res.var_log_fitness[50:end])
+    @test all(>(0), res.records.var_log_fitness[50:end])
     qtl, _ = to_haplotype(res, loci)          # substituted sites included
     lw = [sum(1:200) do k
         d = qtl[k, 2i-1] + qtl[k, 2i]
         d == 0 ? 0.0 : d == 1 ? log1p(loci.h[k] * loci.s[k]) : log1p(loci.s[k])
     end for i = 1:N]
     next = fisher_wright(N, 1, chr, 2.0; kw..., fitness=f, init=res, rng=Xoshiro(3))
-    @test next.mean_log_fitness[end] ≈ mean(lw)
-    @test next.var_log_fitness[end] ≈ var(lw)
-    @test next.mean_fitness[end] ≈ mean(exp, lw)
+    @test next.records.mean_log_fitness[end] ≈ mean(lw)
+    @test next.records.var_log_fitness[end] ≈ var(lw)
+    @test next.records.mean_fitness[end] ≈ mean(exp, lw)
     # A continued run appends to the record of init, which is left alone.
     @test all(v -> length(v) == 201, record(next))
-    @test next.mean_fitness[1:200] == res.mean_fitness && length(res.mean_fitness) == 200
+    @test next.records.mean_fitness[1:200] == res.records.mean_fitness && length(res.records.mean_fitness) == 200
     # The record does not depend on the fixation interval, although the
     # sites move between the haplotypes and the substitutions.
     again = fisher_wright(N, 200, chr, 2.0; kw..., fitness=f, fixation_interval=17, rng=Xoshiro(2))
-    @test again.mean_fitness ≈ res.mean_fitness && again.mean_log_fitness ≈ res.mean_log_fitness
-    @test again.var_log_fitness ≈ res.var_log_fitness atol = 1e-12
+    @test again.records.mean_fitness ≈ res.records.mean_fitness && again.records.mean_log_fitness ≈ res.records.mean_log_fitness
+    @test again.records.var_log_fitness ≈ res.records.var_log_fitness atol = 1e-12
 
     # A site carried by everyone: fitness 1 + s for all, before and after it
     # is moved to the substitutions.
@@ -1324,17 +1327,17 @@ end
         selected_haplotypes=[UInt32[100] for _ = 1:2N])
     fixed = fisher_wright(N, 3, chr, 2.0; kw..., fitness=one, init=full, mutate=false)
     @test fixed.selected_substitutions == UInt32[100] && all(isempty, fixed.selected_haplotypes)
-    @test fixed.mean_fitness ≈ fill(1.25, 3) && fixed.mean_log_fitness ≈ fill(log(1.25), 3)
-    @test fixed.var_log_fitness == zeros(3)
+    @test fixed.records.mean_fitness ≈ fill(1.25, 3) && fixed.records.mean_log_fitness ≈ fill(log(1.25), 3)
+    @test fixed.records.var_log_fitness == zeros(3)
 
     # Directional selection raises mean fitness; purifying selection keeps
     # it below 1.
     up = fisher_wright(N, 300, chr, 2.0; kw..., fitness=SiteFitness(FitnessLoci(loci.pos, 0.05; μ=2e-3)),
         rng=Xoshiro(4))
-    @test up.mean_fitness[1] == 1.0 && up.mean_fitness[end] > 2 && issorted(up.mean_fitness[[1, 100, 200, 300]])
+    @test up.records.mean_fitness[1] == 1.0 && up.records.mean_fitness[end] > 2 && issorted(up.records.mean_fitness[[1, 100, 200, 300]])
     down = fisher_wright(N, 300, chr, 2.0; kw..., fitness=SiteFitness(FitnessLoci(loci.pos, -0.05; μ=2e-3)),
         rng=Xoshiro(4))
-    @test all(<=(1), down.mean_fitness) && down.mean_fitness[end] < 0.9
+    @test all(<=(1), down.records.mean_fitness) && down.records.mean_fitness[end] < 0.9
 
     # A lethal homozygote among the parents: mean log fitness is -Inf.
     lethal = SiteFitness(FitnessLoci([100], -1.0; h=0.0))
@@ -1342,16 +1345,22 @@ end
         selected_haplotypes=[i <= 2 ? UInt32[100] : UInt32[] for i = 1:2N])
     dead = fisher_wright(N, 1, chr, 2.0; kw..., fitness=lethal, init=mixed, mutate=false,
         mating=RandomMating(sexratio=0.5))
-    @test dead.mean_fitness == [(N - 1) / N] && dead.mean_log_fitness == [-Inf] && isnan(dead.var_log_fitness[1])
+    @test dead.records.mean_fitness == [(N - 1) / N] && dead.records.mean_log_fitness == [-Inf] && isnan(dead.records.var_log_fitness[1])
 
     # Results built by hand: a neutral record of the right length, and a
     # record of the wrong length is rejected as a start.
     bare = FisherWrightResult(res.active_haplotypes, cbp, res.substitutions)
     @test record(bare) == (Float64[], Float64[], Float64[])
-    five = FisherWrightResult(res.active_haplotypes, cbp, res.substitutions, fill(N, 4), fill(10, 3))
+    five = FisherWrightResult(res.active_haplotypes, cbp, res.substitutions;
+        records=GenerationRecords(; census=fill(N, 4), males=fill(10, 3)))
     @test record(five) == (ones(3), zeros(3), zeros(3))
-    wrong = FisherWrightResult(res.active_haplotypes, cbp, res.substitutions, fill(N, 4), fill(10, 3),
-        res.selected_haplotypes, res.selected_substitutions, ones(2), zeros(3), zeros(3))
+    # A record of the wrong length is refused when it is built, and when the
+    # vectors of a record were changed afterwards, as a start.
+    @test_throws ArgumentError GenerationRecords(; census=fill(N, 4), males=fill(10, 3), mean_fitness=ones(2))
+    wrong = FisherWrightResult(res.active_haplotypes, cbp, res.substitutions;
+        selected_haplotypes=res.selected_haplotypes, selected_substitutions=res.selected_substitutions,
+        records=GenerationRecords(; census=fill(N, 4), males=fill(10, 3)))
+    pop!(wrong.records.mean_fitness)
     @test_throws ArgumentError fisher_wright(N, 1, chr, 2.0; kw..., fitness=f, init=wrong)
     kept = _extract_fixed(res)
     @test record(kept) == record(res)
@@ -1409,12 +1418,12 @@ end
     # variance of P is σe². 40 generations × 30 parents, χ² on 39·40 df.
     f = TraitFitness(TraitLoci(loci.pos, loci.a; μ=0.0); σe=2.0, fitness=Directional(0.3))
     r = fisher_wright(N, 40, chr, 2.0; kw..., fitness=f, rng=Xoshiro(1))
-    @test r.mean_genotypic == zeros(1, 40) && r.var_genotypic == zeros(1, 1, 40)
+    @test r.records.mean_genotypic == zeros(1, 40) && r.records.var_genotypic == zeros(1, 1, 40)
     df = 40 * (N - 1)
-    @test abs(sum(r.var_phenotypic) * (N - 1) / 4 - df) / sqrt(2df) < 3.5
-    @test abs(mean(r.mean_phenotypic) / sqrt(4 / (40N))) < 3.5
-    @test r.mean_log_fitness ≈ 0.3 .* vec(r.mean_phenotypic)
-    @test r.var_log_fitness ≈ 0.09 .* vec(r.var_phenotypic)
+    @test abs(sum(r.records.var_phenotypic) * (N - 1) / 4 - df) / sqrt(2df) < 3.5
+    @test abs(mean(r.records.mean_phenotypic) / sqrt(4 / (40N))) < 3.5
+    @test r.records.mean_log_fitness ≈ 0.3 .* vec(r.records.mean_phenotypic)
+    @test r.records.var_log_fitness ≈ 0.09 .* vec(r.records.var_phenotypic)
 
     # One generation of selection is unbiased: for additive loci, the
     # expected mean G of the offspring, given the parents and the fitness of
@@ -1433,16 +1442,16 @@ end
             st = SimState([UInt32[] for _ = 1:2N], UInt32[], N, rng, copy.(start), UInt32[])
             _simulate!(st, ConstantSize(N), RandomMating(), tf, 1, rmap, Poisson(1.0), UInt32(1):UInt32(10_000);
                 mutate=false, track=false, fixation_interval=1, verbose=false, progress_interval=100, rng=rng)
-            G, w, sex = st.gval[1, 1:N], st.w[1:N], st.sex[1:N]
+            G, w, sex = st.fit.gval[1, 1:N], st.fit.w[1:N], st.mate.sex[1:N]
             if r == 1
                 # Fitness is the function of the phenotype, up to the
                 # scaling of the fittest to 1.
-                lw = [fit isa Directional ? fit.β[1] * p : -(p - fit.θ[1])^2 / (2fit.Ω[1, 1]) for p in st.pval[1, 1:N]]
+                lw = [fit isa Directional ? fit.β[1] * p : -(p - fit.θ[1])^2 / (2fit.Ω[1, 1]) for p in st.fit.pval[1, 1:N]]
                 @test log.(w) .- lw ≈ fill(-maximum(lw), N) atol = 1e-9
                 @test maximum(w) == 1.0
             end
             expect = (sum(G[sex] .* w[sex]) / sum(w[sex]) + sum(G[.!sex] .* w[.!sex]) / sum(w[.!sex])) / 2
-            got = mean(_genotypic_value(lt, st.sel[2i-1], st.sel[2i])[1] for i = 1:N)
+            got = mean(_genotypic_value(lt, st.fit.sel[2i-1], st.fit.sel[2i])[1] for i = 1:N)
             d[r] = got - expect
             shift[r] = got - mean(G)
         end
@@ -1458,10 +1467,10 @@ end
         rng=Xoshiro(4))
     down = fisher_wright(N, 150, chr, 2.0; kw..., fitness=TraitFitness(loci; σe=0.5, fitness=Directional(-1.0)),
         rng=Xoshiro(4))
-    @test up.mean_genotypic[end] > 2 && down.mean_genotypic[end] < -2
+    @test up.records.mean_genotypic[end] > 2 && down.records.mean_genotypic[end] < -2
     held = fisher_wright(N, 300, chr, 2.0; kw..., fitness=TraitFitness(loci; σe=0.5, fitness=Stabilizing(1.5, 0.5)),
         rng=Xoshiro(5))
-    @test abs(mean(held.mean_genotypic[201:300]) - 1.5) < 0.5
+    @test abs(mean(held.records.mean_genotypic[201:300]) - 1.5) < 0.5
     @test !isempty(up.selected_substitutions) && !isempty(held.selected_substitutions)
 
     # Substituted sites keep their value: under stabilizing selection, which
@@ -1472,7 +1481,7 @@ end
     a2 = fisher_wright(N, 300, chr, 2.0; kw..., fitness=ff, fixation_interval=17, rng=Xoshiro(5))
     @test a1.selected_haplotypes == held.selected_haplotypes == a2.selected_haplotypes
     @test a1.selected_substitutions == a2.selected_substitutions
-    @test a1.mean_genotypic ≈ a2.mean_genotypic && a1.mean_phenotypic ≈ a2.mean_phenotypic
+    @test a1.records.mean_genotypic ≈ a2.records.mean_genotypic && a1.records.mean_phenotypic ≈ a2.records.mean_phenotypic
 
     # The export gives the genotypic values: one more generation without
     # noise records the mean G of the exported population.
@@ -1482,23 +1491,23 @@ end
         1:length(loci)) for i = 1:N]
     nxt = fisher_wright(N, 1, chr, 2.0; kw..., init=held, fitness=TraitFitness(loci; fitness=Stabilizing(1.5, 0.5)),
         rng=Xoshiro(6))
-    @test nxt.mean_genotypic[end] ≈ mean(G) && nxt.var_genotypic[end] ≈ var(G)
-    @test nxt.mean_phenotypic[end] == nxt.mean_genotypic[end]          # σe = 0
-    @test length(nxt.mean_genotypic) == 301 && nxt.mean_genotypic[1:300] == vec(held.mean_genotypic)
+    @test nxt.records.mean_genotypic[end] ≈ mean(G) && nxt.records.var_genotypic[end] ≈ var(G)
+    @test nxt.records.mean_phenotypic[end] == nxt.records.mean_genotypic[end]          # σe = 0
+    @test length(nxt.records.mean_genotypic) == 301 && nxt.records.mean_genotypic[1:300] == vec(held.records.mean_genotypic)
 
     # Without a trait model the trait record is NaN, and continues as such.
     neutral = fisher_wright(N, 5, chr, 2.0; kw..., rng=Xoshiro(7))
-    @test all(isnan, neutral.mean_genotypic) && length(neutral.var_phenotypic) == 5
+    @test all(isnan, neutral.records.mean_genotypic) && length(neutral.records.var_phenotypic) == 5
     site = fisher_wright(N, 5, chr, 2.0; kw..., fitness=SiteFitness(FitnessLoci([50], 0.1; μ=1e-3)), rng=Xoshiro(7))
-    @test all(isnan, site.mean_phenotypic) && length(site.mean_phenotypic) == 5
+    @test all(isnan, site.records.mean_phenotypic) && length(site.records.mean_phenotypic) == 5
     bare = FisherWrightResult(neutral.active_haplotypes, cbp, UInt32[])
-    @test isempty(bare.mean_genotypic)
+    @test isempty(bare.records.mean_genotypic)
 
     # A user function of the phenotype: truncation on P (the best half by
     # a threshold) gives the same as the equivalent built-in where they
     # coincide, and an invalid value is an error.
     tr = TraitFitness(loci; σe=0.5, fitness=P -> P > 0 ? 1.0 : 0.0)
-    @test fisher_wright(N, 50, chr, 2.0; kw..., fitness=tr, rng=Xoshiro(8)).mean_genotypic[end] > 0.5
+    @test fisher_wright(N, 50, chr, 2.0; kw..., fitness=tr, rng=Xoshiro(8)).records.mean_genotypic[end] > 0.5
     flat = TraitFitness(loci; σe=0.5, fitness=P -> 1.0)
     dirz = TraitFitness(loci; σe=0.5, fitness=Directional(0.0))
     @test fisher_wright(N, 20, chr, 2.0; kw..., fitness=flat, rng=Xoshiro(9)).selected_haplotypes ==
@@ -1514,12 +1523,12 @@ end
     code = "using FisherWright, Random; l = TraitLoci(collect(100:100:10_000), 0.2; μ = 2e-3); " *
            "r = fisher_wright(30, 60, [5_000, 5_000], 2.0; M = 2_000, mut_base = 1e4, result = true, " *
            "fitness = TraitFitness(l; σe = 1.0, fitness = Stabilizing(1.0, 1.0)), rng = Xoshiro(11)); " *
-           "print(hash((r.selected_haplotypes, r.mean_phenotypic)))"
+           "print(hash((r.selected_haplotypes, r.records.mean_phenotypic)))"
     cmd = `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active_project()) -t $other_t -e $code`
     l = TraitLoci(collect(100:100:10_000), 0.2; μ=2e-3)
     here = fisher_wright(30, 60, [5_000, 5_000], 2.0; M=2_000, mut_base=1e4, result=true,
         fitness=TraitFitness(l; σe=1.0, fitness=Stabilizing(1.0, 1.0)), rng=Xoshiro(11))
-    @test parse(UInt, read(cmd, String)) == hash((here.selected_haplotypes, here.mean_phenotypic))
+    @test parse(UInt, read(cmd, String)) == hash((here.selected_haplotypes, here.records.mean_phenotypic))
 end
 
 @testset "Pleiotropy" begin
@@ -1586,11 +1595,11 @@ end
     dup = TraitLoci(pos, [a a]; μ=2e-3)
     r = fisher_wright(N, 40, chr, 2.0; kw..., fitness=TraitFitness(dup; σe=[0.5, 0.5], fitness=Directional([0.5, 0.5])),
         rng=Xoshiro(1))
-    @test size(r.mean_genotypic) == size(r.mean_phenotypic) == (2, 40) && ntraits(r) == 2
-    @test size(r.var_genotypic) == size(r.var_phenotypic) == (2, 2, 40)
-    @test r.mean_genotypic[1, :] == r.mean_genotypic[2, :]
-    @test r.var_genotypic[1, 1, :] ≈ r.var_genotypic[1, 2, :] ≈ r.var_genotypic[2, 2, :]
-    @test r.mean_genotypic[1, end] > 1 && r.mean_phenotypic[1, :] != r.mean_phenotypic[2, :]
+    @test size(r.records.mean_genotypic) == size(r.records.mean_phenotypic) == (2, 40) && ntraits(r) == 2
+    @test size(r.records.var_genotypic) == size(r.records.var_phenotypic) == (2, 2, 40)
+    @test r.records.mean_genotypic[1, :] == r.records.mean_genotypic[2, :]
+    @test r.records.var_genotypic[1, 1, :] ≈ r.records.var_genotypic[1, 2, :] ≈ r.records.var_genotypic[2, 2, :]
+    @test r.records.mean_genotypic[1, end] > 1 && r.records.mean_phenotypic[1, :] != r.records.mean_phenotypic[2, :]
 
     # Without effects, P = e: its covariance matrix is Σe. Sample covariance
     # matrices of N parents, averaged over generations; Wishart standard errors.
@@ -1598,17 +1607,17 @@ end
     ng = 200
     r = fisher_wright(N, ng, chr, 2.0; kw..., fitness=TraitFitness(TraitLoci(pos, zeros(100, 2)); Σe=Σe, fitness=p -> 1.0),
         rng=Xoshiro(2))
-    @test all(iszero, r.mean_genotypic) && all(iszero, r.var_genotypic)
-    S = dropdims(mean(r.var_phenotypic; dims=3); dims=3)
+    @test all(iszero, r.records.mean_genotypic) && all(iszero, r.records.var_genotypic)
+    S = dropdims(mean(r.records.var_phenotypic; dims=3); dims=3)
     for i = 1:2, j = 1:2
         @test abs(S[i, j] - Σe[i, j]) / sqrt((Σe[i, j]^2 + Σe[i, i] * Σe[j, j]) / ((N - 1) * ng)) < 3.5
     end
     for i = 1:2
-        @test abs(mean(r.mean_phenotypic[i, :])) / sqrt(Σe[i, i] / (N * ng)) < 3.5
+        @test abs(mean(r.records.mean_phenotypic[i, :])) / sqrt(Σe[i, i] / (N * ng)) < 3.5
     end
     sing = fisher_wright(N, 5, chr, 2.0; kw...,
         fitness=TraitFitness(TraitLoci(pos, zeros(100, 2)); Σe=[1.0 1.0; 1.0 1.0], fitness=p -> 1.0), rng=Xoshiro(3))
-    @test sing.mean_phenotypic[1, :] ≈ sing.mean_phenotypic[2, :]
+    @test sing.records.mean_phenotypic[1, :] ≈ sing.records.mean_phenotypic[2, :]
 
     # One generation: fitness is the function of the phenotype vector, and
     # selection is unbiased in every trait (the offspring mean of each trait
@@ -1626,17 +1635,17 @@ end
             st = SimState([UInt32[] for _ = 1:2N], UInt32[], N, rng, copy.(start), UInt32[]; ntraits=2)
             _simulate!(st, ConstantSize(N), RandomMating(), tf, 1, rmap, Poisson(1.0), UInt32(1):UInt32(10_000);
                 mutate=false, track=false, fixation_interval=1, verbose=false, progress_interval=100, rng=rng)
-            w, sex = st.w[1:N], st.sex[1:N]
+            w, sex = st.fit.w[1:N], st.mate.sex[1:N]
             if r == 1
-                P = st.pval[:, 1:N]
+                P = st.fit.pval[:, 1:N]
                 lw = [fit isa Directional ? dot(fit.β, P[:, i]) :
                       -dot(P[:, i] - fit.θ, fit.Ω \ (P[:, i] - fit.θ)) / 2 for i = 1:N]
                 @test log.(w) .- lw ≈ fill(-maximum(lw), N) atol = 1e-9
             end
             for j = 1:2
-                G = st.gval[j, 1:N]
+                G = st.fit.gval[j, 1:N]
                 expect = (sum(G[sex] .* w[sex]) / sum(w[sex]) + sum(G[.!sex] .* w[.!sex]) / sum(w[.!sex])) / 2
-                d[r, j] = mean(_genotypic_value(lt, st.sel[2i-1], st.sel[2i])[j] for i = 1:N) - expect
+                d[r, j] = mean(_genotypic_value(lt, st.fit.sel[2i-1], st.fit.sel[2i])[j] for i = 1:N) - expect
             end
         end
         for j = 1:2
@@ -1653,13 +1662,13 @@ end
     # A run continued from a result without trait generations widens its
     # record; one with another number of traits is refused.
     neutral = fisher_wright(N, 3, chr, 2.0; kw..., rng=Xoshiro(5))
-    @test size(neutral.mean_genotypic) == (1, 3) && ntraits(neutral) == 1
+    @test size(neutral.records.mean_genotypic) == (1, 3) && ntraits(neutral) == 1
     cont = fisher_wright(N, 3, chr, 2.0; kw..., init=neutral,
         fitness=TraitFitness(dup; σe=0.5, fitness=Directional([0.1, 0.1])), rng=Xoshiro(6))
-    @test size(cont.mean_genotypic) == (2, 6) && size(cont.var_phenotypic) == (2, 2, 6)
-    @test all(isnan, cont.mean_genotypic[:, 1:3]) && !any(isnan, cont.mean_genotypic[:, 4:6])
+    @test size(cont.records.mean_genotypic) == (2, 6) && size(cont.records.var_phenotypic) == (2, 2, 6)
+    @test all(isnan, cont.records.mean_genotypic[:, 1:3]) && !any(isnan, cont.records.mean_genotypic[:, 4:6])
     after = fisher_wright(N, 2, chr, 2.0; kw..., init=cont, fitness=SiteFitness(FitnessLoci(pos, 0.0)), rng=Xoshiro(7))
-    @test size(after.mean_genotypic) == (2, 8) && all(isnan, after.var_genotypic[:, :, 7:8])
+    @test size(after.records.mean_genotypic) == (2, 8) && all(isnan, after.records.var_genotypic[:, :, 7:8])
     one = TraitFitness(TraitLoci(pos, a); fitness=Directional(0.1))
     @test_throws "records 2 traits" fisher_wright(N, 2, chr, 2.0; kw..., init=cont, fitness=one)
 
@@ -1687,12 +1696,12 @@ end
            "l = TraitLoci(collect(100:100:10_000), [a reverse(a)]; μ = 2e-3); " *
            "r = fisher_wright(30, 40, [5_000, 5_000], 2.0; M = 2_000, mut_base = 1e4, result = true, " *
            "fitness = TraitFitness(l; Σe = [1.0 0.3; 0.3 0.5], fitness = Stabilizing([1.0, 0.0], 1.0)), rng = Xoshiro(11)); " *
-           "print(hash((r.selected_haplotypes, r.mean_phenotypic)))"
+           "print(hash((r.selected_haplotypes, r.records.mean_phenotypic)))"
     cmd = `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active_project()) -t $other_t -e $code`
     l = TraitLoci(pos, [a reverse(a)]; μ=2e-3)
     here = fisher_wright(30, 40, [5_000, 5_000], 2.0; M=2_000, mut_base=1e4, result=true,
         fitness=TraitFitness(l; Σe=[1.0 0.3; 0.3 0.5], fitness=Stabilizing([1.0, 0.0], 1.0)), rng=Xoshiro(11))
-    @test parse(UInt, read(cmd, String)) == hash((here.selected_haplotypes, here.mean_phenotypic))
+    @test parse(UInt, read(cmd, String)) == hash((here.selected_haplotypes, here.records.mean_phenotypic))
 end
 
 @testset "Sex-specific fitness" begin
@@ -1738,11 +1747,11 @@ end
         progress_interval=100, rng=rng)
     lwm = [_log_fitness(sm, start[2i-1], start[2i]) for i = 1:N]
     lwf = [_log_fitness(sf, start[2i-1], start[2i]) for i = 1:N]
-    @test st.w !== st.wf
-    @test log.(st.w[1:N]) ≈ lwm .- maximum(lwm) && log.(st.wf[1:N]) ≈ lwf .- maximum(lwf)
-    own = [st.sex[i] ? lwm[i] : lwf[i] for i = 1:N]
-    @test st.flmean ≈ [mean(own)] && st.flvar ≈ [var(own)] && st.fmean ≈ [mean(exp.(own))]
-    @test all(i -> st.sex[i], st.pm[1:N, 1]) && !any(i -> st.sex[i], st.pm[1:N, 2])
+    @test st.fit.w !== st.fit.wf
+    @test log.(st.fit.w[1:N]) ≈ lwm .- maximum(lwm) && log.(st.fit.wf[1:N]) ≈ lwf .- maximum(lwf)
+    own = [st.mate.sex[i] ? lwm[i] : lwf[i] for i = 1:N]
+    @test st.rec.mean_log_fitness ≈ [mean(own)] && st.rec.var_log_fitness ≈ [var(own)] && st.rec.mean_fitness ≈ [mean(exp.(own))]
+    @test all(i -> st.mate.sex[i], st.mate.pm[1:N, 1]) && !any(i -> st.mate.sex[i], st.mate.pm[1:N, 2])
 
     # ... and the response is unbiased: for additive loci, the expected mean G
     # of the offspring given the parents is the mean of the male-weighted
@@ -1760,14 +1769,14 @@ end
             st = SimState([UInt32[] for _ = 1:2N], UInt32[], N, rng, copy.(start), UInt32[])
             _simulate!(st, ConstantSize(N), mating, ss, 1, rmap, Poisson(1.0), UInt32(1):UInt32(10_000);
                 mutate=false, track=false, fixation_interval=1, verbose=false, progress_interval=100, rng=rng)
-            G, wm, wf, sex = st.gval[1, 1:N], st.w[1:N], st.wf[1:N], st.sex[1:N]
+            G, wm, wf, sex = st.fit.gval[1, 1:N], st.fit.w[1:N], st.fit.wf[1:N], st.mate.sex[1:N]
             if r == 1
-                P = st.pval[1, 1:N]
+                P = st.fit.pval[1, 1:N]
                 lf = -(P .+ 1) .^ 2 ./ (2 * 0.5)
                 @test log.(wm) ≈ P .- maximum(P) && log.(wf) ≈ lf .- maximum(lf)
             end
             expect = (sum(G[sex] .* wm[sex]) / sum(wm[sex]) + sum(G[.!sex] .* wf[.!sex]) / sum(wf[.!sex])) / 2
-            d[r] = mean(_genotypic_value(lt, st.sel[2i-1], st.sel[2i])[1] for i = 1:N) - expect
+            d[r] = mean(_genotypic_value(lt, st.fit.sel[2i-1], st.fit.sel[2i])[1] for i = 1:N) - expect
         end
         @test abs(mean(d)) / (std(d) / sqrt(R)) < 3.5
     end
@@ -1776,24 +1785,24 @@ end
     # and records of the model itself; one-sex selection responds.
     r1 = fisher_wright(N, 30, chr, 2.0; kw..., fitness=sm, rng=Xoshiro(2))
     r2 = fisher_wright(N, 30, chr, 2.0; kw..., fitness=SexSpecific(sm, sm), rng=Xoshiro(2))
-    @test r1.mean_log_fitness[1] ≈ r2.mean_log_fitness[1] && r1.var_log_fitness[1] ≈ r2.var_log_fitness[1]
-    @test all(isnan, r2.mean_genotypic) && size(r2.mean_genotypic) == (1, 30)
+    @test r1.records.mean_log_fitness[1] ≈ r2.records.mean_log_fitness[1] && r1.records.var_log_fitness[1] ≈ r2.records.var_log_fitness[1]
+    @test all(isnan, r2.records.mean_genotypic) && size(r2.records.mean_genotypic) == (1, 30)
     tf = TraitFitness(tl; σe=0.5, fitness=Directional(1.0))
     up = fisher_wright(N, 100, chr, 2.0; kw..., fitness=SexSpecific(female=tf), rng=Xoshiro(3))
-    @test up.mean_genotypic[1, end] > 2 && !any(isnan, up.mean_phenotypic)
+    @test up.records.mean_genotypic[1, end] > 2 && !any(isnan, up.records.mean_phenotypic)
     down = fisher_wright(N, 100, chr, 2.0; kw..., rng=Xoshiro(3),
         fitness=SexSpecific(TraitFitness(tl; σe=0.5, fitness=Directional(-1.0)), tf))
-    @test abs(down.mean_genotypic[1, end]) < up.mean_genotypic[1, end]
+    @test abs(down.records.mean_genotypic[1, end]) < up.records.mean_genotypic[1, end]
     # Sex-limited expression: two traits on the same loci, the male fitness
     # on the first and the female fitness on the second.
     two = TraitLoci(pos, randn(Xoshiro(9), 100, 2) .* 0.2; μ=2e-3)       # uncorrelated effects
     sl = SexSpecific(TraitFitness(two; σe=[0.5, 0.5], fitness=P -> exp(P[1])),
         TraitFitness(two; σe=[0.5, 0.5], fitness=P -> exp(P[2])))
     both = fisher_wright(N, 100, chr, 2.0; kw..., fitness=sl, rng=Xoshiro(4))
-    @test size(both.mean_genotypic) == (2, 100) && all(>(0), both.mean_genotypic[:, end])
+    @test size(both.records.mean_genotypic) == (2, 100) && all(>(0), both.records.mean_genotypic[:, end])
     # A continued run keeps the selected alleles of the shared table.
     more = fisher_wright(N, 5, chr, 2.0; kw..., init=both, fitness=sl, rng=Xoshiro(5))
-    @test length(more.mean_fitness) == 105
+    @test length(more.records.mean_fitness) == 105
     @test_throws ArgumentError fisher_wright(N, 5, chr, 2.0; kw..., init=both,
         fitness=SexSpecific(male=SiteFitness(FitnessLoci(pos .+ 1, 0.1; μ=2e-3))))
     # A sex without a fit member stops the run.
@@ -1806,11 +1815,11 @@ end
     code = "using FisherWright, Random; p = collect(100:100:10_000); " *
            "f = SexSpecific(SiteFitness(FitnessLoci(p, 0.1; μ = 2e-3)), SiteFitness(FitnessLoci(p, -0.1; h = 0.2, μ = 2e-3))); " *
            "r = fisher_wright(30, 40, [5_000, 5_000], 2.0; M = 2_000, mut_base = 1e4, result = true, " *
-           "fitness = f, rng = Xoshiro(11)); print(hash((r.selected_haplotypes, r.mean_log_fitness)))"
+           "fitness = f, rng = Xoshiro(11)); print(hash((r.selected_haplotypes, r.records.mean_log_fitness)))"
     cmd = `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active_project()) -t $other_t -e $code`
     here = fisher_wright(30, 40, [5_000, 5_000], 2.0; M=2_000, mut_base=1e4, result=true,
         fitness=SexSpecific(sm, sf), rng=Xoshiro(11))
-    @test parse(UInt, read(cmd, String)) == hash((here.selected_haplotypes, here.mean_log_fitness))
+    @test parse(UInt, read(cmd, String)) == hash((here.selected_haplotypes, here.records.mean_log_fitness))
 end
 
 # Probability that two distinct items of `total` fall to the same one of `n`
@@ -1848,21 +1857,21 @@ end
     rng = Xoshiro(1)
     N = 40
     st = SimState([UInt32[] for _ = 1:2N], UInt32[], 60, rng)
-    families(st, no) = (pm = st.pm[1:no, :]; [count(==(d), pm[:, 2]) for d in st.dams])
+    families(st, no) = (pm = st.mate.pm[1:no, :]; [count(==(d), pm[:, 2]) for d in st.mate.dams])
     for m in (FamilySize(dams=:equal, sires=:equal, nmale=7), FamilySize(dams=0.3, sires=0.8),
         FamilySize(dams=:random, sires=:equal, sexratio=0.5)), no in (40, 57, 13)
         _mate!(m, Neutral(), st, no, rng)
-        pm = st.pm[1:no, :]
-        @test all(st.sex[pm[:, 1]]) && !any(st.sex[pm[:, 2]])
-        @test all(length(unique(pm[pm[:, 2] .== d, 1])) <= 1 for d in st.dams)   # one sire per dam
+        pm = st.mate.pm[1:no, :]
+        @test all(st.mate.sex[pm[:, 1]]) && !any(st.mate.sex[pm[:, 2]])
+        @test all(length(unique(pm[pm[:, 2] .== d, 1])) <= 1 for d in st.mate.dams)   # one sire per dam
         nd = families(st, no)
         @test sum(nd) == no
         m.dams === :equal && @test maximum(nd) - minimum(nd) <= 1
         if m.sires === :equal
-            dps = [length(unique(pm[pm[:, 1] .== s, 2])) for s in st.sires]
+            dps = [length(unique(pm[pm[:, 1] .== s, 2])) for s in st.mate.sires]
             # dams with offspring per sire; with all dams assigned, at most
             # one apart (dams without offspring are not visible here)
-            m.dams === :equal && no >= length(st.dams) && @test maximum(dps) - minimum(dps) <= 1
+            m.dams === :equal && no >= length(st.mate.dams) && @test maximum(dps) - minimum(dps) <= 1
         end
     end
     @test_throws ArgumentError _mate!(FamilySize(dams=:equal), SiteFitness(FitnessLoci([5], 0.1)), st, 10, rng)
@@ -1908,10 +1917,10 @@ end
     for m in (Hierarchical(4, 3), Hierarchical(4, 3; nmale=10), FamilySize(dams=0.7, sires=:random, nsires=5, ndams=9)),
         no in (40, 50)
         _mate!(m, Neutral(), st, no, rng)
-        pm = st.pm[1:no, :]
+        pm = st.mate.pm[1:no, :]
         used_s, used_d = unique(pm[:, 1]), unique(pm[:, 2])
         @test length(used_s) <= m.nsires && length(used_d) <= m.ndams
-        @test issubset(used_s, st.sires) && issubset(used_d, st.dams)
+        @test issubset(used_s, st.mate.sires) && issubset(used_d, st.mate.dams)
         @test all(length(unique(pm[pm[:, 2] .== d, 1])) == 1 for d in used_d)
         if m.dams === :equal
             @test length(used_s) == 4 && length(used_d) == 12
@@ -1919,8 +1928,8 @@ end
             @test maximum(nd) - minimum(nd) <= 1
             @test all(length(unique(pm[pm[:, 1] .== s, 2])) == 3 for s in used_s)
         end
-        @test length(st.sires) + length(st.dams) == N          # every parent has a sex
-        m.sex.nmale > 0 && @test length(st.sires) == 10
+        @test length(st.mate.sires) + length(st.mate.dams) == N          # every parent has a sex
+        m.sex.nmale > 0 && @test length(st.mate.sires) == 10
     end
     # The sires are a uniform subset: 2 of the 10 males per generation, and
     # the males are a uniform subset of the 40 parents, so every parent is a
@@ -1930,7 +1939,7 @@ end
     use = zeros(Int, N)
     for _ = 1:5_000
         _mate!(m, Neutral(), st, 40, rng)
-        for s in unique(st.pm[1:40, 1])
+        for s in unique(st.mate.pm[1:40, 1])
             use[s] += 1
         end
     end
@@ -1952,7 +1961,7 @@ end
     # Binomial sex is redrawn until the breeders fit: 12 parents, 2 sires
     # and 8 dams.
     r = fisher_wright(12, 200, [100_000], 1.0; result=true, mating=Hierarchical(2, 4), rng=Xoshiro(3))
-    @test all(m -> 2 <= m <= 4, r.males) && length(unique(r.males)) == 3
+    @test all(m -> 2 <= m <= 4, r.records.males) && length(unique(r.records.males)) == 3
     # Infeasible designs are rejected before the run.
     @test_throws "generation 1" fisher_wright(20, 5, [1_000], 1.0; mating=Hierarchical(3, 4; nmale=2))
     @test_throws "generation 1" fisher_wright(20, 5, [1_000], 1.0; mating=Hierarchical(2, 5; nmale=12))
@@ -1965,7 +1974,7 @@ end
     sizes = [fill(12, 5); fill(30, 5)]
     r = fisher_wright(20, 10, [100_000], 1.0; result=true, popsize=sizes,
         mating=FamilySize(dams=:equal, sires=:equal, nmale=5), rng=Xoshiro(2))
-    @test r.census == [20; sizes] && r.males == fill(5, 10) && length(r.active_haplotypes) == 60
+    @test r.records.census == [20; sizes] && r.records.males == fill(5, 10) && length(r.active_haplotypes) == 60
     @test_throws ArgumentError fisher_wright(20, 10, [100_000], 1.0; popsize=sizes, mating=FamilySize(nmale=12))
     for m in (Hierarchical(2, 3), FamilySize(sires=:equal), FamilySize(dams=:equal))
         @test_throws "nothing to select on" fisher_wright(20, 10, [100_000], 1.0; result=true, mating=m,
@@ -1984,15 +1993,15 @@ end
     f = IndexFitness(w)
     rng = Xoshiro(21)
     st = SimState([UInt32[] for _ = 1:2N], UInt32[], 40, rng)
-    st.w[1:N] .= w
+    st.fit.w[1:N] .= w
     m = FamilySize(nmale=4)
     dev_d, dev_s = zeros(R, N), zeros(R, N)      # deviation from no·w/Σw
     uni_d = zeros(R, N)                          # deviation from uniform usage
     onesire = true
     for r = 1:R
         _mate!(m, f, st, no, rng)
-        pm = st.pm[1:no, :]
-        sires, dams = findall(st.sex[1:N]), findall(.!st.sex[1:N])
+        pm = st.mate.pm[1:no, :]
+        sires, dams = findall(st.mate.sex[1:N]), findall(.!st.mate.sex[1:N])
         for (dev, members, col) in ((dev_d, dams, 2), (dev_s, sires, 1))
             W = sum(w[members])
             for i in members
@@ -2028,9 +2037,9 @@ end
         st = SimState([UInt32[] for _ = 1:2N], UInt32[], N, rng, copy.(start), UInt32[])
         _simulate!(st, ConstantSize(N), FamilySize(), tf, 1, rmap, Poisson(1.0), UInt32(1):UInt32(10_000);
             mutate=false, track=false, fixation_interval=1, verbose=false, progress_interval=100, rng=rng)
-        G, wt, sex = st.gval[1, 1:N], st.w[1:N], st.sex[1:N]
+        G, wt, sex = st.fit.gval[1, 1:N], st.fit.w[1:N], st.mate.sex[1:N]
         expect = (sum(G[sex] .* wt[sex]) / sum(wt[sex]) + sum(G[.!sex] .* wt[.!sex]) / sum(wt[.!sex])) / 2
-        got = mean(_genotypic_value(lt, st.sel[2i-1], st.sel[2i])[1] for i = 1:N)
+        got = mean(_genotypic_value(lt, st.fit.sel[2i-1], st.fit.sel[2i])[1] for i = 1:N)
         d[r] = got - expect
         shift[r] = got - mean(G)
     end
@@ -2045,7 +2054,7 @@ end
     up = fisher_wright(N, 150, chr, 2.0; kw..., mating=m, fitness=TraitFitness(loci; σe=0.5, fitness=Directional(1.0)),
         rng=Xoshiro(22))
     flat = fisher_wright(N, 150, chr, 2.0; kw..., mating=m, rng=Xoshiro(22))
-    @test up.mean_genotypic[end] > 2
+    @test up.records.mean_genotypic[end] > 2
     @test effective_size(up, 50:150) < effective_size(flat, 50:150)
     @test_throws "nothing to select on" fisher_wright(N, 5, chr, 2.0; kw..., mating=Hierarchical(3, 3),
         fitness=TraitFitness(loci; fitness=Directional(1.0)))
@@ -2068,12 +2077,12 @@ end
         R = 2_000
         for _ = 1:R
             _mate!(Monoecious(selfing=s), Neutral(), st, no, rng)
-            pm = st.pm[1:no, :]
+            pm = st.mate.pm[1:no, :]
             inrange &= all(1 .<= pm .<= N)
             selfed += count(pm[:, 1] .== pm[:, 2])
         end
         @test inrange
-        @test isempty(st.sires) && isempty(st.dams)
+        @test isempty(st.mate.sires) && isempty(st.mate.dams)
         p = s === nothing ? 1 / N : s
         if 0 < p < 1
             @test abs(selfed / (R * no) - p) / sqrt(p * (1 - p) / (R * no)) < 3.5
@@ -2087,13 +2096,13 @@ end
     # the cross term vanishes with separate sexes.
     for m in (Monoecious(), Monoecious(selfing=0.5), RandomMating()), no in (30, 45)
         _mate!(m, Neutral(), st, no, rng)
-        empty!(st.ppairs), empty!(st.mpairs), empty!(st.selfing)
+        empty!(st.rec.paternal_pairs), empty!(st.rec.maternal_pairs), empty!(st.rec.selfing)
         _record_families!(st, no)
-        pm = st.pm[1:no, :]
+        pm = st.mate.pm[1:no, :]
         pp = sum((pm[i, 1] == pm[j, 1]) + (pm[i, 1] == pm[j, 2]) for i = 1:no, j = 1:no if i != j)
         mp = sum((pm[i, 2] == pm[j, 1]) + (pm[i, 2] == pm[j, 2]) for i = 1:no, j = 1:no if i != j)
-        @test (st.ppairs[1], st.mpairs[1]) == (pp, mp)
-        @test st.selfing[1] == count(pm[:, 1] .== pm[:, 2]) / no
+        @test (st.rec.paternal_pairs[1], st.rec.maternal_pairs[1]) == (pp, mp)
+        @test st.rec.selfing[1] == count(pm[:, 1] .== pm[:, 2]) / no
         if m isa RandomMating
             @test pp == sum(c * (c - 1) for c in (count(==(k), pm[:, 1]) for k = 1:N))
         end
@@ -2106,13 +2115,13 @@ end
     w = [0.2, 1.0, 3.0, 0.5, 2.0, 1.0, 0.0, 4.0, 1.5, 0.7, 2.5, 1.2]
     f = IndexFitness(w)
     st = SimState([UInt32[] for _ = 1:2Nw], UInt32[], 40, rng)
-    st.w[1:Nw] .= w
+    st.fit.w[1:Nw] .= w
     for s in (nothing, 0.0, 0.4)
         firsts = zeros(R, Nw)
         used0, outcrossed = false, true
         for r = 1:R
             _mate!(Monoecious(selfing=s), f, st, no, rng)
-            pm = st.pm[1:no, :]
+            pm = st.mate.pm[1:no, :]
             for k = 1:Nw
                 firsts[r, k] = count(==(k), pm[:, 1])
             end
@@ -2126,30 +2135,30 @@ end
     end
     lone = zeros(Nw)
     lone[3] = 1.0
-    st.w[1:Nw] .= lone
+    st.fit.w[1:Nw] .= lone
     @test_throws ErrorException _mate!(Monoecious(selfing=0.5), IndexFitness(lone), st, no, rng)
     _mate!(Monoecious(selfing=1), IndexFitness(lone), st, no, rng)
-    @test all(==(3), st.pm[1:no, :])
+    @test all(==(3), st.mate.pm[1:no, :])
 
     # A run: no males, the selfing record, hermaphrodites in the pedigree,
     # and a continuation that appends to the record.
     chr = [100_000]
     res = fisher_wright(30, 20, chr, 1.0; mating=Monoecious(selfing=0.5), result=true, pedigree=3, rng=rng)
-    @test res.males == zeros(Int, 20)
-    @test length(res.selfing) == 20 && all(0 .<= res.selfing .<= 1)
+    @test res.records.males == zeros(Int, 20)
+    @test length(res.records.selfing) == 20 && all(0 .<= res.records.selfing .<= 1)
     @test all(ismissing, res.pedigree.sex)
     kids = res.pedigree[res.pedigree.generation .== 20, :]
-    @test count(kids.sire .== kids.dam) / 30 == res.selfing[20]
+    @test count(kids.sire .== kids.dam) / 30 == res.records.selfing[20]
     @test_throws ArgumentError effective_size(res; from=:sexes)
     more = fisher_wright(30, 5, chr, 1.0; init=res, mating=RandomMating(), result=true, rng=rng)
-    @test length(more.selfing) == 25 && all(iszero, more.selfing[21:25])
+    @test length(more.records.selfing) == 25 && all(iszero, more.records.selfing[21:25])
     @test effective_size(more, 21:25; from=:sexes) > 0
 
     # E[a_g] = 1/N for every selfing model (the four parent slots of two
     # offspring are uniform and independent); 1,000 generations, z-score.
     for s in (nothing, 0.0, 0.5, 1.0)
         r = fisher_wright(30, 1_000, [1_000], 1.0; mut_base=1e12, mating=Monoecious(selfing=s), result=true, rng=rng)
-        a = (r.paternal_pairs .+ r.maternal_pairs) ./ (4 * 30 * 29)
+        a = (r.records.paternal_pairs .+ r.records.maternal_pairs) ./ (4 * 30 * 29)
         @test abs(mean(a) - 1 / 30) / (std(a) / sqrt(length(a))) < 3.5
         σ = s === nothing ? 1 / 30 : s
         # Realized Ne about N(2 - σ)/2.
@@ -2206,21 +2215,21 @@ end
     rng = Xoshiro(41)
     N, no = 8, 40_000
     st = SimState([UInt32[] for _ = 1:2N], UInt32[], no, rng)
-    st.rel = zeros(Int, 6, no)
-    st.rnew = zeros(Int, 6, no)
-    st.rel[1:2, 1:3] = [1 1 1; 2 3 4]
-    push!(st.forced, 0)
+    st.mate.rel = zeros(Int, 6, no)
+    st.mate.rnew = zeros(Int, 6, no)
+    st.mate.rel[1:2, 1:3] = [1 1 1; 2 3 4]
+    push!(st.rec.related_matings, 0)
     w = [1.0, 1.0, 1.0, 0.5, 1.0, 2.0, 3.0, 0.0]
     for (f, p) in ((Neutral(), [0, 0, 0, 1, 1, 1, 1, 1] / 5), (IndexFitness(w), [0, 0, 0, 0.5, 1, 2, 3, 0] / 6.5))
-        f isa Neutral || (st.w[1:N] .= w)
+        f isa Neutral || (st.fit.w[1:N] .= w)
         _mate!(AvoidRelatives(Monoecious(selfing=0)), f, st, no, rng)
-        pm = st.pm[1:no, :]
+        pm = st.mate.pm[1:no, :]
         q = pm[pm[:, 1] .== 1, 2]
         c = [count(==(k), q) for k = 1:N]
         @test all(c[p .== 0] .== 0)
         e = length(q) .* p
         @test sum((c[p .> 0] .- e[p .> 0]) .^ 2 ./ e[p .> 0]) < quantile(Chisq(count(p .> 0) - 1), 0.999)
-        @test st.forced[end] == 0
+        @test st.rec.related_matings[end] == 0
     end
 
     # With max_tries = 1 nothing is redrawn: the realization of the inner
@@ -2230,7 +2239,7 @@ end
         a = fisher_wright(30, 30, chr, 1.0; mating=inner, result=true, rng=Xoshiro(5))
         b = fisher_wright(30, 30, chr, 1.0; mating=AvoidRelatives(inner; max_tries=1), result=true, rng=Xoshiro(5))
         @test a.active_haplotypes == b.active_haplotypes
-        @test sum(b.related_matings) > 0 && sum(a.related_matings) == 0
+        @test sum(b.records.related_matings) > 0 && sum(a.records.related_matings) == 0
     end
 
     # Against the pedigree: in every generation, the matings of relatives
@@ -2245,17 +2254,17 @@ end
         par = Dict(r.id => (r.sire, r.dam) for r in eachrow(ped))
         counts = [count(r -> r.sire != r.dam && related_by_pedigree(par, r.sire, r.dam, m.level),
             eachrow(ped[ped.generation .== g, :])) for g = 1:25]
-        @test counts == res.related_matings
+        @test counts == res.records.related_matings
         @test (sum(counts) > 0) == some
     end
 
     # Selfing is decided as without avoidance: random selfing stays at 1/N.
     res = fisher_wright(20, 400, chr, 1.0; mating=AvoidRelatives(Monoecious(); level=:cousin), result=true, rng=rng)
-    @test abs(mean(res.selfing) - 1 / 20) / sqrt(1 / 20 * 19 / 20 / (20 * 400)) < 3.5
+    @test abs(mean(res.records.selfing) - 1 / 20) / sqrt(1 / 20 * 19 / 20 / (20 * 400)) < 3.5
 
     # A continuation starts the pedigree anew and appends to the record.
     more = fisher_wright(20, 5, chr, 1.0; init=res, mating=AvoidRelatives(), result=true, rng=rng)
-    @test length(more.related_matings) == 405
+    @test length(more.records.related_matings) == 405
 
     # Within the reserved capacity, a generation allocates task overhead only.
     rmap = uniform_recombination_map([1_000, 1_000]; M=1e3)
@@ -2296,7 +2305,7 @@ end
         a = fisher_wright(30, 30, chr, 1.0; mating=builtin, result=true, pedigree=2, rng=Xoshiro(3))
         b = fisher_wright(30, 30, chr, 1.0; mating=custom, result=true, pedigree=2, rng=Xoshiro(3))
         @test a.active_haplotypes == b.active_haplotypes
-        @test (a.males, a.selfing, a.paternal_pairs) == (b.males, b.selfing, b.paternal_pairs)
+        @test (a.records.males, a.records.selfing, a.records.paternal_pairs) == (b.records.males, b.records.selfing, b.records.paternal_pairs)
         @test isequal(a.pedigree, b.pedigree)
     end
 
@@ -2338,7 +2347,7 @@ end
     qtl = TraitLoci([10_000, 60_000], [1.0, -0.5])
     tf = TraitFitness(qtl; σe=1.0, fitness=Stabilizing(0.0, 4.0))
     sel = fisher_wright(20, 3, chr, 1.0; mating=record, fitness=tf, result=true, rng=rng)
-    @test size(seen[1][8]) == (1, 20) && [mean(s[8]) for s in seen] ≈ vec(sel.mean_phenotypic)
+    @test size(seen[1][8]) == (1, 20) && [mean(s[8]) for s in seen] ≈ vec(sel.records.mean_phenotypic)
     # Relative fitness: scaled by its largest value in the cohort.
     @test all(s -> s[7] ≈ exp.(-vec(s[8]) .^ 2 ./ 8) ./ maximum(exp.(-vec(s[8]) .^ 2 ./ 8)), seen)
 
@@ -2350,8 +2359,8 @@ end
     # Without sexes, selfing is allowed and recorded.
     selfer = CustomMating(ctx -> (for i in 1:ctx.noffspring; ctx.pm[i, :] .= rand(ctx.rng, 1:ctx.n); end))
     r = fisher_wright(10, 4, chr, 1.0; mating=selfer, result=true, rng=rng)
-    @test r.selfing == ones(4) && r.males == zeros(Int, 4)
-    @test effective_size(r) ≈ 1 / mean((r.paternal_pairs .+ r.maternal_pairs) ./ (4 * 10 * 9) .* 2)
+    @test r.records.selfing == ones(4) && r.records.males == zeros(Int, 4)
+    @test effective_size(r) ≈ 1 / mean((r.records.paternal_pairs .+ r.records.maternal_pairs) ./ (4 * 10 * 9) .* 2)
 
     # A generation of an allocation-free callback allocates task overhead only.
     rmap = uniform_recombination_map([1_000, 1_000]; M=1e3)
@@ -2369,8 +2378,8 @@ end
     ped = r.pedigree
     @test names(ped) == ["id", "sire", "dam", "sex", "generation"]
     # IDs in birth order, one row per individual of every generation.
-    @test ped.id == 1:sum(r.census) && ped.generation == reduce(vcat, [fill(g, n) for (g, n) in zip(0:5, r.census)])
-    @test r.first_id == sum(r.census) - r.census[end] + 1
+    @test ped.id == 1:sum(r.records.census) && ped.generation == reduce(vcat, [fill(g, n) for (g, n) in zip(0:5, r.records.census)])
+    @test r.first_id == sum(r.records.census) - r.records.census[end] + 1
     # Founders have no parents, the last generation no sex yet; parents are
     # of the previous generation, sires male and dams female.
     @test all(==(0), ped.sire[ped.generation .== 0]) && all(==(0), ped.dam[ped.generation .== 0])
@@ -2381,10 +2390,10 @@ end
     @test all(ped.generation[row[d]] == g - 1 && ped.sex[row[d]] === false for (d, g) in zip(off.dam, off.generation))
     # The other records agree: males among the parents, and pairs of
     # offspring sharing a sire or a dam.
-    @test [count(x -> x === true, ped.sex[ped.generation .== g-1]) for g = 1:5] == r.males
+    @test [count(x -> x === true, ped.sex[ped.generation .== g-1]) for g = 1:5] == r.records.males
     pairs(v) = (c = values(Dict(k => count(==(k), v) for k in unique(v))); sum(n -> n * (n - 1), c))
-    @test [pairs(off.sire[off.generation .== g]) for g = 1:5] == r.paternal_pairs
-    @test [pairs(off.dam[off.generation .== g]) for g = 1:5] == r.maternal_pairs
+    @test [pairs(off.sire[off.generation .== g]) for g = 1:5] == r.records.paternal_pairs
+    @test [pairs(off.dam[off.generation .== g]) for g = 1:5] == r.records.maternal_pairs
 
     # The pedigree describes the transmission: every haplotype of the start
     # carries a private marker, there is no mutation, and every individual
@@ -3074,17 +3083,17 @@ function engine_fixation(N, s, h, reps, rng)
     st = SimState([UInt32[] for _ = 1:2N], UInt32[], N, rng)
     fixed = 0
     for _ = 1:reps
-        foreach(empty!, st.sel)
-        push!(st.sel[rand(rng, 1:2N)], UInt32(50))
+        foreach(empty!, st.fit.sel)
+        push!(st.fit.sel[rand(rng, 1:2N)], UInt32(50))
         while true
             _simulate!(st, ConstantSize(N), RandomMating(), f, 1, rmap, Poisson(1.0), UInt32(1):UInt32(100);
                 mutate=false, track=false, fixation_interval=1, verbose=false, progress_interval=100, rng=rng)
-            c = count(!isempty, view(st.sel, 1:2N))
+            c = count(!isempty, view(st.fit.sel, 1:2N))
             c == 0 && break
             c == 2N && (fixed += 1; break)
         end
-        resize!(st.census, 1)
-        empty!(st.males)
+        resize!(st.rec.census, 1)
+        empty!(st.rec.males)
     end
     return fixed / reps
 end
@@ -3160,7 +3169,7 @@ end
         loci = trait_loci(chr, K; a=Normal(0, σa), μ=μ, rng=rng)
         res = fisher_wright(N, T, chr, 0.02; mut_base=1e12, result=true, rng=rng,
             fitness=TraitFitness(loci; fitness=P -> 1.0))
-        V[r, :] .= vec(res.var_genotypic)
+        V[r, :] .= vec(res.records.var_genotypic)
     end
     binom = [Float64(binomial(big(N), k)) for k = 1:N-1]
     a = sum(binom[k] * (1 / 4k + 1 / 4(N - k)) for k = 1:N-1) / sum(binom)
@@ -3222,6 +3231,133 @@ end
     @test abs(mean(H) - expected(a)) / se < 3.5
     # The test separates weighted from uniform parents, a = 1/(4·6) + 1/(4·6).
     @test (expected(1 / 12) - mean(H)) / se > 3.5
+end
+
+@testset "Generation records" begin
+    rec = GenerationRecords(5)
+    @test rec.census == [5] && isempty(rec.males) && ntraits(rec) == 1 && size(rec.var_genotypic) == (1, 1, 0)
+    two = GenerationRecords(; census=[4, 4, 6], males=[2, 3], ntraits=2)
+    @test size(two.mean_genotypic) == (2, 2) && size(two.var_phenotypic) == (2, 2, 2) && all(isnan, two.var_phenotypic)
+    @test two.mean_fitness == [1.0, 1.0] && two.var_log_fitness == [0.0, 0.0] && all(isnan, two.paternal_pairs)
+    @test two.selfing == [0.0, 0.0] && two.related_matings == [0, 0] && ntraits(two) == 2
+    @test_throws ArgumentError GenerationRecords(; census=[4, 4], males=[2, 3])
+    @test_throws ArgumentError GenerationRecords(; census=[4, 4, 6], males=[2, 3], selfing=[0.0])
+    @test_throws ArgumentError GenerationRecords(; census=[4, 4, 6], males=[2, 3], mean_genotypic=zeros(2, 2))
+    @test isequal(two, GenerationRecords(; census=[4, 4, 6], males=[2, 3], ntraits=2))
+    @test hash(two) == hash(GenerationRecords(; census=[4, 4, 6], males=[2, 3], ntraits=2))
+
+    res = fisher_wright(20, 5, [10_000], 1.0; result=true, pedigree=2, rng=Xoshiro(1))
+    @test res.records isa GenerationRecords && res.records.census == fill(20, 6)
+    @test effective_size(res) == effective_size(res.records)
+    @test isequal(res, deepcopy(res)) && hash(res) == hash(deepcopy(res))
+    @test :records in propertynames(res) && !(:census in propertynames(res))
+end
+
+@testset "Deprecated result fields and constructors" begin
+    chr = [10_000]
+    loci = trait_loci(chr, 20; a=0.1, μ=1e-3, rng=Xoshiro(1))
+    res = fisher_wright(20, 6, chr, 1.0; mut_base=1e4, result=true, pedigree=2, rng=Xoshiro(2),
+        fitness=TraitFitness(loci; σe=0.5, fitness=Directional(0.2)))
+    # The record fields of 0.9, read through the result: the same arrays.
+    @test_deprecated res.census
+    if Base.JLOptions().depwarn != 2
+        quiet(f) = Base.CoreLogging.with_logger(f, Base.CoreLogging.NullLogger())
+        for f in fieldnames(GenerationRecords)
+            @test quiet(() -> getproperty(res, f)) === getfield(res.records, f)
+        end
+        R = res.records
+        old = quiet(() -> FisherWrightResult(res.active_haplotypes, res.chromosome_ends, res.substitutions,
+            R.census, R.males, res.selected_haplotypes, res.selected_substitutions, R.mean_fitness,
+            R.mean_log_fitness, R.var_log_fitness, R.mean_genotypic, R.var_genotypic, R.mean_phenotypic,
+            R.var_phenotypic, R.paternal_pairs, R.maternal_pairs, R.selfing, R.related_matings, res.first_id,
+            res.pedigree))
+        @test isequal(old, res)
+        five = quiet(() -> FisherWrightResult(res.active_haplotypes, res.chromosome_ends, res.substitutions,
+            R.census, R.males))
+        @test isequal(five.records, GenerationRecords(; census=R.census, males=R.males))
+        @test five.first_id == 1 && nrow(five.pedigree) == 0 && all(isempty, five.selected_haplotypes)
+    end
+    @test_deprecated FisherWrightResult(res.active_haplotypes, res.chromosome_ends, res.substitutions,
+        res.records.census, res.records.males)
+end
+
+@testset "Result files" begin
+    chr = [60_000, 40_000]
+    sl = fitness_loci(chr, 40; s=-Gamma(0.3, 0.1), h=0.3, μ=1e-3, rng=Xoshiro(1))
+    tl = trait_loci(chr, 30; a=MvNormal(zeros(2), [0.04 0.01; 0.01 0.04]), μ=1e-3, rng=Xoshiro(2))
+    base = fisher_wright(20, 10, chr, 1.0; mut_base=1e5, result=true, rng=Xoshiro(3))
+    runs = (
+        base,
+        FisherWrightResult(base.active_haplotypes, base.chromosome_ends, base.substitutions),
+        fisher_wright(20, 10, chr, 1.0; mut_base=1e5, result=true, pedigree=3, fitness=SiteFitness(sl),
+            rng=Xoshiro(4)),
+        fisher_wright(20, 10, chr, 1.0; mut_base=1e5, result=true, pedigree=typemax(Int), rng=Xoshiro(5),
+            fitness=TraitFitness(tl; σe=[0.5, 0.7], fitness=Directional([0.3, 0.0]))),
+        fisher_wright(20, 10, chr, 1.0; mut_base=1e5, result=true, pedigree=2, mating=Monoecious(selfing=0.3),
+            rng=Xoshiro(6)),
+        fisher_wright(20, 10, chr, 1.0; mut_base=1e5, result=true, init=base, popsize=collect(21:30),
+            mating=AvoidRelatives(RandomMating()), rng=Xoshiro(7)),
+    )
+    for r in runs
+        io = IOBuffer()
+        write_result(io, r)
+        @test isequal(read_result(seekstart(io)), r)
+    end
+    # Through a file, and a run started from the file is the run started
+    # from the result in memory.
+    r = runs[3]
+    path = tempname()
+    write_result(path, r)
+    back = read_result(path)
+    @test isequal(back, r) && back.records.census isa Vector{Int} && back.pedigree.sex isa Vector{Union{Missing,Bool}}
+    @test isequal(fisher_wright(20, 4, chr, 1.0; mut_base=1e5, result=true, init=back, fitness=SiteFitness(sl),
+            pedigree=3, rng=Xoshiro(8)),
+        fisher_wright(20, 4, chr, 1.0; mut_base=1e5, result=true, init=r, fitness=SiteFitness(sl), pedigree=3,
+            rng=Xoshiro(8)))
+    rm(path)
+
+    # Not a result file, a later format version, a changed byte, a short file.
+    io = IOBuffer()
+    write_result(io, r)
+    bytes = take!(io)
+    @test_throws "not a FisherWright result file" read_result(IOBuffer(vcat(Vector{UInt8}("FWRESULX"), bytes[9:end])))
+    later = copy(bytes)
+    later[9:12] .= reinterpret(UInt8, [htol(UInt32(2))])
+    @test_throws "format version 2" read_result(IOBuffer(later))
+    changed = copy(bytes)
+    changed[end-20] ⊻= 0x01
+    @test_throws ArgumentError read_result(IOBuffer(changed))
+    @test_throws EOFError read_result(IOBuffer(bytes[1:end-9]))
+
+    # The fixture of format version 1, written by FisherWright 0.10.0
+    # (test/data/make-result-v1.jl), against the values it was written with.
+    v1 = read_result(joinpath(@__DIR__, "data", "result-v1.fwr"))
+    R = v1.records
+    @test length(v1.active_haplotypes) == 24 && sum(length, v1.active_haplotypes) == 223
+    @test sum(Int, reduce(vcat, v1.active_haplotypes)) == 11_942_620 && isempty(v1.substitutions)
+    @test sum(length, v1.selected_haplotypes) == 42 && sum(Int, reduce(vcat, v1.selected_haplotypes)) == 1_772_760
+    @test isempty(v1.selected_substitutions) && v1.chromosome_ends == UInt32[60_000, 100_000]
+    @test R.census == fill(12, 9) && R.males == [6, 6, 4, 9, 4, 7, 7, 5] && R.selfing == zeros(8)
+    @test R.paternal_pairs == [60, 68, 50, 78, 44, 40, 22, 62] && R.maternal_pairs == [16, 26, 16, 50, 34, 40, 22, 12]
+    @test R.mean_fitness[[1, 5, 8]] == [1.0485930786105664, 0.8502145283070371, 1.002638520569912]
+    @test R.mean_genotypic[:, end] == [-0.006125317901513317, 0.1281162164988893]
+    @test R.var_phenotypic[:, :, end] == [0.5989584490586204 0.39753196542037633; 0.39753196542037633 0.46291916717023973]
+    @test ntraits(v1) == 2 && R.related_matings == zeros(Int, 8)
+    @test v1.first_id == 97 && size(v1.pedigree) == (36, 5) && sum(v1.pedigree.sire) == 2018 && sum(v1.pedigree.dam) == 2008
+    @test count(ismissing, v1.pedigree.sex) == 12 && count(isequal(true), v1.pedigree.sex) == 12
+    @test v1.pedigree.generation[[1, end]] == [6, 8]
+end
+
+@testset "The exported map" begin
+    # The map of to_haplotype: a VariantMap that BnGStructs accepts, with
+    # nucleotides from the rng given.
+    res = fisher_wright(20, 20, [50_000, 50_000], 1.0; mut_base=1e5, result=true, rng=Xoshiro(3))
+    h1, m1 = to_haplotype(res; rng=Xoshiro(4))
+    h2, m2 = to_haplotype(res; rng=Xoshiro(4))
+    @test m1 isa VariantMap && h1 == h2 && m1.ref == m2.ref && m1.alt == m2.alt && all(m1.ref .!= m1.alt)
+    @test m1.pos == sort(unique(reduce(vcat, res.active_haplotypes))) && isempty(m1.morgan)
+    @test m1.chr == Int8.(ifelse.(m1.pos .<= 50_000, 1, 2)) && m1.frq ≈ vec(sum(h1; dims=2)) ./ 40
+    @test_throws ArgumentError to_haplotype(FisherWrightResult([UInt32[] for _ = 1:4], UInt32[100], UInt32[]))
 end
 
 include("properties.jl")

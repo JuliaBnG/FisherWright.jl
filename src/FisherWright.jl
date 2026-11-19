@@ -19,13 +19,12 @@ dense matrix allocations during generation stepping.
   without full genome materialization via [`extract_chip_bitarray`](@ref) or [`to_haplotype`](@ref).
 - **Recombination Landscapes**: Custom or uniform crossover recombination maps via
   [`RecombinationMap`](@ref) and [`uniform_recombination_map`](@ref).
-- **Synthetic Data**: Generate fast synthetic diploid genotypes and haplotypes with controlled
-  allele frequencies via [`quickGT`](@ref) and [`quickHap`](@ref).
 """
 module FisherWright
 
 
 using BnGStructs
+using CRC32c
 using DataFrames
 using Distributions
 using LinearAlgebra
@@ -38,6 +37,7 @@ include("merge-sorted.jl")
 include("recombine.jl")
 include("muts2bitarray.jl")
 include("result.jl")
+include("io.jl")
 include("pedigree.jl")
 include("simulate.jl")
 include("fitness.jl")
@@ -48,8 +48,7 @@ include("monoecious.jl")
 include("relatives.jl")
 include("custom.jl")
 include("fwp.jl")
-include("quick-genotypes.jl")
 
-export fisher_wright, muts2bitarray, extract_chip_bitarray, quickGT, quickHap, FisherWrightResult, effective_size, to_haplotype, RecombinationMap, uniform_recombination_map, RandomMating, bottleneck, growth, FitnessLoci, fitness_loci, SiteFitness, Neutral, TraitLoci, trait_loci, ntraits, TraitFitness, Stabilizing, Directional, SexSpecific, FamilySize, Hierarchical, Monoecious, AvoidRelatives, CustomMating, MatingContext
+export fisher_wright, muts2bitarray, extract_chip_bitarray, FisherWrightResult, GenerationRecords, write_result, read_result, effective_size, to_haplotype, RecombinationMap, uniform_recombination_map, RandomMating, bottleneck, growth, FitnessLoci, fitness_loci, SiteFitness, Neutral, TraitLoci, trait_loci, ntraits, TraitFitness, Stabilizing, Directional, SexSpecific, FamilySize, Hierarchical, Monoecious, AvoidRelatives, CustomMating, MatingContext
 
 end # module FisherWright

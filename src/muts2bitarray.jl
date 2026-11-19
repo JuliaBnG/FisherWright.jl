@@ -18,6 +18,7 @@ end
         cbp::Vector{UInt32};
         flip::Bool = false,
         include_fixed::Bool = false,
+        rng = Random.default_rng(),
     ) -> Tuple{BitMatrix, DataFrame}
 
 Convert sparse per-haplotype mutation coordinate vectors into a dense boolean presence/absence
@@ -34,6 +35,8 @@ matrix (`BitMatrix`) and an accompanying marker linkage map `DataFrame`.
 - `include_fixed::Bool = false`: If `true`, includes monomorphic / fixed loci (mutations present in all haplotypes
   or absent from all haplotypes) in the output. If `false` (default), monomorphic loci are filtered out, returning
   only polymorphic loci.
+- `rng = Random.default_rng()`: the generator of the random nucleotides `ref` and `alt` and of `flip`; give one
+  for a reproducible map. The presence/absence matrix does not depend on it unless `flip = true`.
 
 # Returns
 - `BitMatrix`: Dense matrix of dimensions `(nlc, nhp)` where rows correspond to loci and columns correspond to haplotypes.
@@ -69,6 +72,7 @@ function muts2bitarray(
     cbp::Vector{UInt32};
     flip::Bool=false,
     include_fixed::Bool=false,
+    rng::AbstractRNG=Random.default_rng(),
 )
     length(cbp) <= typemax(Int8) ||
         throw(ArgumentError("at most $(typemax(Int8)) chromosomes are supported, got $(length(cbp))"))
@@ -169,7 +173,7 @@ function muts2bitarray(
         end
     end
     if flip
-        mask = rand(Bool, nlc)
+        mask = rand(rng, Bool, nlc)
         # Invert selected rows
         @inbounds for r = 1:nlc
             mask[r] && (xy[r, :] = .!view(xy, r, :))
@@ -182,14 +186,14 @@ function muts2bitarray(
     end
     # Alleles: choose alt != ref per locus
     bases = Vector{Char}(['A', 'C', 'G', 'T'])
-    ref = rand(bases, nlc)
+    ref = rand(rng, bases, nlc)
     alt = Vector{Char}(undef, nlc)
     @inbounds for i = 1:nlc
         r = ref[i]
         # pick from the 3 remaining
         a = r
         while a == r
-            a = bases[rand(1:4)]
+            a = bases[rand(rng, 1:4)]
         end
         alt[i] = a
     end

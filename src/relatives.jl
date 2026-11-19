@@ -41,7 +41,7 @@ using FisherWright
 # No full- or half-sib matings, 10 sires
 m = AvoidRelatives(RandomMating(nmale = 10); level = :halfsib)
 res = fisher_wright(50, 100, [1_000_000], 1.0; mating = m, result = true)
-sum(res.related_matings)   # offspring of relatives that could not be avoided
+sum(res.records.related_matings)   # offspring of relatives that could not be avoided
 ```
 """
 struct AvoidRelatives{M<:AbstractMating} <: AbstractMating
@@ -97,57 +97,57 @@ _track_relatives(::AvoidRelatives) = true
 end
 
 # Parents and grandparents of the `no` offspring of the current matings,
-# from those of the parents; `st.rel` and `st.rnew` are swapped.
+# from those of the parents; `st.mate.rel` and `st.mate.rnew` are swapped.
 function _update_relatives!(st::SimState, no::Int)
-    rel, new, pm = st.rel, st.rnew, st.pm
+    rel, new, pm = st.mate.rel, st.mate.rnew, st.mate.pm
     @inbounds for i = 1:no
         s, d = pm[i, 1], pm[i, 2]
         new[1, i], new[2, i] = s, d
         new[3, i], new[4, i] = rel[1, s], rel[2, s]
         new[5, i], new[6, i] = rel[1, d], rel[2, d]
     end
-    st.rel, st.rnew = new, rel
+    st.mate.rel, st.mate.rnew = new, rel
     return nothing
 end
 
 _mate!(m::AvoidRelatives{Monoecious}, f::AbstractFitness, st::SimState, no::Int, rng::AbstractRNG) =
-    (st.forced[end] = _mono_mate!(st, m.inner.selfing, f, no, rng, m.level, m.max_tries); nothing)
+    (st.rec.related_matings[end] = _mono_mate!(st, m.inner.selfing, f, no, rng, m.level, m.max_tries); nothing)
 
 # Sex as by the inner RandomMating; per offspring the sire, then the dam,
 # then (if they are related) further dams. Without relatives the draws are
 # those of RandomMating.
 function _mate!(m::AvoidRelatives{RandomMating}, f::AbstractFitness, st::SimState, no::Int, rng::AbstractRNG)
-    resize!(st.sex, st.n)
+    resize!(st.mate.sex, st.n)
     nm = _nmale(m.inner, st.n)
     if nm == 0
-        _draw_sex!(st.sex, st.sires, st.dams, rng, typemax(Int))
+        _draw_sex!(st.mate.sex, st.mate.sires, st.mate.dams, rng, typemax(Int))
     else
-        _draw_fixed_sex!(st.sex, st.sires, st.dams, nm, rng)
+        _draw_fixed_sex!(st.mate.sex, st.mate.sires, st.mate.dams, nm, rng)
     end
-    sires, dams, pm, w, wf = st.sires, st.dams, st.pm, st.w, st.wf
+    sires, dams, pm, w, wf = st.mate.sires, st.mate.dams, st.mate.pm, st.fit.w, st.fit.wf
     neutral = f isa Neutral
     if !neutral
         (any(i -> w[i] > 0, sires) && any(i -> wf[i] > 0, dams)) || error(
             "no parent with positive fitness in one sex: the population cannot reproduce")
-        _alias_build!(st.tm, w, sires)
-        _alias_build!(st.tf, wf, dams)
+        _alias_build!(st.mate.tm, w, sires)
+        _alias_build!(st.mate.tf, wf, dams)
     end
     forced = 0
     @inbounds for i = 1:no
-        s = neutral ? rand(rng, sires) : sires[_alias_draw(st.tm, rng)]
-        d = neutral ? rand(rng, dams) : dams[_alias_draw(st.tf, rng)]
+        s = neutral ? rand(rng, sires) : sires[_alias_draw(st.mate.tm, rng)]
+        d = neutral ? rand(rng, dams) : dams[_alias_draw(st.mate.tf, rng)]
         k = 1
-        while _related(st.rel, s, d, m.level)
+        while _related(st.mate.rel, s, d, m.level)
             if k >= m.max_tries
                 forced += 1
                 break
             end
-            d = neutral ? rand(rng, dams) : dams[_alias_draw(st.tf, rng)]
+            d = neutral ? rand(rng, dams) : dams[_alias_draw(st.mate.tf, rng)]
             k += 1
         end
         pm[i, 1] = s
         pm[i, 2] = d
     end
-    st.forced[end] = forced
+    st.rec.related_matings[end] = forced
     return nothing
 end

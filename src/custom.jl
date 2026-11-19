@@ -97,30 +97,30 @@ _check_mating(::CustomMating, ::AbstractDemography, ::Int, ::Int) = nothing
 
 function _mate!(m::CustomMating, f::AbstractFitness, st::SimState, no::Int, rng::AbstractRNG)
     n = st.n
-    resize!(st.sex, n)
-    fill!(st.sex, false)
-    w = view(st.w, 1:n)
+    resize!(st.mate.sex, n)
+    fill!(st.mate.sex, false)
+    w = view(st.fit.w, 1:n)
     f isa Neutral && fill!(w, 1.0)
-    ctx = MatingContext(st.ped.gen + 1, n, no, view(st.pm, 1:no, :), st.sex, w,
-        st.ped.first:st.ped.first+n-1, view(st.rel, :, 1:n), view(st.prt, 1:2n),
-        view(st.gval, :, 1:n), view(st.pval, :, 1:n), rng)
+    ctx = MatingContext(st.ped.gen + 1, n, no, view(st.mate.pm, 1:no, :), st.mate.sex, w,
+        st.ped.first:st.ped.first+n-1, view(st.mate.rel, :, 1:n), view(st.prt, 1:2n),
+        view(st.fit.gval, :, 1:n), view(st.fit.pval, :, 1:n), rng)
     m.f(ctx)
-    length(st.sex) == n ||
+    length(st.mate.sex) == n ||
         throw(ArgumentError("generation $(ctx.generation): the callback resized ctx.sex"))
-    pm = st.pm
+    pm = st.mate.pm
     @inbounds for i = 1:no, j = 1:2
         1 <= pm[i, j] <= n || throw(ArgumentError(
             "generation $(ctx.generation): parent $(pm[i, j]) of offspring $i is outside 1:$n"))
     end
-    empty!(st.sires)
-    empty!(st.dams)
+    empty!(st.mate.sires)
+    empty!(st.mate.dams)
     if m.sexes
         @inbounds for i = 1:no
-            (st.sex[pm[i, 1]] && !st.sex[pm[i, 2]]) || throw(ArgumentError(
+            (st.mate.sex[pm[i, 1]] && !st.mate.sex[pm[i, 2]]) || throw(ArgumentError(
                 "generation $(ctx.generation): offspring $i needs a male sire and a female dam"))
         end
         @inbounds for k = 1:n
-            st.sex[k] ? push!(st.sires, k) : push!(st.dams, k)
+            st.mate.sex[k] ? push!(st.mate.sires, k) : push!(st.mate.dams, k)
         end
     end
     return nothing

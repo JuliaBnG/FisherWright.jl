@@ -236,31 +236,31 @@ _mate!(m::FamilySize, f::AbstractFitness, st::SimState, no::Int, rng::AbstractRN
     _family_mate!(m, f, st, no, rng)
 
 function _family_mate!(m::FamilySize, f::AbstractFitness, st::SimState, no::Int, rng::AbstractRNG)
-    resize!(st.sex, st.n)
+    resize!(st.mate.sex, st.n)
     nm = _nmale(m.sex, st.n)
     if nm == 0
-        _draw_sex!(st.sex, st.sires, st.dams, rng, typemax(Int), max(m.nsires, 1), max(m.ndams, 1))
+        _draw_sex!(st.mate.sex, st.mate.sires, st.mate.dams, rng, typemax(Int), max(m.nsires, 1), max(m.ndams, 1))
     else
-        _draw_fixed_sex!(st.sex, st.sires, st.dams, nm, rng)
+        _draw_fixed_sex!(st.mate.sex, st.mate.sires, st.mate.dams, nm, rng)
     end
     # The breeders: all males and females, or random subsets of them. The
-    # record of males (st.sires) is left as it is.
-    sires = _breeders!(st.bsires, st.sires, m.nsires, rng)
-    dams = _breeders!(st.bdams, st.dams, m.ndams, rng)
+    # record of males (st.mate.sires) is left as it is.
+    sires = _breeders!(st.mate.bsires, st.mate.sires, m.nsires, rng)
+    dams = _breeders!(st.mate.bdams, st.mate.dams, m.ndams, rng)
     Nm, Nf = length(sires), length(dams)
     # Offspring per dam, then dams per sire; under selection in proportion
     # to fitness as well.
     f isa Neutral || _check_selection(m, f)
     if f isa Neutral
-        nd = _split!(st.fcnt, Nf, no, m.dams, m.kd, st.w, st.tf, st.fidx, rng)
-        ms = _split!(st.mcnt, Nm, Nf, m.sires, m.km, st.w, st.tm, st.fidx, rng)
+        nd = _split!(st.mate.fcnt, Nf, no, m.dams, m.kd, st.fit.w, st.mate.tf, st.mate.fidx, rng)
+        ms = _split!(st.mate.mcnt, Nm, Nf, m.sires, m.km, st.fit.w, st.mate.tm, st.mate.fidx, rng)
     else
-        nd = _split_selected!(st.fcnt, dams, no, m.dams, m.kd, st.wf, st.swt, st.tf, st.fidx, rng, "dam")
-        ms = _split_selected!(st.mcnt, sires, Nf, m.sires, m.km, st.w, st.swt, st.tm, st.fidx, rng, "sire")
+        nd = _split_selected!(st.mate.fcnt, dams, no, m.dams, m.kd, st.fit.wf, st.mate.swt, st.mate.tf, st.mate.fidx, rng, "dam")
+        ms = _split_selected!(st.mate.mcnt, sires, Nf, m.sires, m.km, st.fit.w, st.mate.swt, st.mate.tm, st.mate.fidx, rng, "sire")
     end
     # The sire of each dam: the slots of the sires, in a uniformly random
     # order (Fisher-Yates).
-    sod = st.fidx
+    sod = st.mate.fidx
     resize!(sod, Nf)
     j = 0
     @inbounds for s = 1:Nm, _ = 1:ms[s]
@@ -270,7 +270,7 @@ function _family_mate!(m::FamilySize, f::AbstractFitness, st::SimState, no::Int,
         k = rand(rng, 1:i)
         sod[i], sod[k] = sod[k], sod[i]
     end
-    pm = st.pm
+    pm = st.mate.pm
     i = 0
     @inbounds for d = 1:Nf, _ = 1:nd[d]
         i += 1
