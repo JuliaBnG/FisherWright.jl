@@ -67,8 +67,8 @@ function neutral_case(N, T, σe, reps, rng)
         loci = trait_loci(CHR, K; a = Normal(0, SIGMA_A), μ = MU, rng = rng)
         f = TraitFitness(loci; σe = σe, fitness = P -> 1.0)
         res = fisher_wright(N, T, CHR, 0.02; mut_base = 1e12, fitness = f, result = true, rng = rng)
-        VG[r, :] .= vec(res.var_genotypic)
-        VP[r, :] .= vec(res.var_phenotypic)
+        VG[r, :] .= vec(res.records.var_genotypic)
+        VP[r, :] .= vec(res.records.var_phenotypic)
     end
     return VG, VP
 end
@@ -118,10 +118,10 @@ function main(reps = 1000, seed = 2026)
         sel = fisher_wright(N, T, CHR, 0.02; mut_base = 1e12, init = base, result = true, rng = rng,
             fitness = TraitFitness(loci; σe = σe, fitness = Directional(β)))
         g = burn+1:burn+T
-        R = sel.mean_genotypic[g[end]] - sel.mean_genotypic[g[1]]
-        VG = sel.var_genotypic[g[1:end-1]]
+        R = sel.records.mean_genotypic[g[end]] - sel.records.mean_genotypic[g[1]]
+        VG = sel.records.var_genotypic[g[1:end-1]]
         push!(ratios, R / (β * sum(VG)))
-        push!(small, 1 - sum(VG .* exp.(β^2 .* sel.var_phenotypic[g[1:end-1]])) / sum(VG) * Einv)
+        push!(small, 1 - sum(VG .* exp.(β^2 .* sel.records.var_phenotypic[g[1:end-1]])) / sum(VG) * Einv)
     end
     @printf("  N = %d, %d generations of selection after %d neutral, β = %g, σe = %g, %d replicates\n",
         N, T, burn, β, σe, length(ratios))

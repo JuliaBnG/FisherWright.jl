@@ -85,8 +85,8 @@ function fw_replicate()
     bot = fisher_wright(N0, TB + TR, chr, MU * 1e8; init = burn, result = true,
         popsize = bottleneck(N0, NB, 1, TB))
     exp = fisher_wright(N0, TX, chr, MU * 1e8; init = burn, result = true, popsize = g -> NX)
-    @assert bot.census[2001:end] == [N0; fill(NB, TB); fill(N0, TR)]
-    @assert exp.census[2001:end] == [N0; fill(NX, TX)]
+    @assert bot.records.census[2001:end] == [N0; fill(NB, TB); fill(N0, TR)]
+    @assert exp.records.census[2001:end] == [N0; fill(NX, TX)]
     return popstats(bot), popstats(exp)
 end
 

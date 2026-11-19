@@ -3,7 +3,7 @@
 # environmental noise, and fitness as a function of the phenotype. With
 # several traits the loci are shared (pleiotropy): each site has an effect
 # on every trait. The derived alleles at the trait loci live in the
-# selected stream `st.sel`, as those of `SiteFitness`.
+# selected stream `st.fit.sel`, as those of `SiteFitness`.
 
 """
     TraitLoci(pos, a; h = 0.5, μ = 0.0)
@@ -252,13 +252,13 @@ chr = [1_000_000, 1_000_000]
 loci = trait_loci(chr, 200; a = Normal(0, 0.2), μ = 1e-4)
 f = TraitFitness(loci; σe = 1.0, fitness = Stabilizing(0.0, 5.0))
 res = fisher_wright(100, 500, chr, 1.0; fitness = f, result = true)
-res.mean_genotypic[1, end], res.var_genotypic[1, 1, end]
+res.records.mean_genotypic[1, end], res.records.var_genotypic[1, 1, end]
 
 # Two traits with negatively correlated effects; selection on the first.
 two = trait_loci(chr, 200; a = MvNormal(zeros(2), [0.04 -0.02; -0.02 0.04]), μ = 1e-4)
 f2 = TraitFitness(two; σe = [1.0, 1.0], fitness = Directional([0.5, 0.0]))
 res2 = fisher_wright(100, 100, chr, 1.0; fitness = f2, result = true)
-res2.mean_genotypic[:, end]          # the second trait responds by correlation
+res2.records.mean_genotypic[:, end]          # the second trait responds by correlation
 ```
 """
 struct TraitFitness{F} <: AbstractFitness
@@ -373,16 +373,16 @@ function _push_moments!(m::Vector{Float64}, v::Vector{Float64}, X::Matrix{Float6
     return nothing
 end
 
-# Genotypic values and phenotypes of every parent, in `st.gval` and
-# `st.pval`, and their records. The value of the substituted sites, carried
+# Genotypic values and phenotypes of every parent, in `st.fit.gval` and
+# `st.fit.pval`, and their records. The value of the substituted sites, carried
 # by every parent on both haplotypes, is added to G.
 function _trait_values!(f::TraitFitness, st::SimState, rng::AbstractRNG)
-    n, sel, G, P = st.n, st.sel, st.gval, st.pval
+    n, sel, G, P = st.n, st.fit.sel, st.fit.gval, st.fit.pval
     loci = f.loci
     T = ntraits(loci)
     size(G, 1) == T || error("the state holds $(size(G, 1)) traits; the model has $T")
     offset = zeros(T)
-    for x in st.ssubs
+    for x in st.fit.ssubs
         k = searchsortedfirst(loci.pos, x)
         for t = 1:T
             offset[t] += loci.at[t, k]
@@ -416,8 +416,8 @@ function _trait_values!(f::TraitFitness, st::SimState, rng::AbstractRNG)
             end
         end
     end
-    _push_moments!(st.gmean, st.gvar, G, n)
-    _push_moments!(st.pmean, st.pvar, P, n)
+    _push_moments!(st.rec.mean_genotypic, st.rec.var_genotypic, G, n)
+    _push_moments!(st.rec.mean_phenotypic, st.rec.var_phenotypic, P, n)
     return nothing
 end
 
@@ -438,13 +438,13 @@ end
 # Genotypic values, phenotypes and relative fitness of every parent, and the
 # records of the generation.
 function _fitness!(f::TraitFitness, st::SimState, rng::AbstractRNG)
-    n, w = st.n, st.w
+    n, w = st.n, st.fit.w
     _trait_values!(f, st, rng)
-    _trait_log_w!(w, f.w, st.pval, n)
+    _trait_log_w!(w, f.w, st.fit.pval, n)
     lw = view(w, 1:n)
-    push!(st.flmean, mean(lw))
-    push!(st.flvar, var(lw))
-    push!(st.fmean, sum(exp, lw) / n)
+    push!(st.rec.mean_log_fitness, mean(lw))
+    push!(st.rec.var_log_fitness, var(lw))
+    push!(st.rec.mean_fitness, sum(exp, lw) / n)
     top = maximum(lw)
     top > -Inf || error("every individual has zero fitness: the population cannot reproduce")
     @inbounds for i = 1:n

@@ -593,6 +593,25 @@ other models hash-checked unchanged (4 fitness models × 5 mating
 schemes). Validated by `validate-sex-specific.jl` against the
 deterministic two-sex recursion at N = 10,000.
 
+Done 2026-11-19 (0.10.0, breaking): the structural release of the
+ecosystem roadmap, no new model. The per-generation record of a result
+is one field, `records::GenerationRecords`, with a keyword constructor
+that checks lengths; the old field names of the result forward to it
+with a deprecation warning until 1.0, and the positional constructors
+are deprecated. `write_result`/`read_result`: a versioned binary
+format (little-endian, CRC-32C) with a fixture of format version 1 in
+`test/data`, replacing `Serialization` for saved burn-ins.
+`to_haplotype(result)` returns a `BnGStructs.VariantMap`; `quickHap` a
+`BnGStructs.Haplotype`; `quickGT` removed (a small historical population
+is cheap to simulate); `rng` for the placeholder nucleotides.
+`SimState` keeps the genome and the per-slot streams and groups the
+rest into `mate`, `fit` and `rec`. The roadmap had asked for scratch
+owned by the mating and fitness objects; grouping by role was chosen
+instead, because the scheme objects are immutable user values that may
+be shared between runs, and the groups give the same containment
+without type parameters on the state. Seeded output unchanged (53
+configurations against 0.9.1, at 1 and 4 threads).
+
 ## Open decisions
 
 1. Mutation-free validation: resolved 2026-11-02 in favour of a

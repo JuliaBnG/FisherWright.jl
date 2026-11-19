@@ -192,7 +192,7 @@ function fisher_wright(
     init isa FisherWrightResult && _init_trait(init, T)
     st = SimState(prt, substitutions, _maxsize(demog, nt), rng, sel, ssubs; ntraits=T)
     # Generations and IDs continue those of a result given as init.
-    gen0 = init isa FisherWrightResult ? length(init.males) : 0
+    gen0 = init isa FisherWrightResult ? ngenerations(init.records) : 0
     first0 = init isa FisherWrightResult ? init.first_id : 1
     _pedigree_start!(st.ped, Int(pedigree), gen0, first0, Int(ne))
 
@@ -212,11 +212,9 @@ function fisher_wright(
     # Drop the spare buffers beyond the final cohort.
     haps = resize!(st.prt, 2 * st.n)
     result || return (haps, cbp)
-    census, males, fmean, flmean, flvar, gmean, gvar, pmean, pvar, ppairs, mpairs, selfing, related = _record(init, st)
     ped = _pedigree_result(st.ped, init, gen0, first0, Int(ne))
-    return FisherWrightResult(haps, cbp, st.substitutions, census, males,
-        resize!(st.sel, 2 * st.n), st.ssubs, fmean, flmean, flvar, gmean, gvar, pmean, pvar, ppairs, mpairs,
-        selfing, related, st.ped.first, ped)
+    return FisherWrightResult(haps, cbp, st.substitutions, resize!(st.fit.sel, 2 * st.n), st.fit.ssubs,
+        _record(init, st), st.ped.first, ped)
 end
 
 """

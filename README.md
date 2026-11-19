@@ -55,7 +55,10 @@ The generated site is in `docs/build/`.
   exported
 - Effective size realized by the family sizes of a run
 - Export to a 1-bit-per-allele `BitArray` with a linkage map (`DataFrame`), to a
-  targeted SNP-chip panel, or to `BnGStructs.Haplotype`
+  targeted SNP-chip panel, or to `BnGStructs.Haplotype` with a
+  `BnGStructs.VariantMap`
+- A versioned binary file format for results (`write_result`,
+  `read_result`), readable by every later release
 - Validated against neutral theory, msprime, independent simulations
   of the same model under selection, and matched SLiM models of the
   mating schemes and of linked selection (see the manual)
@@ -100,10 +103,14 @@ Converts a vector of mutation sets (haplotypes) and chromosome breakpoints into
 a `BitArray` of haplotypes and a linkage map (`DataFrame`). Supports random
 flipping of alleles and removal of fixed loci.
 
-### `quickGT`, `quickHap`
+### `quickHap`
 
-Utility functions for fast genotype and haplotype generation from simulated
-data.
+Synthetic haplotypes at independent loci, as a `BnGStructs.Haplotype`.
+
+### `write_result`, `read_result`
+
+Save a `FisherWrightResult` to a file and read it back, for example a
+burn-in that later sessions continue.
 
 ## Installation
 
@@ -660,6 +667,63 @@ drawn, so a run draws its random numbers in the same order as with one
 model. Mating schemes with separate sexes drawn by the run only
 (`Monoecious` and `CustomMating` are refused). Seeded output of the
 other models is unchanged. No breaking changes.
+
+## Changes in v0.10.0
+
+A structural release: the result, the internal state and the export
+types are reorganized, without a new model. Seeded output is unchanged:
+53 configurations (every fitness model with every mating scheme,
+continuation, changing size, genetic lengths, no mutation, no result,
+and the export functions) give the same haplotypes, records and
+pedigrees as 0.9.1, at 1 and 4 threads.
+
+**New.**
+
+- `GenerationRecords`: the record of every generation (`census`,
+  `males`, the fitness and trait records, family sizes, `selfing`,
+  `related_matings`), with a keyword constructor that fills the fields
+  not given and checks the lengths, and `effective_size` of a record.
+- `write_result(path, result)` and `read_result(path)`: a binary result
+  format defined byte by byte (little-endian, CRC-32C checksum), with
+  a format version; every later release reads the files of every
+  earlier version, and the tests read a file written by 0.10.0. It
+  replaces `Serialization`, which depends on the Julia and package
+  versions.
+- `rng` keyword of `to_haplotype` and `muts2bitarray`, for the
+  placeholder nucleotides `ref` and `alt`, which came from the global
+  generator only; the default is unchanged.
+
+**Breaking changes.**
+
+- The per-generation record of `FisherWrightResult` is one field,
+  `records::GenerationRecords`: `result.records.census`,
+  `result.records.mean_fitness`, and so on. `result.census` and the
+  other old names still work with a deprecation warning, and will be
+  removed in 1.0.
+- `FisherWrightResult(haps, ends, subs; selected_haplotypes,
+  selected_substitutions, records, first_id, pedigree)` is the
+  constructor. The positional constructors of 5 to 20 arguments are
+  deprecated, and the constructor checks that `selected_haplotypes` has
+  one entry per haplotype.
+- `to_haplotype(result)` returns a `BnGStructs.VariantMap` instead of a
+  `DataFrame`, with the same columns (`morgan` empty), and throws an
+  `ArgumentError` (was `ErrorException`) when no locus is polymorphic.
+  `muts2bitarray` and the loci tables of `to_haplotype(result, loci)`
+  stay `DataFrame`s.
+- `quickHap` returns a `BnGStructs.Haplotype` (was `Matrix{Int8}`), with
+  the same alleles for the same `rng`; `Int8.(hp)` gives the old
+  matrix. It throws an `ArgumentError` (was `ErrorException`) for `maf`
+  outside `(0, 0.5)`.
+- `quickGT` is removed. Genotypes at independent loci with Beta
+  frequencies are a poor stand-in for a population; simulate a small
+  historical population with `fisher_wright` (cheap), or sum the two
+  haplotypes of each individual from `quickHap` for the same model.
+- Requires BnGStructs 0.3 or 0.4 (0.2.5 is dropped, for `VariantMap`).
+- Internal: `SimState` keeps the genome and the per-slot streams, and
+  groups the rest into `mate` (mating table and the scratch of the
+  mating schemes), `fit` (selected stream and fitness) and `rec` (the
+  record as it grows); code that reached into `SimState`, such as a
+  user fitness model writing `st.w`, uses `st.fit.w`.
 
 ## Contributing and support
 

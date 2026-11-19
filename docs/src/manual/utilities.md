@@ -1,29 +1,27 @@
 # Utilities
 
-## Synthetic genotype and haplotype matrices
+## Synthetic haplotypes
 
-`quickGT` generates diploid genotype counts (0, 1, or 2) and `quickHap`
-generates haploid allele calls (0 or 1). Allele frequencies are sampled from a
-Beta distribution and restricted to the requested minor-allele-frequency range.
+`quickHap` generates phased haplotypes at independent loci as a
+`BnGStructs.Haplotype` (`true` for the alternate allele). Allele frequencies
+are sampled from a Beta distribution and restricted to the requested
+minor-allele-frequency range. For genotypes with linkage and the allele
+frequency spectrum of a population, simulate a small historical population
+with `fisher_wright` instead; it is cheap.
 
 ```@example utilities
 using FisherWright
 using Random
 
-genotypes, frequencies = quickGT(100, 50; rng=MersenneTwister(1), return_p=true)
-(size(genotypes), extrema(frequencies))
+haplotypes, frequencies = quickHap(100, 50; rng=MersenneTwister(2), return_p=true)
+(typeof(haplotypes), size(haplotypes), extrema(frequencies))
 ```
 
-```@example utilities
-haplotypes = quickHap(100, 50; rng=MersenneTwister(2))
-size(haplotypes)
-```
-
-Both functions accept:
+It accepts:
 
 | Keyword | Default | Meaning |
 |---|---|---|
-| `maf` | `0.1` for `quickGT`, `0.2` for `quickHap` | Strict lower minor-allele-frequency bound. |
+| `maf` | `0.2` | Strict lower minor-allele-frequency bound. |
 | `qd` | `Beta(0.75, 0.75)` | Distribution used to sample allele frequencies. |
 | `rng` | `Random.default_rng()` | Random-number generator. |
 | `return_p` | `false` | Return sampled frequencies with the matrix. |

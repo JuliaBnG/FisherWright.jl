@@ -23,7 +23,7 @@ abstract type AbstractDemography end
 
 Assignment of a sire and a dam to each offspring. A subtype implements
 `_mate!(m, f, st, no, rng)`, which assigns sex to the `st.n` parents and
-writes the sire and dam of each of `no` offspring to rows `1:no` of `st.pm`,
+writes the sire and dam of each of `no` offspring to rows `1:no` of `st.mate.pm`,
 drawn according to the fitness model `f`.
 """
 abstract type AbstractMating end
@@ -33,9 +33,10 @@ abstract type AbstractMating end
 
 Fitness of the adult cohort. A subtype implements `_fitness!(f, st)`, called
 on the parents before mating, which writes the relative fitness of parent
-`i` to `st.w[i]` for `i = 1:st.n`: finite, non-negative, and positive for at
-least one parent of each sex. Dams are drawn by `st.wf`, the same vector as
-`st.w` unless a model ([`SexSpecific`](@ref)) writes female fitness there. Parents are then drawn with probability
+`i` to `st.fit.w[i]` for `i = 1:st.n`: finite, non-negative, and positive
+for at least one parent of each sex. Dams are drawn by `st.fit.wf`, the
+same vector as `st.fit.w` unless a model ([`SexSpecific`](@ref)) writes
+female fitness there. Parents are then drawn with probability
 proportional to fitness within each sex (soft selection: the census size is
 not affected). [`Neutral`](@ref) writes nothing and keeps the uniform draw.
 """
@@ -116,7 +117,7 @@ using FisherWright
 
 # 100 individuals, reduced to 10 in generations 21 to 25, then 100 again
 res = fisher_wright(100, 60, [1_000_000], 1.0; popsize = bottleneck(100, 10, 21, 5), result = true)
-res.census[20:28]   # N_19, …, N_27: 100, 100, 10, 10, 10, 10, 10, 100, 100
+res.records.census[20:28]   # N_19, …, N_27: 100, 100, 10, 10, 10, 10, 10, 100, 100
 ```
 
 # See also
@@ -156,7 +157,7 @@ using FisherWright
 
 # 5% growth per generation from 50 individuals, up to 500
 res = fisher_wright(50, 60, [1_000_000], 1.0; popsize = growth(50, 0.05; limit = 500), result = true)
-res.census[[1, 2, 11, 61]]   # 50, 52, 81, 500
+res.records.census[[1, 2, 11, 61]]   # 50, 52, 81, 500
 
 # Constant for 20 generations, then a 10% decline per generation down to 10
 decline = growth(50, -0.1; start = 20, limit = 10)
@@ -255,6 +256,110 @@ No selection: every parent has the same fitness, and nothing is evaluated.
 struct Neutral <: AbstractFitness end
 
 """
+    MatingBuffers
+
+Mating table and the scratch of the mating schemes, for up to `nmax`
+parents and offspring (`st.mate` of a [`SimState`](@ref)).
+
+- `pm`: mating table, the sire (column 1) and dam (column 2) of each
+  offspring, as indices into the parental cohort.
+- `sex`: sex of each parent (`true` for male); `sires`, `dams`: the indices
+  of the males and the females.
+- `tm`, `tf`: alias tables for the weighted draw of sires and dams.
+- `fcnt`, `mcnt`, `fidx`, `bsires`, `bdams`, `swt`: scratch of the schemes
+  with family sizes (`bsires`, `bdams`: the breeding sires and dams; `swt`:
+  split weights under selection).
+- `pcnt`: the number of offspring of each parent, for the family record.
+- `rel`, `rnew`: under `AvoidRelatives`, the parents and grandparents of
+  every member of the cohort (6 × nmax) and the buffer for the next one;
+  empty otherwise.
+"""
+mutable struct MatingBuffers
+    const pm::Matrix{Int}
+    const sex::Vector{Bool}
+    const sires::Vector{Int}
+    const dams::Vector{Int}
+    const tm::AliasTable
+    const tf::AliasTable
+    const fcnt::Vector{Int}
+    const mcnt::Vector{Int}
+    const fidx::Vector{Int}
+    const bsires::Vector{Int}
+    const bdams::Vector{Int}
+    const pcnt::Vector{Int}
+    const swt::Vector{Float64}
+    rel::Matrix{Int}
+    rnew::Matrix{Int}
+end
+
+MatingBuffers(n::Int, nmax::Int) = MatingBuffers(
+    Matrix{Int}(undef, nmax, 2), sizehint!(Vector{Bool}(undef, n), nmax), Int[], Int[],
+    AliasTable(nmax), AliasTable(nmax),
+    sizehint!(Int[], nmax), sizehint!(Int[], nmax), sizehint!(Int[], nmax),
+    sizehint!(Int[], nmax), sizehint!(Int[], nmax), zeros(Int, nmax), zeros(nmax),
+    zeros(Int, 6, 0), zeros(Int, 6, 0))
+
+"""
+    SelectionBuffers
+
+The selected stream and the fitness of the parents (`st.fit` of a
+[`SimState`](@ref)).
+
+- `sel`, `soff`, `ssubs`, `smbuf`, `snbuf`: the selected stream, laid out as
+  `prt`, `off`, `substitutions`, `mbuf` and `nbuf` of the state: the derived
+  alleles each haplotype carries at the fitness loci. Empty unless the
+  fitness model keeps selected alleles.
+- `w`: relative fitness of each parent, written by `_fitness!`; unused under
+  `Neutral`. Sires are drawn by `w` and dams by `wf`, which is the same
+  vector unless fitness is sex-specific ([`SexSpecific`](@ref)), when `w`
+  holds the fitness of every parent as a male and `wf` as a female, and
+  `lwraw` their logarithms (rows 1 and 2), before scaling.
+- `gval`, `pval`: genotypic values and phenotypes of each parent under a
+  trait model, `T × nmax` (one row per trait; `T = 1` without a trait
+  model).
+"""
+mutable struct SelectionBuffers
+    sel::Vector{Vector{UInt32}}
+    soff::Vector{Vector{UInt32}}
+    ssubs::Vector{UInt32}
+    const smbuf::Vector{Vector{UInt32}}
+    const snbuf::Vector{Vector{UInt32}}
+    const w::Vector{Float64}
+    wf::Vector{Float64}
+    const lwraw::Matrix{Float64}
+    const gval::Matrix{Float64}
+    const pval::Matrix{Float64}
+end
+
+"""
+    RunRecord
+
+The record of a run as it grows (`st.rec` of a [`SimState`](@ref)), one
+entry per generation, with the names of [`GenerationRecords`](@ref). The
+trait records hold `T` entries (means) and `T²` entries (covariance
+matrices, column-major) per generation, reshaped at the end of the run.
+`census` starts with the size of the starting cohort.
+"""
+struct RunRecord
+    census::Vector{Int}
+    males::Vector{Int}
+    mean_fitness::Vector{Float64}
+    mean_log_fitness::Vector{Float64}
+    var_log_fitness::Vector{Float64}
+    mean_genotypic::Vector{Float64}
+    var_genotypic::Vector{Float64}
+    mean_phenotypic::Vector{Float64}
+    var_phenotypic::Vector{Float64}
+    paternal_pairs::Vector{Float64}
+    maternal_pairs::Vector{Float64}
+    selfing::Vector{Float64}
+    related_matings::Vector{Int}
+end
+
+RunRecord(n::Int) = RunRecord([n], Int[], Float64[], Float64[], Float64[], Float64[], Float64[], Float64[],
+    Float64[], Float64[], Float64[], Float64[], Int[])
+
+"""
     SimState
 
 Mutable state of one run. Individual `i` is haplotypes `2i - 1` and `2i`.
@@ -269,44 +374,14 @@ current cohort occupies the leading entries.
 - `mbuf`, `nbuf`: per-haplotype scratch for mutation insertion and for the
   new mutations of one generation.
 - `cbuf`: per-offspring crossover buffer.
-- `pm`, `sex`, `sires`, `dams`: mating table (sire and dam of each
-  offspring) and its scratch.
-- `w`: relative fitness of each parent, written by `_fitness!`; unused under
-  `Neutral`. Sires are drawn by `w` and dams by `wf`, which is the same
-  vector unless fitness is sex-specific ([`SexSpecific`](@ref)), when `w`
-  holds the fitness of every parent as a male and `wf` as a female, and
-  `lwraw` their logarithms (rows 1 and 2), before scaling.
-- `tm`, `tf`: alias tables for the weighted draw of sires and dams.
 - `srng`: one stream per meiosis/haplotype slot, seeded serially from the
   caller's rng, so a run does not depend on the thread count or scheduling.
-- `sel`, `soff`, `ssubs`, `smbuf`, `snbuf`: the selected stream, laid out as
-  `prt`, `off`, `substitutions`, `mbuf` and `nbuf`: the derived alleles each
-  haplotype carries at the fitness loci. Empty unless the fitness model
-  keeps selected alleles.
-- `fmean`, `flmean`, `flvar`: per generation, the arithmetic mean of the
-  fitness of the parents and the mean and variance of its logarithm.
-- `fcnt`, `mcnt`, `fidx`, `bsires`, `bdams`: scratch of mating schemes with
-  family sizes (`bsires`, `bdams`: the breeding sires and dams).
-- `gval`, `pval`: genotypic values and phenotypes of each parent under a
-  trait model, `T × nmax` (one row per trait; `T = 1` without a trait
-  model); `gmean`, `pmean`: their means per generation, `T` entries each,
-  and `gvar`, `pvar`: their covariance matrices, `T²` entries each in
-  column-major order (NaN without a trait model).
-- `pcnt`: scratch for the number of offspring of each parent.
-- `swt`: scratch for the split weights of parents under selection.
-- `ppairs`, `mpairs`: per generation, the number of ordered pairs of
-  offspring that share their sire and that share their dam (with
-  hermaphrodites, a parent of one shared through either role).
-- `selfing`: per generation, the proportion of selfed offspring.
-- `forced`: per generation, the offspring of relatives that `AvoidRelatives`
-  accepted after its retry limit (0 for other schemes).
-- `rel`, `rnew`: under `AvoidRelatives`, the parents and grandparents of
-  every member of the cohort (6 × nmax) and the buffer for the next one;
-  empty otherwise.
+- `mate`: the mating table and the scratch of the mating schemes
+  ([`MatingBuffers`](@ref)).
+- `fit`: the selected stream and the fitness of the parents
+  ([`SelectionBuffers`](@ref)).
+- `rec`: the record of the run ([`RunRecord`](@ref)).
 - `ped`: IDs of the current cohort and the pedigree record.
-- `census`, `males`: record of the run. `census` starts with the size of the
-  starting cohort and gains the number of offspring of every generation;
-  `males` gains the number of males among its parents.
 """
 mutable struct SimState
     n::Int
@@ -316,46 +391,11 @@ mutable struct SimState
     const mbuf::Vector{Vector{UInt32}}
     const nbuf::Vector{Vector{UInt32}}
     const cbuf::Vector{Vector{UInt32}}
-    const pm::Matrix{Int}
-    const sex::Vector{Bool}
-    const sires::Vector{Int}
-    const dams::Vector{Int}
-    const w::Vector{Float64}
-    const tm::AliasTable
-    const tf::AliasTable
     const srng::Vector{Xoshiro}
-    const census::Vector{Int}
-    const males::Vector{Int}
-    sel::Vector{Vector{UInt32}}
-    soff::Vector{Vector{UInt32}}
-    ssubs::Vector{UInt32}
-    const smbuf::Vector{Vector{UInt32}}
-    const snbuf::Vector{Vector{UInt32}}
-    const fmean::Vector{Float64}
-    const flmean::Vector{Float64}
-    const flvar::Vector{Float64}
-    const gval::Matrix{Float64}
-    const pval::Matrix{Float64}
-    const gmean::Vector{Float64}
-    const gvar::Vector{Float64}
-    const pmean::Vector{Float64}
-    const pvar::Vector{Float64}
-    const fcnt::Vector{Int}
-    const mcnt::Vector{Int}
-    const fidx::Vector{Int}
-    const bsires::Vector{Int}
-    const bdams::Vector{Int}
-    const pcnt::Vector{Int}
-    const swt::Vector{Float64}
-    const ppairs::Vector{Float64}
-    const mpairs::Vector{Float64}
-    const selfing::Vector{Float64}
-    const forced::Vector{Int}
-    rel::Matrix{Int}
-    rnew::Matrix{Int}
+    const mate::MatingBuffers
+    const fit::SelectionBuffers
+    const rec::RunRecord
     const ped::PedRecord
-    wf::Vector{Float64}
-    const lwraw::Matrix{Float64}
 end
 
 # State for the starting cohort `prt` (two haplotypes per individual), with
@@ -379,23 +419,14 @@ function SimState(
     length(sel) == length(prt) ||
         throw(ArgumentError("the selected stream must have one entry per haplotype"))
     nh = 2nmax
-    w = ones(nmax)
     bufs(k) = [Vector{UInt32}() for _ = 1:k]
     append!(prt, bufs(nh - 2n))
     append!(sel, bufs(nh - 2n))
-    return SimState(
-        n, prt, bufs(nh), substitutions, bufs(nh), bufs(nh), bufs(nmax),
-        Matrix{Int}(undef, nmax, 2), sizehint!(Vector{Bool}(undef, n), nmax), Int[], Int[],
-        w, AliasTable(nmax), AliasTable(nmax),
-        [Xoshiro(rand(rng, UInt64)) for _ = 1:nh], [n], Int[],
-        sel, bufs(nh), ssubs, bufs(nh), bufs(nh),
-        Float64[], Float64[], Float64[],
-        zeros(ntraits, nmax), zeros(ntraits, nmax), Float64[], Float64[], Float64[], Float64[],
-        sizehint!(Int[], nmax), sizehint!(Int[], nmax), sizehint!(Int[], nmax),
-        sizehint!(Int[], nmax), sizehint!(Int[], nmax),
-        zeros(Int, nmax), zeros(nmax), Float64[], Float64[], Float64[], Int[],
-        zeros(Int, 6, 0), zeros(Int, 6, 0), PedRecord(n), w, zeros(2, nmax),
-    )
+    w = ones(nmax)
+    fit = SelectionBuffers(sel, bufs(nh), ssubs, bufs(nh), bufs(nh), w, w, zeros(2, nmax),
+        zeros(ntraits, nmax), zeros(ntraits, nmax))
+    return SimState(n, prt, bufs(nh), substitutions, bufs(nh), bufs(nh), bufs(nmax),
+        [Xoshiro(rand(rng, UInt64)) for _ = 1:nh], MatingBuffers(n, nmax), fit, RunRecord(n), PedRecord(n))
 end
 
 # Haplotypes of the current cohort.
@@ -442,41 +473,37 @@ function _initial_state(init::FisherWrightResult, nh::Int, cbp::Vector{UInt32}, 
     haps, subs = init.active_haplotypes, init.substitutions
     _check_haplotypes(haps, nh, cbp[end])
     _check_positions(subs, cbp[end], "init.substitutions")
-    (length(init.census) == length(init.males) + 1 && init.census[end] == nh ÷ 2) ||
-        throw(ArgumentError("init.census and init.males do not describe the $(nh ÷ 2) individuals of init"))
-    ng = length(init.males)
-    T = size(init.mean_genotypic, 1)
-    (all(v -> length(v) == ng, (init.mean_fitness, init.mean_log_fitness, init.var_log_fitness,
-        init.paternal_pairs, init.maternal_pairs, init.selfing, init.related_matings)) &&
-     size(init.mean_genotypic) == size(init.mean_phenotypic) == (T, ng) &&
-     size(init.var_genotypic) == size(init.var_phenotypic) == (T, T, ng)) ||
-        throw(ArgumentError("the fitness and trait records of init must have one entry per generation"))
+    rec = init.records
+    # The vectors of a record can be changed after it was built: check again.
+    GenerationRecords(map(f -> getfield(rec, f), fieldnames(GenerationRecords))...)
+    rec.census[end] == nh ÷ 2 ||
+        throw(ArgumentError("the census record of init does not end with its $(nh ÷ 2) individuals"))
     # A substitution is carried by every haplotype: kept apart when the run
     # tracks substitutions, merged back into the haplotypes when it does not.
     return result ? ([_remove_sorted!(copy(h), subs) for h in haps], copy(subs)) :
            ([merge_sorted(h, subs) for h in haps], UInt32[])
 end
 
-# Census record of the result: that of this call, appended to the record of
-# a FisherWrightResult the run was continued from.
-# The trait records are T × ngen (means) and T × T × ngen (covariances).
+# Record of the result: that of this call, appended to the record of a
+# FisherWrightResult the run was continued from. The trait records become
+# T × ngen (means) and T × T × ngen (covariances).
 function _record(::Any, st::SimState)
-    T = size(st.gval, 1)
-    return (st.census, st.males, st.fmean, st.flmean, st.flvar, reshape(st.gmean, T, :),
-        reshape(st.gvar, T, T, :), reshape(st.pmean, T, :), reshape(st.pvar, T, T, :),
-        st.ppairs, st.mpairs, st.selfing, st.forced)
+    T, r = size(st.fit.gval, 1), st.rec
+    return GenerationRecords(r.census, r.males, r.mean_fitness, r.mean_log_fitness, r.var_log_fitness,
+        reshape(r.mean_genotypic, T, :), reshape(r.var_genotypic, T, T, :), reshape(r.mean_phenotypic, T, :),
+        reshape(r.var_phenotypic, T, T, :), r.paternal_pairs, r.maternal_pairs, r.selfing, r.related_matings)
 end
 function _record(init::FisherWrightResult, st::SimState)
-    T = size(st.gval, 1)
+    T, r, i = size(st.fit.gval, 1), st.rec, init.records
     gm, gv, pm, pv = _init_trait(init, T)
-    return (
-        vcat(init.census, view(st.census, 2:length(st.census))), vcat(init.males, st.males),
-        vcat(init.mean_fitness, st.fmean), vcat(init.mean_log_fitness, st.flmean),
-        vcat(init.var_log_fitness, st.flvar), hcat(gm, reshape(st.gmean, T, :)),
-        cat(gv, reshape(st.gvar, T, T, :); dims=3), hcat(pm, reshape(st.pmean, T, :)),
-        cat(pv, reshape(st.pvar, T, T, :); dims=3), vcat(init.paternal_pairs, st.ppairs),
-        vcat(init.maternal_pairs, st.mpairs), vcat(init.selfing, st.selfing),
-        vcat(init.related_matings, st.forced))
+    return GenerationRecords(
+        vcat(i.census, view(r.census, 2:length(r.census))), vcat(i.males, r.males),
+        vcat(i.mean_fitness, r.mean_fitness), vcat(i.mean_log_fitness, r.mean_log_fitness),
+        vcat(i.var_log_fitness, r.var_log_fitness), hcat(gm, reshape(r.mean_genotypic, T, :)),
+        cat(gv, reshape(r.var_genotypic, T, T, :); dims=3), hcat(pm, reshape(r.mean_phenotypic, T, :)),
+        cat(pv, reshape(r.var_phenotypic, T, T, :); dims=3), vcat(i.paternal_pairs, r.paternal_pairs),
+        vcat(i.maternal_pairs, r.maternal_pairs), vcat(i.selfing, r.selfing),
+        vcat(i.related_matings, r.related_matings))
 end
 
 # The number of traits a run records: those of its trait model, else those
@@ -491,7 +518,8 @@ _model_traits(::AbstractFitness) = nothing
 # The trait record of `init` with `T` traits: as it is, or, if it holds no
 # trait generation (all NaN), widened to T traits.
 function _init_trait(init::FisherWrightResult, T::Int)
-    gm, gv, pm, pv = init.mean_genotypic, init.var_genotypic, init.mean_phenotypic, init.var_phenotypic
+    r = init.records
+    gm, gv, pm, pv = r.mean_genotypic, r.var_genotypic, r.mean_phenotypic, r.var_phenotypic
     size(gm, 1) == T && return gm, gv, pm, pv
     all(isnan, gm) && all(isnan, gv) && all(isnan, pm) && all(isnan, pv) || throw(ArgumentError(
         "init records $(size(gm, 1)) traits; the trait model of the run has $T"))
@@ -508,9 +536,9 @@ end
 # Σ_k m_k n_k - (selfed offspring) to both. Also the proportion of selfed
 # offspring.
 function _record_families!(st::SimState, no::Int)
-    c, pm = st.pcnt, st.pm
+    c, pm = st.mate.pcnt, st.mate.pm
     cross = selfed = 0
-    for (col, out) in ((1, st.ppairs), (2, st.mpairs))
+    for (col, out) in ((1, st.rec.paternal_pairs), (2, st.rec.maternal_pairs))
         fill!(view(c, 1:st.n), 0)
         @inbounds for i = 1:no
             c[pm[i, col]] += 1
@@ -529,7 +557,7 @@ function _record_families!(st::SimState, no::Int)
         end
         push!(out, pairs + cross)
     end
-    push!(st.selfing, selfed / no)
+    push!(st.rec.selfing, selfed / no)
     return nothing
 end
 
@@ -539,9 +567,9 @@ _fitness!(::Neutral, ::SimState) = nothing
 # fitness on a scale of its own records it in `_fitness!` and makes this a
 # no-op; otherwise the generation is recorded as neutral.
 function _record_fitness!(::AbstractFitness, st::SimState)
-    push!(st.fmean, 1.0)
-    push!(st.flmean, 0.0)
-    push!(st.flvar, 0.0)
+    push!(st.rec.mean_fitness, 1.0)
+    push!(st.rec.mean_log_fitness, 0.0)
+    push!(st.rec.var_log_fitness, 0.0)
     return nothing
 end
 
@@ -549,14 +577,14 @@ end
 # model is a trait model, which records it in `_fitness!`.
 _record_trait!(::AbstractFitness, st::SimState) = _record_no_trait!(st)
 function _record_no_trait!(st::SimState)
-    T = size(st.gval, 1)
+    T = size(st.fit.gval, 1)
     for _ = 1:T
-        push!(st.gmean, NaN)
-        push!(st.pmean, NaN)
+        push!(st.rec.mean_genotypic, NaN)
+        push!(st.rec.mean_phenotypic, NaN)
     end
     for _ = 1:T^2
-        push!(st.gvar, NaN)
-        push!(st.pvar, NaN)
+        push!(st.rec.var_genotypic, NaN)
+        push!(st.rec.var_phenotypic, NaN)
     end
     return nothing
 end
@@ -576,12 +604,12 @@ _check_selection(::AbstractMating, ::AbstractFitness) = nothing
 # P(one sex only) = 2^(1-n), so a fixed retry cap fails for small n.
 function _mate!(m::RandomMating, f::AbstractFitness, st::SimState, no::Int, rng::AbstractRNG)
     # Within the capacity reserved for the largest cohort: no allocation.
-    resize!(st.sex, st.n)
+    resize!(st.mate.sex, st.n)
     nm = _nmale(m, st.n)
     if nm == 0
-        _draw_sex!(st.sex, st.sires, st.dams, rng, typemax(Int))
+        _draw_sex!(st.mate.sex, st.mate.sires, st.mate.dams, rng, typemax(Int))
     else
-        _draw_fixed_sex!(st.sex, st.sires, st.dams, nm, rng)
+        _draw_fixed_sex!(st.mate.sex, st.mate.sires, st.mate.dams, nm, rng)
     end
     _parents!(f, st, no, rng)
     return nothing
@@ -590,20 +618,20 @@ end
 # Uniform parents under neutrality; otherwise proportional to fitness within
 # each sex.
 _parents!(::Neutral, st::SimState, no::Int, rng::AbstractRNG) =
-    _draw_parents!(st.pm, st.sires, st.dams, no, rng)
+    _draw_parents!(st.mate.pm, st.mate.sires, st.mate.dams, no, rng)
 function _parents!(::AbstractFitness, st::SimState, no::Int, rng::AbstractRNG)
-    w, wf = st.w, st.wf
+    w, wf = st.fit.w, st.fit.wf
     # Soft selection cannot rescue a sex without any fit member.
-    (any(i -> w[i] > 0, st.sires) && any(i -> wf[i] > 0, st.dams)) || error(
+    (any(i -> w[i] > 0, st.mate.sires) && any(i -> wf[i] > 0, st.mate.dams)) || error(
         "no parent with positive fitness in one sex: the population cannot reproduce")
-    return _draw_parents!(st.pm, st.sires, st.dams, no, rng, w, st.tm, st.tf, wf)
+    return _draw_parents!(st.mate.pm, st.mate.sires, st.mate.dams, no, rng, w, st.mate.tm, st.mate.tf, wf)
 end
 
 # One meiosis per parent for each of `no` offspring (threaded), written into
 # `st.off`, which then becomes the current cohort of `no` individuals. Slot i
 # draws its two crossover lists and strands from `st.srng[i]`, sire first.
 function _meiosis!(st::SimState, recomb_map::RecombinationMap, no::Int)
-    prt, off, pm, cbuf, srng = st.prt, st.off, st.pm, st.cbuf, st.srng
+    prt, off, pm, cbuf, srng = st.prt, st.off, st.mate.pm, st.cbuf, st.srng
     Threads.@threads for i = 1:no
         s = pm[i, 1]
         d = pm[i, 2]
@@ -624,8 +652,8 @@ end
 # selected haplotypes of the parent. The draws from `st.srng[i]` are those
 # of `_meiosis!`, in the same order.
 function _meiosis_selected!(st::SimState, recomb_map::RecombinationMap, no::Int)
-    prt, off, sel, soff = st.prt, st.off, st.sel, st.soff
-    pm, cbuf, srng = st.pm, st.cbuf, st.srng
+    prt, off, sel, soff = st.prt, st.off, st.fit.sel, st.fit.soff
+    pm, cbuf, srng = st.mate.pm, st.cbuf, st.srng
     Threads.@threads for i = 1:no
         co = cbuf[i]
         r = srng[i]
@@ -637,7 +665,7 @@ function _meiosis_selected!(st::SimState, recomb_map::RecombinationMap, no::Int)
         end
     end
     st.prt, st.off = off, prt
-    st.sel, st.soff = soff, sel
+    st.fit.sel, st.fit.soff = soff, sel
     st.n = no
     return nothing
 end
@@ -683,11 +711,11 @@ offspring and then mutation; with
 
 Mating is drawn serially from `rng`; meiosis and mutation use the per-slot
 streams in `st.srng`. The census size and the number of male parents of
-every generation are appended to `st.census` and `st.males`.
+every generation are appended to `st.rec.census` and `st.rec.males`.
 
 With a fitness model that keeps selected alleles (`_selected(fitness)`),
-meiosis carries the selected stream `st.sel` along, mutation also hits the
-fitness loci, and fixed selected sites are moved to `st.ssubs`.
+meiosis carries the selected stream `st.fit.sel` along, mutation also hits the
+fitness loci, and fixed selected sites are moved to `st.fit.ssubs`.
 """
 function _simulate!(
     st::SimState,
@@ -709,31 +737,31 @@ function _simulate!(
     selected = _selected(fitness)
     p_sel = _sel_poisson(fitness)
     # Parents and grandparents, unknown (0) for the starting cohort.
-    if _track_relatives(mating) && size(st.rel, 2) < size(st.pm, 1)
-        st.rel = zeros(Int, 6, size(st.pm, 1))
-        st.rnew = zeros(Int, 6, size(st.pm, 1))
+    if _track_relatives(mating) && size(st.mate.rel, 2) < size(st.mate.pm, 1)
+        st.mate.rel = zeros(Int, 6, size(st.mate.pm, 1))
+        st.mate.rnew = zeros(Int, 6, size(st.mate.pm, 1))
     end
     for g = 1:nt
         no = _popsize(demog, g)
         _fitness!(fitness, st, rng)
         _record_fitness!(fitness, st)
         _record_trait!(fitness, st)
-        push!(st.forced, 0)
+        push!(st.rec.related_matings, 0)
         _mate!(mating, fitness, st, no, rng)
         _record_mated!(fitness, st)
         _track_relatives(mating) && _update_relatives!(st, no)
-        push!(st.males, length(st.sires))
+        push!(st.rec.males, length(st.mate.sires))
         _record_families!(st, no)
         _record_pedigree!(st.ped, st, no, _monoecious(mating))
         selected ? _meiosis_selected!(st, recomb_map, no) : _meiosis!(st, recomb_map, no)
-        push!(st.census, no)
+        push!(st.rec.census, no)
         mutate && _mutation!(st, p_mut, span)
         mutate && p_sel !== nothing && _sel_mutation!(fitness, st, p_sel)
         if track && (g % fixation_interval == 0 || g == nt)
             st.substitutions = _fixation_step!(_cohort(st), st.substitutions)
             # A site fixed in the selected stream multiplies every fitness
             # by the same factor, so removing it leaves selection unchanged.
-            selected && (st.ssubs = _fixation_step!(view(st.sel, 1:2*st.n), st.ssubs))
+            selected && (st.fit.ssubs = _fixation_step!(view(st.fit.sel, 1:2*st.n), st.fit.ssubs))
         end
         if verbose && (g % progress_interval == 0 || g == nt)
             _report_progress(stderr, g, nt, t0, _cohort(st), length(st.substitutions), track)

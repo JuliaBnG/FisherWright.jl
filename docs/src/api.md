@@ -14,8 +14,11 @@ Mating schemes, demographic trajectories and fitness models are on
 ```@docs
 fisher_wright
 FisherWrightResult
+GenerationRecords
 effective_size
 to_haplotype
+write_result
+read_result
 ```
 
 ## Dense export
@@ -35,7 +38,6 @@ uniform_recombination_map
 ## Synthetic data
 
 ```@docs
-quickGT
 quickHap
 ```
 

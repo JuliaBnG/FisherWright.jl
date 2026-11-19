@@ -127,10 +127,10 @@ function engine_run(seed)
         end
         rows[s, 9] = sum(c[k] / 2N * 2α[k] for k = 1:K)
         w = (s == 1 ? 2N : GAP)
-        g = length(res.var_phenotypic)-w+1:length(res.var_phenotypic)
-        rows[s, 10] = mean(res.var_phenotypic[g])
-        rows[s, 11] = mean(res.var_genotypic[g])
-        rows[s, 12] = mean(res.var_log_fitness[g])
+        g = length(res.records.var_phenotypic)-w+1:length(res.records.var_phenotypic)
+        rows[s, 10] = mean(res.records.var_phenotypic[g])
+        rows[s, 11] = mean(res.records.var_genotypic[g])
+        rows[s, 12] = mean(res.records.var_log_fitness[g])
     end
     return rows
 end

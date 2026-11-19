@@ -59,7 +59,7 @@ function Base.show(io::IO, m::Monoecious)
     print(io, ")")
 end
 
-# No sexes: st.sires and st.dams are left empty, so the record of males is
+# No sexes: st.mate.sires and st.mate.dams are left empty, so the record of males is
 # 0. Per offspring the draws from `rng` are the first parent, then (for
 # 0 < s < 1) a uniform for selfing, then the second parent unless selfed.
 _mate!(m::Monoecious, f::AbstractFitness, st::SimState, no::Int, rng::AbstractRNG) =
@@ -74,18 +74,18 @@ _mate!(m::Monoecious, f::AbstractFitness, st::SimState, no::Int, rng::AbstractRN
 function _mono_mate!(st::SimState, s::Float64, f::AbstractFitness, no::Int, rng::AbstractRNG,
     level::Int, max_tries::Int)
     n = st.n
-    resize!(st.sex, n)
-    empty!(st.sires)
-    empty!(st.dams)
-    pm, t = st.pm, st.tf
+    resize!(st.mate.sex, n)
+    empty!(st.mate.sires)
+    empty!(st.mate.dams)
+    pm, t = st.mate.pm, st.mate.tf
     neutral = f isa Neutral
     if !neutral
-        w = st.w
+        w = st.fit.w
         np = count(i -> w[i] > 0, 1:n)
         np > 0 || error("no parent with positive fitness: the population cannot reproduce")
         np > 1 || s == 1 || s < 0 || error(
             "only one parent has positive fitness, and selfing is below 1: the population cannot reproduce")
-        idx = st.fidx
+        idx = st.mate.fidx
         resize!(idx, n)
         idx .= 1:n
         _alias_build!(t, w, idx)
@@ -97,7 +97,7 @@ function _mono_mate!(st::SimState, s::Float64, f::AbstractFitness, no::Int, rng:
             _selfed(s, rng) ? p : _draw_other(p, n, t, neutral, rng)
         if level > 0 && q != p
             k = 1
-            while _related(st.rel, p, q, level)
+            while _related(st.mate.rel, p, q, level)
                 if k >= max_tries
                     forced += 1
                     break

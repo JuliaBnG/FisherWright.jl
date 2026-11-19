@@ -1,6 +1,6 @@
 # Selection on an explicit table of fitness loci (docs/dev/roadmap.md,
 # "Selection"). Selected alleles live in a second per-haplotype stream,
-# `st.sel`, apart from the neutral mutations in `st.prt`: the positions a
+# `st.fit.sel`, apart from the neutral mutations in `st.prt`: the positions a
 # haplotype carries there are its derived alleles at fitness loci.
 
 """
@@ -130,7 +130,7 @@ struct SiteFitness <: AbstractFitness
         new(loci, log1p.(loci.h .* loci.s), log1p.(loci.s))
 end
 
-# Whether a fitness model keeps selected alleles in `st.sel`.
+# Whether a fitness model keeps selected alleles in `st.fit.sel`.
 _selected(::AbstractFitness) = false
 _selected(::SiteFitness) = true
 
@@ -176,18 +176,18 @@ end
 # substituted sites, which every parent carries on both haplotypes, are
 # added back.
 function _fitness!(f::SiteFitness, st::SimState)
-    w, sel, n = st.w, st.sel, st.n
+    w, sel, n = st.fit.w, st.fit.sel, st.n
     Threads.@threads for i = 1:n
         @inbounds w[i] = _log_fitness(f, sel[2i-1], sel[2i])
     end
     lw = view(w, 1:n)
     offset = 0.0
-    for x in st.ssubs
+    for x in st.fit.ssubs
         offset += f.lhom[searchsortedfirst(f.loci.pos, x)]
     end
-    push!(st.flmean, mean(lw) + offset)
-    push!(st.flvar, var(lw))
-    push!(st.fmean, sum(x -> exp(x + offset), lw) / n)
+    push!(st.rec.mean_log_fitness, mean(lw) + offset)
+    push!(st.rec.var_log_fitness, var(lw))
+    push!(st.rec.mean_fitness, sum(x -> exp(x + offset), lw) / n)
     top = maximum(lw)
     top > -Inf || error("every individual has zero fitness: the population cannot reproduce")
     @inbounds for i = 1:n
@@ -213,7 +213,7 @@ _sel_mutation!(f::SiteFitness, st::SimState, p_sel::Poisson{Float64}) = _sel_mut
 
 function _sel_mutation!(pos::Vector{UInt32}, st::SimState, p_sel::Poisson{Float64})
     K = length(pos)
-    sel, mbuf, nbuf, srng, subs = st.sel, st.smbuf, st.snbuf, st.srng, st.ssubs
+    sel, mbuf, nbuf, srng, subs = st.fit.sel, st.fit.smbuf, st.fit.snbuf, st.srng, st.fit.ssubs
     Threads.@threads for i = 1:2*st.n
         r = srng[i]
         nm = rand(r, p_sel)

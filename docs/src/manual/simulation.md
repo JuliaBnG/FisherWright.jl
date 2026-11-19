@@ -166,13 +166,13 @@ population, and a negative `r` is a decline.
 ```@example simulation
 run = fisher_wright(40, 20, [100_000, 100_000], 1.0;
                     popsize=bottleneck(40, 10, 6, 5), result=true)
-run.census[5:12]   # N_4, …, N_11
+run.records.census[5:12]   # N_4, …, N_11
 ```
 
 ```@example simulation
 run = fisher_wright(20, 40, [100_000, 100_000], 1.0;
                     popsize=growth(20, 0.05; limit=60), result=true)
-run.census[[1, 2, 11, 41]]   # N_0, N_1, N_10, N_40
+run.records.census[[1, 2, 11, 41]]   # N_0, N_1, N_10, N_40
 ```
 
 Both return plain functions, so a trajectory can also be built as a
@@ -301,7 +301,7 @@ coalescence probabilities above then use the numbers of breeders.
 design = Hierarchical(4, 5)
 run = fisher_wright(100, 30, [100_000, 100_000], 1.0; mating=design,
                     result=true)
-(run.census[end], run.males[end])
+(run.records.census[end], run.records.males[end])
 ```
 
 Here ``N_e \approx 14.6``, against ``99.5`` for random mating of all
@@ -333,7 +333,7 @@ sel = fisher_wright(40, 100, [100_000, 100_000], 1.0; result=true,
                     mating=FamilySize(dams=1.0, nmale=10), rng=Xoshiro(5),
                     fitness=TraitFitness(qtl; σe=0.5,
                                          fitness=Directional(1.0)))
-(sel.mean_genotypic[end], effective_size(sel))
+(sel.records.mean_genotypic[end], effective_size(sel))
 ```
 
 ## Hermaphrodites
@@ -369,7 +369,7 @@ which reduces to the two-sex recursion of [Effective size](@ref) for
 ```@example simulation
 selfer = fisher_wright(40, 100, [100_000, 100_000], 1.0;
                        mating=Monoecious(selfing=0.5), result=true)
-(selfer.males[end], selfer.selfing[end], effective_size(selfer))
+(selfer.records.males[end], selfer.records.selfing[end], effective_size(selfer))
 ```
 
 The record holds no males (0), the proportion of selfed offspring of
@@ -408,7 +408,7 @@ stopping the run:
 avoid = AvoidRelatives(RandomMating(nmale=5); level=:cousin)
 kin = fisher_wright(40, 50, [100_000, 100_000], 1.0; mating=avoid,
                     result=true)
-(sum(kin.related_matings), effective_size(kin))
+(sum(kin.records.related_matings), effective_size(kin))
 ```
 
 With 5 sires, first cousins soon cannot be avoided. Rejecting the dam
@@ -449,7 +449,7 @@ am = fisher_wright(40, 60, [100_000, 100_000], 1.0; mating=assortative,
                    fitness=flat, result=true, rng=Xoshiro(7))
 rm = fisher_wright(40, 60, [100_000, 100_000], 1.0; mating=Monoecious(),
                    fitness=flat, result=true, rng=Xoshiro(7))
-(sum(am.var_genotypic[41:60]), sum(rm.var_genotypic[41:60])) ./ 20
+(sum(am.records.var_genotypic[41:60]), sum(rm.records.var_genotypic[41:60])) ./ 20
 ```
 
 Here the trait is neutral (`fitness = p -> 1.0`). In this one pair of
@@ -581,7 +581,7 @@ up = fisher_wright(100, 200, chr, 1.0; result=true, rng=Xoshiro(2),
                    fitness=TraitFitness(qtl; σe=1.0,
                                         fitness=Directional(0.5)))
 g = [1, 50, 100, 150, 200]
-(up.mean_genotypic[1, g], up.var_genotypic[1, 1, g])
+(up.records.mean_genotypic[1, g], up.records.var_genotypic[1, 1, g])
 ```
 
 The result records, for the parents of every generation, the mean and
@@ -596,7 +596,7 @@ held = fisher_wright(100, 200, chr, 1.0; init=up, result=true,
                      rng=Xoshiro(3),
                      fitness=TraitFitness(qtl; σe=1.0,
                                           fitness=Stabilizing(2.0, 4.0)))
-held.mean_genotypic[1, [200, 250, 300, 350, 400]]
+held.records.mean_genotypic[1, [200, 250, 300, 350, 400]]
 ```
 
 `to_haplotype(result, qtl)` exports the genotypes at the trait loci
@@ -642,7 +642,7 @@ sel = fisher_wright(100, 50, chr, 1.0; init=base, result=true,
                     fitness=TraitFitness(two; σe=[1.0, 1.0],
                                          fitness=Directional(β)))
 g = [200, 225, 250]
-(sel.mean_genotypic[:, g], sel.var_genotypic[:, :, 200])
+(sel.records.mean_genotypic[:, g], sel.records.var_genotypic[:, :, 200])
 ```
 
 The first trait responds directly and the second in the opposite

@@ -66,8 +66,8 @@ function neutral_case(N, T, Σe, reps, rng)
         loci = trait_loci(CHR, K; a = MvNormal(zeros(2), SIGMA_A_MAT), μ = MU, rng = rng)
         f = TraitFitness(loci; Σe = Σe, fitness = P -> 1.0)
         res = fisher_wright(N, T, CHR, 0.02; mut_base = 1e12, fitness = f, result = true, rng = rng)
-        SG[r, :, :, :] .= res.var_genotypic
-        SP[r, :, :, :] .= res.var_phenotypic
+        SG[r, :, :, :] .= res.records.var_genotypic
+        SP[r, :, :, :] .= res.records.var_phenotypic
     end
     return SG, SP
 end
@@ -121,12 +121,12 @@ function main(reps = 1000, seed = 2026)
         sel = fisher_wright(N, T, CHR, 0.02; mut_base = 1e12, init = base, result = true, rng = rng,
             fitness = TraitFitness(loci; σe = σe, fitness = Directional(β)))
         g = burn+1:burn+T
-        R = sel.mean_genotypic[:, g[end]] .- sel.mean_genotypic[:, g[1]]
-        Gβ = sum(sel.var_genotypic[:, :, k] * β for k in g[1:end-1])
+        R = sel.records.mean_genotypic[:, g[end]] .- sel.records.mean_genotypic[:, g[1]]
+        Gβ = sum(sel.records.var_genotypic[:, :, k] * β for k in g[1:end-1])
         push!(R1, R[1]); push!(D1, Gβ[1])
         push!(R2, R[2]); push!(D2, Gβ[2])
-        Pβ = [β' * sel.var_phenotypic[:, :, k] * β for k in g[1:end-1]]
-        G11 = sel.var_genotypic[1, 1, g[1:end-1]]
+        Pβ = [β' * sel.records.var_phenotypic[:, :, k] * β for k in g[1:end-1]]
+        G11 = sel.records.var_genotypic[1, 1, g[1:end-1]]
         push!(small, 1 - sum(G11 .* exp.(Pβ)) / sum(G11) * Einv)
     end
     n = length(R1)
