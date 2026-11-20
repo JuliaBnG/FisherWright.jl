@@ -29,6 +29,7 @@ makedocs(
             "Validation: mating schemes" => "manual/validation-mating.md",
             "Validation: linked selection" => "manual/validation-linked.md",
         ],
+        "Changes since the JOSS paper" => "joss.md",
         "API reference" => "api.md",
         "API reference: population models" => "api-models.md",
     ],

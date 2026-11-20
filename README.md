@@ -15,6 +15,9 @@ exported as a `BitMatrix` with a linkage map, as a targeted SNP-chip panel, or a
 The complete manual, API reference and population genetics validation are
 available at
 [juliabng.github.io/FisherWright](https://juliabng.github.io/FisherWright/).
+The JOSS paper (`paper/`) describes version 0.4; the page
+[Changes since the JOSS paper](https://juliabng.github.io/FisherWright/stable/joss/)
+says what still holds for the current release and what changed.
 
 To build the static documentation for hosting:
 

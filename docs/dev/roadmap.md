@@ -643,6 +643,11 @@ chromosome). Seeded output of the other schemes unchanged.
    for such comparisons.
 3. JOSS paper: resolved 2026-11-11. The paper is under review and stays
    as submitted, scoped to v0.4.x; it does not mention this roadmap.
+   The docs page "Changes since the JOSS paper" (`docs/src/joss.md`,
+   2026-11-20) maps the paper's statements to the current release for
+   the reviewers: the paper's validation rerun with v0.11.0 is
+   identical to its logs; a benchmark of v0.11.0 against v0.4.2 on the
+   paper's host is pending.
 4. Selected-site semantics: resolved 2026-11-11 in favour of a fixed s
    per site (this design), not s per mutation as in SLiM.
 5. Order: resolved 2026-11-11, selection (0.6.0) precedes the remaining
