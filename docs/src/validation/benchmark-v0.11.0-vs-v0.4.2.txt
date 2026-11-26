@@ -1,0 +1,13 @@
+# Date: 2026-11-26T10:02Z  Commits: v0.4.2 (tag, fea0b3a) and v0.11.0 (tag, 180101a), both from git archive
+# CPU: AMD Ryzen 9 5950X 16-Core Processor, otherwise idle; julia version 1.13.4
+# deps: v0.4.2 BnGStructs v0.2.7, v0.11.0 BnGStructs v0.4.0 (as their compat bounds require); both DataFrames v1.8.3 Distributions v0.25.135
+# Three interleaved runs of each version (summary lines):
+# $ julia --startup-file=no -t 8 --project=<dir> <dir>/bench/simulate-fisher-wright.jl 2000 2000 10 100000000 1.0 42
+
+Default path, simulation runtime (s); every run: 571686 polymorphic SNPs, 4 substitutions
+  run   v0.4.2    v0.11.0
+  1     57.120    57.080
+  2     57.583    57.284
+  3     57.496    57.889
+  mean  57.400    57.418
+Peak RSS: 2492-2529 MiB (v0.4.2), 2483-2585 MiB (v0.11.0)
