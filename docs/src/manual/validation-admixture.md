@@ -83,7 +83,7 @@ by chance would be about 4%. They are not independent: the times of one
 replicate share its history. The resolution section gives the z-score of the
 prediction that ignores ``C_0``, for the merge of whole individuals.
 
-200 replicates take about 30 minutes on 16 threads:
+200 replicates take about 30 minutes on 16 threads (AMD, 16 cores):
 
 ```bash
 julia -t 16 validate-admixture.jl [reps=40] [seed=2026]
@@ -105,7 +105,34 @@ Markdown.MD(Markdown.Code("text", read(joinpath(pkgdir(FisherWright), "docs", "s
 
 ## Reading the results
 
-READING
+- **All checks pass.** All 84 checks pass for both seeds. The largest
+  |z| is 3.30 (seed 2026, α̂ at t = 10) and 1.80 (seed 7).
+- **Ancestry proportion.** α̂ equals α at the merge to rounding (≤ 2e-16).
+  Afterwards it moves with drift and shows no consistent bias. With seed
+  2026, the merge of whole individuals drifts below 0.3 (z = −3.30 at
+  t = 10), while the shuffled merge drifts above it. With seed 7, both
+  variants stay within 1.8 SE. The six times of one replicate share its
+  drift, so a run that wanders off does so at all later times together.
+- **C₀ is the between-source LD.** For unlinked pairs, the regression of
+  C₀ on D₀ is 0.592 and 0.593 for the merge of whole individuals. The
+  between-source part α(1 − α)δδ′ gives 0.593 and 0.595. For shuffled
+  haplotypes it is −0.005 and −0.001. The between-source share of D₀ for
+  unlinked pairs is therefore about 0.59, and this is the part that a
+  merge of whole individuals keeps through the F1.
+- **LD decay.** S/P is between 0.994 and 1.004 in every bin up to t = 3,
+  for both variants and both seeds. At larger t and r, the predicted LD
+  is a small fraction of D₀ (at t = 10 and r ≈ 0.3, 0.7⁹ ≈ 4%), so the
+  ratio becomes noisy, and the unlinked ratios after t = 5 carry no
+  information. There is a weak tendency for S/P to fall below 1 for
+  r > 0.1 and t ≥ 3, by about 1% at t = 5. It has the same sign in both
+  seeds, and its largest |z| is 2.79. It is of the order of the terms of
+  order r/N that the prediction neglects, but it has not been derived
+  here. It is too small to matter for the use of the recipe.
+- **Resolution.** For the merge of whole individuals, the prediction
+  without C₀ is rejected at t = 1 by z = 87 and 79 for unlinked pairs, 63
+  and 62 for 0.2–0.5 M, and 24 and 25 for 0.05–0.1 M. The lag of one
+  generation is therefore well resolved. Below 0.01 M, where r is under
+  1%, the two predictions cannot be told apart.
 
 ## Not covered
 
