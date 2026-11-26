@@ -56,14 +56,17 @@ the same idle host:
 | v0.5.0, v0.6.0 | Ryzen 9 3900X | 63.26, 63.25 |
 | v0.6.0, v0.7.0 | Ryzen 9 3900X | 63.29, 63.28 |
 | v0.7.1, v0.8.0 | Ryzen 9 5950X | 57.60, 57.72 |
-| v0.4.2, v0.11.0 | (pending; see below) | |
+| v0.4.2, v0.11.0 | Ryzen 9 5950X | 57.40, 57.42 |
 
 The logs are `docs/src/validation/benchmark-*.txt`. The paper's 57.0 s
 for v0.4.2 is on the Ryzen 9 5950X. Releases 0.9 to 0.11 left the
 output of the default path unchanged (the golden digests), but 0.10.0
-reorganized the internal state of a run, so their speed on this run has
-to be measured: a direct comparison of v0.11.0 with v0.4.2 on the
-paper's host is pending.
+reorganized the internal state of a run, so v0.11.0 was compared with
+v0.4.2 directly on the paper's host (2026-11-26, Julia 1.13.4): the two
+differ by 0.03% in mean simulation time, well inside the spread of
+their runs (57.08–57.89 s), and every run gives the same 571,686
+polymorphic SNPs and 4 substitutions. The default path is as fast as
+in the paper, after all the features added since.
 
 ## What no longer holds
 
@@ -140,8 +143,9 @@ julia --startup-file=no -t 8 --project=. bench/simulate-fisher-wright.jl 2000 20
 The paper's logs are `docs/src/validation/validate-popgen-seed2026.txt`,
 `validate-popgen-seed7.txt` and
 `benchmark-v0.5.0-vs-v0.4.2.txt`; the reruns with v0.11.0 are
-`validate-popgen-v0.11.0-seed2026.txt` and
-`validate-popgen-v0.11.0-seed7.txt`, in the same directory:
+`validate-popgen-v0.11.0-seed2026.txt`,
+`validate-popgen-v0.11.0-seed7.txt` and
+`benchmark-v0.11.0-vs-v0.4.2.txt`, in the same directory:
 
 ```@eval
 using Markdown, FisherWright
