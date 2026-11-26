@@ -1,0 +1,132 @@
+==============================================================================
+ FisherWright admixture pulse: 200 replicates, seed 2026, 16 threads
+ N = 500, ancestral 5000 generations, split 100 generations, α = 0.3
+ A check fails when |z| > 3.5
+==============================================================================
+ 200 replicates in 1821 s; sites per replicate 2000-2000
+
+merge of whole individuals
+  α̂ at the merge: max |α̂₀ - α| = 1.7e-16
+  unlinked pairs, slope on D₀: C₀ 0.592, between-source part α(1 - α)δδ' 0.593
+  ancestry proportion α̂_t (expected 0.3)
+  t          α̂_t ± SE           z
+  1       0.2987 ± 0.0010     -1.31  pass
+  2       0.2983 ± 0.0013     -1.36  pass
+  3       0.2977 ± 0.0015     -1.58  pass
+  5       0.2958 ± 0.0017     -2.49  pass
+  10      0.2934 ± 0.0020     -3.30  pass
+  20      0.2923 ± 0.0024     -3.17  pass
+  LD decay: S = Σ D_t D_0 against P = Σ E[D_t] D_0, per distance bin
+  t   distance        S/P      z(S - P)
+  1   0.0-0.01 M      1.000      1.11  pass
+  1   0.01-0.05 M     1.001      1.80  pass
+  1   0.05-0.1 M      1.000      0.12  pass
+  1   0.1-0.2 M       0.999     -0.73  pass
+  1   0.2-0.5 M       1.001      0.43  pass
+  1   unlinked        0.999     -0.81  pass
+  2   0.0-0.01 M      1.000      0.96  pass
+  2   0.01-0.05 M     1.001      1.36  pass
+  2   0.05-0.1 M      1.000      0.35  pass
+  2   0.1-0.2 M       0.999     -0.60  pass
+  2   0.2-0.5 M       1.000     -0.09  pass
+  2   unlinked        0.998     -0.33  pass
+  3   0.0-0.01 M      1.000      0.36  pass
+  3   0.01-0.05 M     1.001      0.54  pass
+  3   0.05-0.1 M      0.999     -0.67  pass
+  3   0.1-0.2 M       0.996     -1.83  pass
+  3   0.2-0.5 M       0.995     -1.62  pass
+  3   unlinked        1.004      0.41  pass
+  5   0.0-0.01 M      1.000      0.37  pass
+  5   0.01-0.05 M     1.002      1.16  pass
+  5   0.05-0.1 M      1.001      0.31  pass
+  5   0.1-0.2 M       0.994     -2.19  pass
+  5   0.2-0.5 M       0.987     -2.65  pass
+  5   unlinked        0.965     -1.28  pass
+  10  0.0-0.01 M      1.001      1.23  pass
+  10  0.01-0.05 M     1.004      1.87  pass
+  10  0.05-0.1 M      1.004      1.11  pass
+  10  0.1-0.2 M       0.996     -0.80  pass
+  10  0.2-0.5 M       0.976     -1.72  pass
+  10  unlinked        0.307     -1.21  pass
+  20  0.0-0.01 M      1.001      0.53  pass
+  20  0.01-0.05 M     1.002      0.76  pass
+  20  0.05-0.1 M      1.014      2.05  pass
+  20  0.1-0.2 M       0.998     -0.12  pass
+  20  0.2-0.5 M       0.884     -1.15  pass
+  20  unlinked      -200.833     -0.48  pass
+
+  Resolution: z of the prediction that ignores C₀, λ^t (1 - r)^t D₀
+  t   distance      S/P_naive   z(S - P_naive)
+  1   0.0-0.01 M      1.001      1.71
+  1   0.01-0.05 M     1.005      7.75
+  1   0.05-0.1 M      1.021     24.46
+  1   0.1-0.2 M       1.058     44.49
+  1   0.2-0.5 M       1.145     63.32
+  1   unlinked        1.592     87.08
+  2   0.0-0.01 M      1.001      1.40
+  2   0.01-0.05 M     1.005      5.65
+  2   0.05-0.1 M      1.022     16.30
+  2   0.1-0.2 M       1.057     30.35
+  2   0.2-0.5 M       1.142     46.26
+  2   unlinked        1.592     59.95
+  3   0.0-0.01 M      1.000      0.72
+  3   0.01-0.05 M     1.005      4.05
+  3   0.05-0.1 M      1.020     12.21
+  3   0.1-0.2 M       1.054     22.66
+  3   0.2-0.5 M       1.135     35.48
+  3   unlinked        1.601     37.02
+
+merge of shuffled haplotypes
+  α̂ at the merge: max |α̂₀ - α| = 1.7e-16
+  unlinked pairs, slope on D₀: C₀ -0.005, between-source part α(1 - α)δδ' 0.593
+  ancestry proportion α̂_t (expected 0.3)
+  t          α̂_t ± SE           z
+  1       0.2998 ± 0.0008     -0.24  pass
+  2       0.2995 ± 0.0011     -0.43  pass
+  3       0.3004 ± 0.0014      0.31  pass
+  5       0.3012 ± 0.0017      0.70  pass
+  10      0.3024 ± 0.0020      1.22  pass
+  20      0.3033 ± 0.0024      1.35  pass
+  LD decay: S = Σ D_t D_0 against P = Σ E[D_t] D_0, per distance bin
+  t   distance        S/P      z(S - P)
+  1   0.0-0.01 M      1.000      1.34  pass
+  1   0.01-0.05 M     1.001      0.88  pass
+  1   0.05-0.1 M      1.000     -0.01  pass
+  1   0.1-0.2 M       0.999     -0.85  pass
+  1   0.2-0.5 M       0.998     -1.28  pass
+  1   unlinked        1.003      1.08  pass
+  2   0.0-0.01 M      1.000     -0.21  pass
+  2   0.01-0.05 M     1.000     -0.11  pass
+  2   0.05-0.1 M      1.000     -0.19  pass
+  2   0.1-0.2 M       0.998     -1.15  pass
+  2   0.2-0.5 M       0.998     -0.63  pass
+  2   unlinked        1.004      0.56  pass
+  3   0.0-0.01 M      0.999     -1.17  pass
+  3   0.01-0.05 M     0.999     -1.33  pass
+  3   0.05-0.1 M      0.999     -0.67  pass
+  3   0.1-0.2 M       0.997     -1.44  pass
+  3   0.2-0.5 M       0.995     -1.33  pass
+  3   unlinked        0.993     -0.53  pass
+  5   0.0-0.01 M      0.999     -1.25  pass
+  5   0.01-0.05 M     0.997     -1.81  pass
+  5   0.05-0.1 M      0.999     -0.64  pass
+  5   0.1-0.2 M       0.996     -1.23  pass
+  5   0.2-0.5 M       0.993     -1.30  pass
+  5   unlinked        0.988     -0.28  pass
+  10  0.0-0.01 M      1.000     -0.15  pass
+  10  0.01-0.05 M     0.997     -1.52  pass
+  10  0.05-0.1 M      0.995     -1.44  pass
+  10  0.1-0.2 M       0.991     -1.49  pass
+  10  0.2-0.5 M       0.970     -2.04  pass
+  10  unlinked        0.319     -0.84  pass
+  20  0.0-0.01 M      1.000      0.34  pass
+  20  0.01-0.05 M     0.996     -1.52  pass
+  20  0.05-0.1 M      0.981     -2.79  pass
+  20  0.1-0.2 M       0.960     -2.39  pass
+  20  0.2-0.5 M       1.020      0.19  pass
+  20  unlinked      -1037.999     -1.75  pass
+
+==============================================================================
+ All checks passed.
+==============================================================================
+exit status: 0
