@@ -28,6 +28,7 @@ makedocs(
             "Validation: selection" => "manual/validation-selection.md",
             "Validation: mating schemes" => "manual/validation-mating.md",
             "Validation: linked selection" => "manual/validation-linked.md",
+            "Validation: admixture pulse" => "manual/validation-admixture.md",
         ],
         "Changes since the JOSS paper" => "joss.md",
         "API reference" => "api.md",

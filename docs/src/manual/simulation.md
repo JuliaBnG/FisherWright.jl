@@ -133,6 +133,56 @@ Two calls of `nt₁` and `nt₂` generations are therefore a valid
 realization of `nt₁ + nt₂` generations, but not the one a single call
 gives for the same seed.
 
+## Merging populations (admixture)
+
+FisherWright simulates one panmictic population per call; it has no
+model of subdivision or migration. A single admixture pulse is built
+from separate calls through `init`. Split populations from one
+ancestral population, run them apart, and continue with a starting
+population assembled from individuals of each:
+
+```@example simulation
+using Random
+rng = Xoshiro(1)
+chr = [100_000, 100_000]
+anc, _ = fisher_wright(100, 500, chr, 1.0; rng)
+a, _ = fisher_wright(100, 50, chr, 1.0; init=anc, rng)   # source A
+b, _ = fisher_wright(100, 50, chr, 1.0; init=anc, rng)   # source B
+# 30 individuals of A and 70 of B, each with both of its haplotypes
+ind(pop, ids) = [pop[2i - k] for i in ids for k in (1, 0)]
+mixed = vcat(ind(a, randperm(rng, 100)[1:30]), ind(b, randperm(rng, 100)[1:70]))
+admixed = fisher_wright(100, 20, chr, 1.0; init=mixed, result=true, rng)
+length(admixed.active_haplotypes)
+```
+
+- Run the source populations with `result=false`. Their haplotypes then
+  keep the sites fixed in one source, which are polymorphic once the
+  sources are merged. A `FisherWrightResult` holds its substitutions
+  apart in `substitutions`, and those are specific to its population.
+- The ancestry proportions are the shares of the individuals, here
+  α = 0.3 from A. The size of the continuation is `length(mixed) ÷ 2`.
+- Merging whole individuals is the realistic choice for a cross of
+  breeds. Each merged individual carries two haplotypes of one source,
+  so its gametes are not recombinant between the sources. The LD that
+  the merge creates between sources therefore does not decay in the
+  first generation (the F1). It decays by ``(1-r)`` per generation
+  only from then on:
+  ``E[D_t] = \lambda^t (1-r)^{t-1}[(1-r)D_0 + r C_0]``, where ``C_0`` is the
+  covariance of the two haplotypes within the merged individuals and
+  ``\lambda = 1 - 1/(2N_e)``. Shuffling the merged haplotypes among
+  individuals gives ``C_0 \approx 0`` and the usual
+  ``\lambda^t (1-r)^t D_0``.
+- The merge is neutral. Plain haplotypes carry no selected alleles, so
+  histories run with `fitness` cannot be merged this way. The record of
+  the generations, and the pedigree, start anew with the continuation.
+- Continued gene flow is not modelled. Exchanging migrants between
+  one-generation calls would be a valid realization, since every call
+  is one, but it has not been validated.
+
+The recipe is checked against these expectations, and against the
+ancestry proportion, on
+[Validation of an admixture pulse](@ref).
+
 ## Changing population size
 
 By default the census size stays at `ne`. `popsize` gives the size of
